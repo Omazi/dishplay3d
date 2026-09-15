@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 import RealityKit
+import SwiftUI
 import UIKit
 
 enum CapturePhase: String {
