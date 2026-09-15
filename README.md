@@ -49,13 +49,9 @@ See [acceptance and evidence](docs/acceptance.md) for outcomes and limitations. 
 
 The `Verify and deploy` workflow runs on pull requests and `main`. It checks types, tests, dependency vulnerabilities, production build and browser workflows. Only a successful `main` run deploys to Vercel. Pull requests never receive deployment secrets. Stale pull-request runs are cancelled; production runs are serialized to avoid overlapping deployments.
 
-Required GitHub configuration:
+The Vercel project is connected to `Omazi/dishplay3d`, with `production` as its production branch. After verification, Actions advances that branch to the exact tested commit using its built-in repository token. Vercel builds it, and Actions waits for `/api/health` to report the same commit before checking the public pages. No additional Vercel token is required.
 
-| Kind     | Name                | Value                                              |
-| -------- | ------------------- | -------------------------------------------------- |
-| Secret   | `VERCEL_TOKEN`      | Vercel deployment credential; rotate before expiry |
-| Variable | `VERCEL_ORG_ID`     | Linked Vercel account/team ID                      |
-| Variable | `VERCEL_PROJECT_ID` | Linked Vercel project ID                           |
+Keep `production` managed by the workflow. It only permits fast-forward updates; retrying an older commit cannot overwrite a newer release. Main/PR pushes do not deploy directly. To use another Vercel project, connect its Git repository, select `production` as the production branch and update the workflow's deployment URL.
 
 Production environment:
 
@@ -68,7 +64,7 @@ Production environment:
 
 Copy `.env.example` for local overrides; do not commit populated environment files. Migrations run transactionally at first database connection. Vercel intentionally has no fallback to an ephemeral file database.
 
-Automatic Vercel Git deployments are disabled in `vercel.json`: GitHub Actions controls the deployment gate. Initial manual deployment uses `vercel deploy --prod`; further changes should go through CI.
+`vercel.json` permits automatic Git deployments only from `production`. Initial manual deployment used `vercel deploy --prod`; further changes go through the verification workflow.
 
 ## Operations and remaining scope
 

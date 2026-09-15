@@ -26,7 +26,7 @@ Keep the last good model URL until a new model has been reviewed. A failed recon
 
 Passwords are hashed with scrypt and sessions are random opaque tokens whose hashes are stored in PostgreSQL. Production cookies use HttpOnly, SameSite and Secure. Mutation endpoints check Origin. Hosted signup is an explicit environment setting. This pilot has no password reset, email verification or member invitation UI; keep access to the database/operator account for recovery.
 
-Rotate the GitHub Actions `VERCEL_TOKEN` before its expiry. Use a project-scoped credential where the Vercel account supports it. Do not store it in repository variables, source, workflow text or application environment exposed to browsers.
+Deployment uses the installed Vercel GitHub integration and the workflow’s short-lived built-in repository token. No account-wide Vercel credential is stored in GitHub. Keep the `production` branch managed by the deployment workflow and review changes to `.github/workflows/ci-cd.yml`.
 
 ## Incident checks
 
