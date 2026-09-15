@@ -1,0 +1,2 @@
+# Only --run needs Pillow. --doctor, --plan and unit tests use the standard library.
+Pillow==12.3.0

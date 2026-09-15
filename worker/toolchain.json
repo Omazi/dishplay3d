@@ -1,0 +1,13 @@
+{
+  "colmap": "3.11.1",
+  "openmvs": "2.3.0",
+  "blender": "4.5.13",
+  "pillow": "12.3.0",
+  "execution_verified": false,
+  "sources": {
+    "colmap": "https://github.com/colmap/colmap/releases/tag/3.11.1",
+    "openmvs": "https://github.com/cdcseacave/openMVS/releases/tag/v2.3.0",
+    "blender": "https://www.blender.org/releases/4-5/",
+    "pillow": "https://pillow.readthedocs.io/en/stable/releasenotes/12.3.0.html"
+  }
+}
