@@ -41,7 +41,7 @@ Suggested next physical test: immobile matte/textured dish, three passes at diff
 
 ## Remaining product gaps
 
-Android dish pairing/upload, iOS ARKit spatial fallback, web video sampling, automatic reviewed model asset publication, password recovery/member invitations and physical acceptance still require work. The native and worker guides describe available implementation and explicit limits.
+Android dish pairing/upload, web video sampling, automatic reviewed model asset publication, password recovery/member invitations and physical acceptance still require work. The native and worker guides describe available implementation and explicit limits.
 
 ## Bilingual web coverage
 

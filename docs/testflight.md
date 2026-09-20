@@ -4,11 +4,11 @@ DishPlay reste un site web pour les clients et l’espace restaurant. L’app iP
 
 ## Version disponible
 
-Le 20 septembre 2026, **0.2.0 (build 3.1)** a passé [le workflow de signature et d’envoi](https://github.com/Omazi/dishplay3d/actions/runs/35532454106), depuis le commit `61948e6`, avec Xcode 26.3 et le SDK iOS 26.2. L’API Apple confirme un build `VALID` et l’état `IN_BETA_TESTING`.
+Le 20 septembre 2026, **0.3.0 (build 5.1)** a passé [le workflow de signature et d’envoi](https://github.com/Omazi/dishplay3d/actions/runs/35536319612), depuis le commit `b03d671`, avec Xcode 26.3 et le SDK iOS 26.2. L’API Apple confirme un build `VALID` et l’état `IN_BETA_TESTING`.
 
 Le build est associé au groupe interne **DishPlay - Tests iPhone** dans [TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios). Les consignes sont disponibles en français et en anglais. Les notifications automatiques sont désactivées ; aucun nouveau testeur ni lien public n’a été ajouté. Les testeurs déjà inscrits peuvent ouvrir TestFlight et mettre à jour DishPlay Capture.
 
-Cette version utilise ARKit pour la capture automatique, indépendamment du support d’Object Capture. Elle mesure la couverture autour du plat, montre des points observés provisoires et envoie les photos pour reconstruction sur le PC. Voir [le parcours et ses limites](automatic-scan.md).
+Cette version ouvre une caméra simple : **Filmer mon plat → Enregistrer → Arrêter et utiliser la vidéo**. Elle prépare jusqu’à 24 photos et les envoie automatiquement si le plat est associé. Le PC reconstruit le modèle. Le démarrage n’attend plus la reconnaissance du plat ou de la table ; le scan spatial reste une option avancée. Voir [le parcours et ses limites](automatic-scan.md).
 
 ## Prérequis du compte
 
@@ -71,7 +71,7 @@ Le traitement Apple est terminé et le build est associé au groupe interne. Si 
 1. Installer [TestFlight](https://apps.apple.com/app/testflight/id899247664) sur l’iPhone.
 2. Ouvrir [DishPlay Capture → TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios), puis **Tests internes → DishPlay - Tests iPhone**.
 3. Dans **Testeurs**, cliquer sur **+ / Inviter des testeurs**, sélectionner son propre compte App Store Connect et l’ajouter.
-4. Ouvrir l’invitation sur l’iPhone, l’accepter dans TestFlight et installer **DishPlay Capture 0.2.0 (3.1)**. [Procédure Apple](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers).
+4. Ouvrir l’invitation sur l’iPhone, l’accepter dans TestFlight et installer **DishPlay Capture 0.3.0 (5.1)**. [Procédure Apple](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers).
 
 Pour les prochains envois, vérifier la fin du traitement Apple, compléter les informations éventuellement demandées et ajouter le nouveau build au groupe interne. Le workflow signe et envoie l’app ; il ne gère pas l’affectation des builds aux groupes.
 
@@ -79,9 +79,9 @@ Le succès de `altool --upload-app` signifie que le transfert a réussi. Il ne g
 
 ## Limites et vérifications restantes
 
-L’archive Release, les ressources embarquées, la signature, l’export IPA, la validation Apple, l’envoi et le traitement TestFlight sont vérifiés pour le build 3.1. Les essais physiques de cette nouvelle capture restent à effectuer. Un artefact non signé ne s’installe pas directement sur iPhone.
+L’archive Release, les ressources embarquées, la signature, l’export IPA, la validation Apple, l’envoi et le traitement TestFlight sont vérifiés pour le build 5.1. Les essais physiques de cette nouvelle capture restent à effectuer. Un artefact non signé ne s’installe pas directement sur iPhone.
 
-Après installation : permissions caméra, détection du plat sur la table, points observés, tour progressif et couverture, pause/reprise, sauvegarde, association au plat, transfert interrompu puis repris, attente du PC, reconstruction USDZ et fidélité du modèle. Ces essais sur appareil réel ne sont pas remplacés par la compilation cloud.
+Les tests sur Mac encodent et décodent de vraies vidéos : orientation, sélection limitée, rejet des vidéos immobiles/sombres/trop courtes, conservation des originaux et protection des photos déjà sauvegardées. Après installation, vérifier sur iPhone : permissions, démarrage et arrêt caméra, orientation, petits écrans, interruption, import vidéo, reprise de la préparation, association au plat, transfert, attente du PC, résultat USDZ et fidélité du plat. Ces essais sur appareil réel ne sont pas remplacés par la compilation cloud.
 
 ## Références officielles
 

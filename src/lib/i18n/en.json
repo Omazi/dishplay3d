@@ -529,7 +529,7 @@
   "CAPTURE SPATIALE · IPHONE": "SPATIAL CAPTURE · IPHONE",
   "Le volume. Les points. Votre plat.": "The volume. The points. Your dish.",
   "Dans l’app iPhone, ajustez le volume autour du plat puis suivez trois passages. Les points affichés viennent des observations réelles du téléphone.": "In the iPhone app, adjust the volume around the dish, then follow three passes. The displayed points come from real observations by the phone.",
-  "1. Associez ce plat": "1. Pair this dish",
+  "1. Associez ce plat": "1. Link this dish",
   "Créez un code privé, valable 10 minutes. Il autorise une seule capture, sans partager votre compte.": "Create a private code, valid for 10 minutes. It authorizes one capture without sharing your account.",
   "2. Capturez sur iPhone": "2. Capture on iPhone",
   "App DishPlay Capture installée requise. Elle vérifie la compatibilité Object Capture ; sinon, les photos restent disponibles.": "The DishPlay Capture app must be installed. It checks Object Capture support; photo capture remains available otherwise.",
@@ -658,5 +658,13 @@
   "Résultat de votre reconstruction, à vérifier": "Your reconstruction result, awaiting review",
   "L’aperçu n’a pas pu s’ouvrir. Le modèle reste téléchargeable.": "The preview could not open. You can still download the model.",
   "Modèle 3D illustratif d’un plat similaire, distinct de la photo.": "Illustrative 3D model of a similar dish, separate from the photo.",
-  "Fermer": "Close"
+  "Fermer": "Close",
+  "CAPTURE VIDÉO · IPHONE": "VIDEO CAPTURE · IPHONE",
+  "Filmez votre plat. Retrouvez-le en 3D.": "Film your dish. See it in 3D.",
+  "Dans l’app iPhone, appuyez sur Filmer mon plat, puis Enregistrer. Tournez lentement autour de l’assiette et appuyez sur Arrêter. Aucune détection du plat n’est nécessaire pour démarrer.": "In the iPhone app, tap Film your dish, then Record. Move slowly around the plate and tap Stop. Recording starts without waiting for dish detection.",
+  "Mettez DishPlay Capture à jour dans TestFlight. Créez un code privé ici et saisissez-le dans l’app avant de filmer. Le code est valable 10 minutes.": "Update DishPlay Capture in TestFlight. Create a private code here and enter it in the app before recording. The code is valid for 10 minutes.",
+  "2. Filmez pendant 20 à 40 secondes": "2. Film for 20–40 seconds",
+  "Gardez le plat immobile et toute l’assiette dans le cadre. Tournez lentement avec une bonne lumière et terminez un peu plus haut. Vous pouvez aussi importer une vidéo ou des photos.": "Keep the dish still and the entire plate in view. Move slowly around it in good light and finish slightly higher. You can also import a video or photos.",
+  "3. Retrouvez le résultat": "3. Get the result",
+  "L’app prépare les photos et les envoie au plat associé. Laissez votre PC allumé pour le calcul, puis vérifiez le modèle dans l’app ou sur le site. La vidéo originale reste sur l’iPhone.": "The app prepares photos and sends them to the linked dish. Keep your PC on for reconstruction, then review the model in the app or on the website. The original video stays on your iPhone."
 }
