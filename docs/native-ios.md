@@ -4,7 +4,9 @@ Source: `native/ios`. Deployment target: iOS/iPadOS 17.0 or later. This minimal 
 
 ## Build and install
 
-The Linux development laptop has no Xcode or Apple SDK. **The app has not been compiled locally, signed, installed or tested on a physical device.** The `iOS unsigned build` GitHub workflow generates the project and compiles the device target on a hosted Mac with one build job. Its unsigned artifact is evidence of compilation only and cannot be installed directly on an iPhone. The [native pairing build passed](https://github.com/Omazi/dishplay3d/actions/runs/35521203144) on Xcode 16.4 / iOS 18.5 SDK for commit `56372c1`. The workflow now explicitly selects Xcode 26.3 and archives the Release configuration for current App Store Connect SDK requirements. Signing and physical-device capture remain unverified.
+**Version 0.1.0 (build 1.1) is ready for internal TestFlight testing.** The [signed release workflow passed](https://github.com/Omazi/dishplay3d/actions/runs/35523589363) for source `91baec4` on 2026-09-20 using Xcode 26.3 and the iOS 26.2 SDK. Apple completed processing without errors or warnings and reported `VALID` / `READY_FOR_BETA_TESTING`. The build is assigned to the internal group **DishPlay - Tests iPhone**, with French and English test notes. Follow [the installation steps](testflight.md#sur-liphone) to add your own account and install it.
+
+All compilation and signing ran on hosted Macs with one Xcode build job. The Linux laptop has no Xcode or Apple SDK. Installation, camera behavior and reconstruction on a physical device remain unverified. The separate `iOS unsigned build` workflow still provides compilation evidence; its unsigned artifact cannot be installed directly on an iPhone.
 
 On a Mac with a current stable Xcode and [XcodeGen 2.46.0+](https://github.com/yonaskolb/XcodeGen/releases/tag/2.46.0):
 
@@ -21,7 +23,7 @@ For installation, select your own development team in Signing & Capabilities, ch
 
 ## TestFlight distribution
 
-The manual [iOS TestFlight workflow](../.github/workflows/testflight.yml) verifies an unsigned Release archive, then signs with the configured distribution identity and exports/uploads an IPA. It uses a hosted Mac, one Xcode build job and temporary keychain storage. No Apple account has been connected by the source files alone. See [the TestFlight setup guide](testflight.md) for required secrets, app-record creation and the exact pending steps.
+The manual [iOS TestFlight workflow](../.github/workflows/testflight.yml) verifies an unsigned Release archive, then signs with the configured distribution identity and exports/uploads an IPA. It uses a hosted Mac, one Xcode build job and temporary keychain storage. The repository's `testflight` environment is configured for the `main` branch; credentials are stored as encrypted GitHub secrets. See [the TestFlight setup guide](testflight.md) for release evidence, installation and future account setup.
 
 ## Implemented flow
 
