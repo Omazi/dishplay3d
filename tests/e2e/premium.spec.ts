@@ -79,10 +79,15 @@ test('assisted camera checks real frame pixels, avoids unchanged frames and stop
   await page.getByRole('button', { name: 'Take a photo', exact: true }).click();
   await expect(page.locator('.capture-gallery-heading h2')).toContainText('3');
   await expect(page.getByRole('heading', { name: 'Review before uploading' })).toBeVisible();
+  await page
+    .locator('.camera-next-pass')
+    .getByRole('button', { name: 'I’ve completed the full circle' })
+    .click();
+  await expect(page.getByLabel('Assisted capture', { exact: true })).not.toBeChecked();
+  await expect(page.locator('.camera-next-pass')).toContainText('Raise your phone');
   await page.getByRole('button', { name: 'Pause camera' }).click();
   await expect(page.getByLabel('Assisted capture', { exact: true })).not.toBeChecked();
   await expect(page.getByLabel('Assisted capture', { exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'I’ve completed the full circle' }).click();
   await expect(
     page.getByRole('heading', { name: 'Second circle, a little higher.' }),
   ).toBeVisible();

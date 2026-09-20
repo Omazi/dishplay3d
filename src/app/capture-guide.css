@@ -471,3 +471,39 @@
   color: #67705e;
   margin: 10px 0;
 }
+.camera-next-pass {
+  padding: 17px;
+  margin-top: 12px;
+  border: 1px solid #dce3d3;
+  border-radius: 10px;
+  background: #f2f5ed;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.camera-next-pass > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.camera-next-pass strong {
+  font-size: 12px;
+  font-weight: 550;
+}
+.camera-next-pass span {
+  font-size: 11px;
+  color: #5c6c50;
+}
+.camera-next-pass button {
+  font-size: 12px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+@media (max-width: 720px) {
+  .camera-next-pass {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+  }
+}

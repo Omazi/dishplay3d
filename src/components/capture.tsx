@@ -208,6 +208,9 @@ export function Capture() {
     }
   }
   const bytes = frames.reduce((sum, frame) => sum + frame.size, 0);
+  const passPhotos = frames.filter(
+    (frame) => frame.capture?.source === 'camera' && frame.capture.pass === pass,
+  ).length;
   useEffect(() => {
     mounted.current = true;
     try {
@@ -645,6 +648,7 @@ export function Capture() {
     }
   }
   async function finalize() {
+    stopCamera();
     setBusy(true);
     setError('');
     try {
@@ -797,6 +801,27 @@ export function Capture() {
                 </>
               )}
             </div>
+            {live && (
+              <div className="camera-next-pass">
+                <div>
+                  <strong>{t(capturePasses[pass].short)}</strong>
+                  <span>{t('{0} photos dans ce passage', [passPhotos])}</span>
+                </div>
+                <button
+                  className="inline-link"
+                  disabled={busy || finalized || !passPhotos}
+                  onClick={() => {
+                    const next = [...completed];
+                    next[pass] = true;
+                    updatePlan(Math.min(2, pass + 1), next);
+                    if (pass === 2) stopCamera();
+                  }}
+                >
+                  {t('J’ai fait tout le tour')}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
             <div className="photo-feedback" aria-label={t('Contrôle de l’image')}>
               <div>
                 <Sun size={18} />
