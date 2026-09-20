@@ -4,19 +4,15 @@ Source: `native/ios`. iOS/iPadOS 17 or later. DishPlay Capture is the website's 
 
 ## Current capture flow
 
-Version 0.3 makes **Film your dish** the primary action. It uses a rear-camera video recording, with **Record** and **Stop and use video** fixed at the bottom of the screen. Starting does not depend on Object Capture compatibility, ARKit tracking, foreground recognition or table detection. Instructions and errors are available in French and English.
+Version 0.4 makes **Scan your dish** the primary action: one rising orbit, automatic useful-view selection, a real camera-position coverage ring, targeted missing-sector guidance, and a provisional lower 3D preview. Detection uses a central foreground instance and table raycasts. If it stalls, **Center scan here** offers explicit estimated placement after four seconds. Normal spatial tracking is still required.
 
-Keep the dish still and well lit, walk slowly around the plate for about 20–40 seconds, finish slightly higher, and stop. Recording has no audio input and stops at 60 seconds or 180 MiB. Camera permission is requested when opening capture; denial offers Settings and leaves video/photo import available.
+The preview adapts to the phone: RGB masks/poses produce a colored silhouette estimate; scene depth provides observed points; supported scene reconstruction provides a clipped measured mesh. It never presents this approximation as the final model. Review allows rotation/zoom, continuation, missing-area capture and restart with originals archived. See [implementation, preview alternatives and limits](automatic-scan.md).
 
-The original video is saved in Documents/Captures. AVAssetImageGenerator sequentially prepares at most 24 upright JPEGs, 1600 px on their longest edge. Basic sharpness, exposure and near-duplicate checks require at least eight usable views. These checks do not measure angular coverage or guarantee a reconstructable dish. The saved original can be replayed, exported in the capture ZIP, or used to retry interrupted preparation. Failed extraction does not expose partial images to upload.
-
-**Use an existing video** uses file-based PhotosPicker transfer, limited to 250 MiB and 5–90 seconds; it does not read the entire movie into memory. Photo import is also available. Only JPEGs are uploaded, not the video. Existing capture records remain readable.
-
-The previous ARKit/Vision scanner is available under **Advanced spatial scan**. It uses detected table/foreground positions, accepted camera angles and actual observed points. Its recognition gates can be unsuitable for some scenes; video mode bypasses those gates. Apple on-device USDZ reconstruction remains an optional advanced action only when `PhotogrammetrySession.isSupported`. PC reconstruction is the default. See [the complete flow and limits](automatic-scan.md).
+**Other capture methods** retains the working video recorder and video/photo import. Video uses **Record → Stop and use video** without waiting for recognition or spatial tracking. Original movies are preserved and bounded JPEG extraction stays sequential. This fallback is useful when tracking is unsuitable; it has no live spatial preview.
 
 ## Pairing and reconstruction
 
-Create a private code on a saved dish's website capture page and link it in the app. When the dish is already linked, successful video preparation starts image upload and reconstruction automatically. Otherwise, the capture remains local until linked and sent. Pairing credentials stay in the device-only Keychain and never enter exported ZIP files.
+Create a private code on a saved dish's website capture page and link it in the app. When the dish is already linked, continuing a guided scan or successful video preparation starts image upload and reconstruction automatically. Otherwise, the capture remains local until linked and sent. Pairing credentials stay in the device-only Keychain and never enter exported ZIP files.
 
 Photo upload is serial, checksummed and resumable. Backgrounding pauses transfer; return to the saved capture to resume. The PC consumes the durable reconstruction queue while awake and connected, under its existing one-CPU / 1.5 GiB hard RAM limit. Jobs wait when the PC is offline or memory is insufficient. The app verifies USDZ size and SHA-256 before opening the result in Quick Look. The website also provides the textured GLB. Publishing remains a separate review action.
 
@@ -24,7 +20,7 @@ Photo upload is serial, checksummed and resumable. Backgrounding pauses transfer
 
 The [TestFlight guide](testflight.md) records the currently distributed build and installation steps. The manual [release workflow](../.github/workflows/testflight.yml) runs tests and an unsigned archive, then signs, validates and uploads the IPA. Existing signing material is reused; temporary secrets and the runner's signing keychain are removed after the job.
 
-All compilation runs on hosted Macs with one Xcode build job, not on the 8 GB Linux laptop. The video suite encodes and decodes real MOV files and checks orientation, bounded frame count, rejection of static/dark/short movies, source preservation, staging cleanup and protection against overwriting existing photos. Spatial coverage tests remain in place. Neither suite exercises a physical camera.
+All compilation runs on hosted Macs with one Xcode build job, not on the 8 GB Linux laptop. The video suite encodes and decodes real MOV files and checks orientation, bounded frame count, rejection of static/dark/short movies, source preservation, staging cleanup and protection against overwriting existing photos. Coverage and synthetic camera-projection / silhouette-geometry tests validate the new progressive preview. These suites do not exercise a physical camera.
 
 On a Mac with Xcode 26.3 and XcodeGen 2.46.0:
 
@@ -40,7 +36,7 @@ The unsigned artifact cannot be installed directly on an iPhone; use TestFlight 
 
 ## Physical acceptance
 
-On a real iPhone, test camera permission refusal/recovery, preview orientation, start/stop, a small screen with large text, leaving the app during recording, disk-full handling, movie import, original playback, retry, pairing, transfer interruption and result download. Capture a real dish, reconstruct it, and inspect surface fidelity and scale before publishing. A successful archive and reference reconstruction do not establish food quality or an easy physical capture experience.
+On a standard iPhone and a LiDAR-capable iPhone, test automatic anchoring, the manual fallback, RGB/depth preview alignment, both orbit directions, top-view hints, automatic completion, missing-area resume, restart preservation and review interaction. Also test camera permission refusal/recovery, preview orientation, start/stop, a small screen with large text, leaving the app during recording, disk-full handling, movie import, original playback, retry, pairing, transfer interruption and result download. Capture a real dish, reconstruct it, and inspect surface fidelity and scale before publishing. A successful archive and reference reconstruction do not establish food quality or an easy physical capture experience.
 
 ## API references
 

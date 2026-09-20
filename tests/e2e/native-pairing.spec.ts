@@ -144,7 +144,7 @@ test('private iPhone pairing transfers only to its dish, resumes, reviews and re
     await page.goto(`/en/capture?dish=${dish.id}`);
     await expect(page.getByRole('button', { name: 'Create a code for iPhone' })).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Film your dish. See it in 3D.' }),
+      page.getByRole('heading', { name: 'Scan your dish. Watch it take shape.' }),
     ).toBeVisible();
   } finally {
     await native.dispose();

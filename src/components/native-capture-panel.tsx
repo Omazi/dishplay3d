@@ -88,11 +88,11 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <Smartphone size={28} />
         </div>
         <div>
-          <p className="eyebrow">{t('CAPTURE VIDÉO · IPHONE')}</p>
-          <h2 id="native-capture-title">{t('Filmez votre plat. Retrouvez-le en 3D.')}</h2>
+          <p className="eyebrow">{t('SCAN GUIDÉ · IPHONE')}</p>
+          <h2 id="native-capture-title">{t('Scannez votre plat. Voyez-le se construire.')}</h2>
           <p>
             {t(
-              'Dans l’app iPhone, appuyez sur Filmer mon plat, puis Enregistrer. Tournez lentement autour de l’assiette et appuyez sur Arrêter. Aucune détection du plat n’est nécessaire pour démarrer.',
+              'Dans l’app iPhone, appuyez sur Scanner le plat. Suivez l’arc orange en montant doucement le téléphone. Les vues sont enregistrées automatiquement et un aperçu provisoire se construit en bas de l’écran.',
             )}
           </p>
         </div>
@@ -102,15 +102,15 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('1. Associez ce plat')}</strong>
           <span>
             {t(
-              'Mettez DishPlay Capture à jour dans TestFlight. Créez un code privé ici et saisissez-le dans l’app avant de filmer. Le code est valable 10 minutes.',
+              'Installez DishPlay Capture 0.4 dans TestFlight. Créez un code privé ici et saisissez-le dans l’app avant le scan. Le code est valable 10 minutes.',
             )}
           </span>
         </li>
         <li>
-          <strong>{t('2. Filmez pendant 20 à 40 secondes')}</strong>
+          <strong>{t('2. Suivez l’orbite')}</strong>
           <span>
             {t(
-              'Gardez le plat immobile et toute l’assiette dans le cadre. Tournez lentement avec une bonne lumière et terminez un peu plus haut. Vous pouvez aussi importer une vidéo ou des photos.',
+              'Gardez l’assiette immobile et entièrement visible. Les zones vertes sont capturées. Si la détection bloque, touchez Centrer le scan ici. Le mode vidéo reste disponible dans Autres modes de capture.',
             )}
           </span>
         </li>
@@ -118,7 +118,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('3. Retrouvez le résultat')}</strong>
           <span>
             {t(
-              'L’app prépare les photos et les envoie au plat associé. Laissez votre PC allumé pour le calcul, puis vérifiez le modèle dans l’app ou sur le site. La vidéo originale reste sur l’iPhone.',
+              'Vérifiez l’aperçu puis touchez Continuer. L’app envoie les vues au plat associé et votre PC calcule le modèle final. Laissez-le allumé, puis ouvrez le résultat 3D ou AR. Vérifiez la forme et l’échelle avant publication.',
             )}
           </span>
         </li>
