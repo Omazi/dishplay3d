@@ -271,3 +271,25 @@
 "Video %lld" = "Vidéo %lld";
 
 "Not scanned yet" = "Pas encore scanné";
+
+"Version 0.6 · Adjustable box and live capture" = "Version 0.6 · Cube réglable et capture en direct";
+"Fit the box around the whole dish, then start recording." = "Ajustez le cube autour de tout le plat, puis démarrez l’enregistrement.";
+"The preview is too sparse to assess. Review your views before sending." = "L’aperçu est trop pauvre pour être évalué. Vérifiez vos vues avant l’envoi.";
+"Views captured. Review the preview before creating the final model." = "Vues enregistrées. Vérifiez l’aperçu avant de créer le modèle final.";
+"Fit the box around the dish and plate. Drag its white handles or use the size controls; pinch to scale, drag to move, and rotate with two fingers. Start recording, then walk slowly around the stationary dish. Follow the orange arc and raise the phone for the top. The lower preview comes from your observations. Your PC creates the final model after upload. Remove transparent lids and avoid reflections." = "Ajustez le cube autour du plat et de l’assiette. Faites glisser les poignées blanches ou utilisez les réglages ; pincez pour agrandir, glissez pour déplacer et tournez avec deux doigts. Démarrez l’enregistrement, puis faites lentement le tour du plat immobile. Suivez l’arc orange et montez le téléphone pour le dessus. L’aperçu du bas utilise vos observations. Le PC crée le modèle final après l’envoi. Retirez les couvercles transparents et évitez les reflets.";
+"1 · Adjust the box" = "1 · Ajuster le cube";
+"Views covered" = "Angles couverts";
+"Include the whole plate. Leave neighbouring objects outside." = "Incluez toute l’assiette. Laissez les objets voisins à l’extérieur.";
+"Your preview starts when you record and move around the dish." = "L’aperçu commence quand vous enregistrez et tournez autour du plat.";
+"Useful views: %lld" = "Vues utiles : %lld";
+"Position tracked" = "Position suivie";
+"Finding camera position" = "Repérage de la caméra";
+"Few usable points. Check the box, lighting and reflections before continuing." = "Peu de points exploitables. Vérifiez le cube, la lumière et les reflets avant de continuer.";
+"Box dimension" = "Dimension du cube";
+"Width" = "Largeur";
+"Height" = "Hauteur";
+"Depth" = "Profondeur";
+"Selected box dimension" = "Dimension sélectionnée du cube";
+"~%lld cm" = "~%lld cm";
+"Recenter" = "Recentrer";
+"Start recording" = "Enregistrer";

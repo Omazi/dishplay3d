@@ -13,6 +13,7 @@ private struct FrameAnalysis {
     var brightness: Double
     var clipped: Double
     var jpeg: Data?
+    var originalJPEG: Data?
     var orientation: UInt32 = 1
     var raster: ScanRaster?
     var projection: ScanProjection?
@@ -23,7 +24,7 @@ private struct FrameAnalysis {
 @MainActor
 final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDelegate, Identifiable {
     let id = UUID()
-    enum Phase { case preparing, detecting, scanning, paused, review, failed }
+    enum Phase { case preparing, detecting, adjusting, scanning, paused, review, failed }
     @Published var phase: Phase = .preparing
     @Published var instruction = "Aim at the dish. Keep the whole plate in view."
     @Published var progress = 0.0
@@ -41,6 +42,19 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     @Published var recordingSeconds = 0
     @Published var recordingVideo = false
     @Published var savingVideo = false
+    @Published private(set) var captureVolume: ScanVolume?
+    @Published private(set) var trackingReady = false
+    @Published private(set) var acceptedViewCount = 0
+    @Published private(set) var previewPointCount = 0
+    // A display-density warning, not a photogrammetry confidence or a fidelity score.
+    var previewSparse: Bool { previewPointCount < 80 }
+    private var volumeConfirmed = false
+    var volumeConfirmedForDisplay: Bool { volumeConfirmed }
+    private lazy var gizmo: CaptureVolumeGizmo = {
+        let value = CaptureVolumeGizmo(camera: camera)
+        value.onChange = { [weak self] volume in self?.setVolume(volume) }
+        return value
+    }()
     private var movie: ScanMovieRecorder?
     private var movieStarted: Double?
     private var movieFinalization: Task<Void, Never>?
@@ -141,7 +155,8 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             movieStarted = frame.timestamp
             recordingSeconds = 0
         }
-        recordingSeconds = Int(frame.timestamp - (movieStarted ?? frame.timestamp))
+        let seconds = Int(frame.timestamp - (movieStarted ?? frame.timestamp))
+        if recordingSeconds != seconds { recordingSeconds = seconds }
         if recordingSeconds >= 90 {
             pause()
             instruction = "Video segment saved. Resume to capture the missing areas."
@@ -198,10 +213,12 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         configured = true
     }
     func pause() {
-        guard phase == .detecting || phase == .scanning else { return }
+        guard phase == .detecting || phase == .adjusting || phase == .scanning else { return }
         generation += 1
         camera.session.pause()
         phase = .paused
+        gizmo.enabled = false
+        trackingReady = false
         finishMovie()
         instruction = "Scan paused. Return to the same view, then resume."
     }
@@ -210,7 +227,8 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         generation += 1
         previousPose = nil
         runSession(reset: false)
-        phase = target == nil ? .detecting : .scanning
+        phase = target == nil ? .detecting : volumeConfirmed ? .scanning : .adjusting
+        gizmo.display(captureVolume, editable: phase == .adjusting)
         if target == nil { beginDetection() }
     }
     func finish() {
@@ -220,7 +238,9 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         phase = .review
         finishMovie()
         previewRoot.removeAction(forKey: "scan-rotation")
-        instruction = coverage.complete ? "Your dish has been scanned." : "Some views are missing. You can scan only the missing areas."
+        instruction = previewSparse ? "The preview is too sparse to assess. Review your views before sending."
+            : coverage.complete ? "Views captured. Review the preview before creating the final model."
+            : "Some views are missing. You can scan only the missing areas."
         savePreview()
         onSaved?()
     }
@@ -229,6 +249,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         generation += 1
         camera.session.pause()
         camera.session.delegate = nil
+        gizmo.enabled = false
         finishMovie()
         onSaved?()
     }
@@ -237,14 +258,24 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     func session(_ session: ARSession, didFailWithError error: Error) {
         generation += 1
         phase = .failed
+        gizmo.enabled = false
         finishMovie()
         self.error = error.localizedDescription
         onSaved?()
     }
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        if phase == .detecting || phase == .scanning { recordMovie(frame) }
+        let normal: Bool
+        if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
+        if trackingReady != normal { trackingReady = normal }
+        if phase == .scanning { recordMovie(frame) }
+        if phase == .adjusting {
+            let next = normal ? "Fit the box around the whole dish, then start recording." : "Move gently while the camera finds its position."
+            if instruction != next { instruction = next }
+            return
+        }
         guard phase == .detecting || phase == .scanning, !analyzing,
               frame.timestamp - lastAnalysis >= 0.35 else { return }
+        lastAnalysis = frame.timestamp
         canCenterManually = phase == .detecting && Date().timeIntervalSince(detectingSince) > 4
         guard case .normal = frame.camera.trackingState else {
             instruction = "Move gently while the camera finds its position."
@@ -262,8 +293,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             let distance = simd_length(offset)
             if distance < radius * 1.5 { instruction = "Move a little farther away."; return }
             if distance > max(0.85, radius * 4.5) { instruction = "Move a little closer."; return }
-            let screen = camera.projectPoint(SCNVector3(target))
-            if screen.z < 0 || screen.z > 1 || !camera.bounds.insetBy(dx: camera.bounds.width * 0.15, dy: camera.bounds.height * 0.15).contains(CGPoint(x: CGFloat(screen.x), y: CGFloat(screen.y))) {
+            if !volumeInFrame() {
                 instruction = "Keep the whole dish inside the frame."; return
             }
             let angle = atan2(Double(offset.x), Double(offset.z))
@@ -286,10 +316,10 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             if let lastAcceptedPosition, simd_distance(position, lastAcceptedPosition) < 0.025 { return }
         }
         analyzing = true
-        lastAnalysis = frame.timestamp
         let ticket = generation
         let context = self.context
         let hull = silhouette
+        let volume = captureVolume
         let projection = ScanProjection(cameraToWorld: frame.camera.transform, intrinsics: frame.camera.intrinsics,
             resolution: SIMD2(Float(frame.camera.imageResolution.width), Float(frame.camera.imageResolution.height)))
         let orientation: CGImagePropertyOrientation
@@ -300,7 +330,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         default: orientation = .up
         }
         processing.async { [weak self] in
-            let result = Self.analyze(frame.capturedImage, context: context, orientation: orientation, projection: projection, hull: hull)
+            let result = Self.analyze(frame.capturedImage, context: context, orientation: orientation, projection: projection, hull: hull, volume: volume)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.analyzing = false
@@ -310,20 +340,26 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         }
     }
     nonisolated private static func analyze(_ buffer: CVPixelBuffer, context: CIContext, orientation: CGImagePropertyOrientation,
-                                            projection: ScanProjection, hull: SilhouettePreview?) -> FrameAnalysis {
+                                            projection: ScanProjection, hull: SilhouettePreview?, volume: ScanVolume?) -> FrameAnalysis {
         autoreleasepool {
             let image = CIImage(cvPixelBuffer: buffer)
             let size = 96
+            let polygon = volume?.footprint(projection) ?? []
             var pixels = [UInt8](repeating: 0, count: size * size)
             let scaled = image.transformed(by: CGAffineTransform(scaleX: CGFloat(size) / image.extent.width, y: CGFloat(size) / image.extent.height))
             context.render(scaled, toBitmap: &pixels, rowBytes: size, bounds: CGRect(x: 0, y: 0, width: size, height: size), format: .L8, colorSpace: CGColorSpaceCreateDeviceGray())
             var sum = 0.0, lap = 0.0, lapSquared = 0.0, clipped = 0.0, count = 0.0
-            for y in 16..<80 { for x in 16..<80 {
+            for y in 1..<95 { for x in 1..<95 {
+                // Core Image's bitmap rows run from the lower edge; projection UVs start at the upper edge.
+                if volume != nil {
+                    guard ScanVolume.inside(SIMD2((Float(x)+0.5)/96, 1-(Float(y)+0.5)/96), polygon: polygon) else { continue }
+                } else if x < 16 || x >= 80 || y < 16 || y >= 80 { continue }
                 let p = y * size + x, v = Double(pixels[y * size + x])
                 let l = 4 * v - Double(pixels[p-1]) - Double(pixels[p+1]) - Double(pixels[p-size]) - Double(pixels[p+size])
                 sum += v; lap += l; lapSquared += l*l; count += 1
                 if v < 8 || v > 248 { clipped += 1 }
             }}
+            guard count >= 16 else { return FrameAnalysis(sharpness: 0, brightness: 0, clipped: 1) }
             var result = FrameAnalysis(sharpness: lapSquared/count - pow(lap/count, 2), brightness: sum/count, clipped: clipped/count)
             result.orientation = orientation.rawValue
             result.projection = projection
@@ -332,7 +368,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up)
             do {
                 try handler.perform([request])
-                if let observation = request.results?.first, let label = centralInstance(observation.instanceMask) {
+                if let observation = request.results?.first, let label = centralInstance(observation.instanceMask, polygon: polygon) {
                     // Use Apple's full-image mapping before downsampling; model padding must not corrupt camera projection.
                     let mask = try observation.generateScaledMaskForImage(forInstances: IndexSet(integer: Int(label)), from: handler)
                     let side = 64
@@ -345,6 +381,9 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                             let address = base.advanced(by: (y*h/side)*row + (x*w/side)*(floating ? 4 : 1))
                             let value = floating ? address.load(as: Float.self) : Float(address.load(as: UInt8.self))/255
                             foreground[y*side+x] = value > 0.5 ? 1 : 0
+                            if volume != nil, !ScanVolume.inside(SIMD2((Float(x)+0.5)/Float(side), (Float(y)+0.5)/Float(side)), polygon: polygon) {
+                                foreground[y*side+x] = 0
+                            }
                         }}
                     }
                     CVPixelBufferUnlockBaseAddress(mask, .readOnly)
@@ -376,11 +415,20 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                 }
             } catch { /* Keep geometric guidance and real tracked points when segmentation is unavailable. */ }
             if result.sharpness >= 18 && result.brightness > 18 && result.brightness < 240 && result.clipped < 0.7 {
-                let upright = image.oriented(orientation)
-                let scale = min(1, 1920 / max(upright.extent.width, upright.extent.height))
-                let export = upright.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                result.jpeg = context.jpegRepresentation(of: export, colorSpace: CGColorSpaceCreateDeviceRGB(),
-                    options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.9])
+                func jpeg(_ source: CIImage) -> Data? {
+                    let upright = source.oriented(orientation)
+                    let scale = min(1, 1920 / max(upright.extent.width, upright.extent.height))
+                    let export = upright.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                    return context.jpegRepresentation(of: export, colorSpace: CGColorSpaceCreateDeviceRGB(),
+                        options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.9])
+                }
+                if volume != nil {
+                    // Keep the original separately; only the bounded derivative is uploaded for reconstruction.
+                    if let isolated = ScanImageMask.isolate(image, polygon: polygon) {
+                        result.originalJPEG = jpeg(image)
+                        result.jpeg = jpeg(isolated)
+                    }
+                } else { result.jpeg = jpeg(image) }
                 if var next = hull, let raster = result.raster {
                     next.integrate(raster, projection: projection)
                     result.hull = next
@@ -389,14 +437,17 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             return result
         }
     }
-    nonisolated private static func centralInstance(_ mask: CVPixelBuffer) -> UInt8? {
+    nonisolated private static func centralInstance(_ mask: CVPixelBuffer, polygon: [SIMD2<Float>]) -> UInt8? {
         guard CVPixelBufferGetPixelFormatType(mask) == kCVPixelFormatType_OneComponent8 else { return nil }
         CVPixelBufferLockBaseAddress(mask, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(mask)?.assumingMemoryBound(to: UInt8.self) else { return nil }
         let w = CVPixelBufferGetWidth(mask), h = CVPixelBufferGetHeight(mask), row = CVPixelBufferGetBytesPerRow(mask)
         var scores = [Int](repeating: 0, count: 256)
-        for y in stride(from: h/4, to: h*3/4, by: 3) { for x in stride(from: w/4, to: w*3/4, by: 3) {
+        for y in stride(from: 0, to: h, by: 3) { for x in stride(from: 0, to: w, by: 3) {
+            if polygon.isEmpty {
+                guard x >= w/4, x < w*3/4, y >= h/4, y < h*3/4 else { continue }
+            } else if !ScanVolume.inside(SIMD2((Float(x)+0.5)/Float(w), (Float(y)+0.5)/Float(h)), polygon: polygon) { continue }
             let value = Int(base[y*row+x])
             if value > 0 { scores[value] += 1 }
         }}
@@ -431,8 +482,9 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             guard distance >= 0.18, distance <= 1.2 else { instruction = "Keep the phone beside and slightly above the plate."; return }
             let extent = min(0.28, max(0.10, Float(max(box.width, box.height)) * distance * 0.6))
             anchor(at: hit.position, radius: extent, position: position, estimated: hit.estimated)
+            return
         }
-        guard let target else { return }
+        guard phase == .scanning, let target, let volume = captureVolume, let original = result.originalJPEG else { return }
         let offset = position-target
         let angle = atan2(Double(offset.x), Double(offset.z)) - (startAngle ?? 0)
         let elevation = atan2(Double(offset.y), Double(hypot(offset.x, offset.z)))
@@ -440,8 +492,14 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         guard coverage.needs(angle: angle, elevation: elevation, time: frame.timestamp) else { return }
         do {
             let name = UUID().uuidString
+            let originals = CaptureFiles.root(record).appendingPathComponent("Originals", isDirectory: true)
+            try FileManager.default.createDirectory(at: originals, withIntermediateDirectories: true)
+            try original.write(to: originals.appendingPathComponent(name + ".jpg"), options: .atomic)
             try jpeg.write(to: CaptureFiles.images(record).appendingPathComponent(name + ".jpg"), options: .atomic)
-            let metadata: [String: Any] = ["schema": 2, "timestamp": frame.timestamp,
+            let metadata: [String: Any] = ["schema": 3, "timestamp": frame.timestamp,
+                "original": "Originals/" + name + ".jpg", "selectionMaskApplied": true,
+                "volumeOrigin": [volume.origin.x, volume.origin.y, volume.origin.z],
+                "volumeSize": [volume.size.x, volume.size.y, volume.size.z], "volumeYaw": volume.yaw,
                 "transform": (0..<4).flatMap { c in (0..<4).map { r in frame.camera.transform[c][r] } },
                 "intrinsics": (0..<3).flatMap { c in (0..<3).map { r in frame.camera.intrinsics[c][r] } },
                 "imageResolution": [frame.camera.imageResolution.width, frame.camera.imageResolution.height],
@@ -449,6 +507,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                 "segmentationAvailable": result.raster != nil, "estimatedCaptureVolume": estimatedVolume, "metricScaleVerified": false]
             try JSONSerialization.data(withJSONObject: metadata).write(to: CaptureFiles.checkpoints(record).appendingPathComponent(name + ".json"), options: .atomic)
             coverage.accept(angle: angle, elevation: elevation, time: frame.timestamp)
+            acceptedViewCount = coverage.accepted
             lastAcceptedPosition = position
             lastRaster = result.raster
             lastProjection = result.projection
@@ -471,7 +530,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                 instruction = ["Complete the views near your starting position.", "A right-side view is missing. Follow the orange arc.",
                                "A view behind the dish is missing. Follow the orange arc.", "A left-side view is missing. Follow the orange arc."][min(3, nextSector * 4 / ScanCoverage.sectors)]
             } else { instruction = "Continue slowly around the highlighted arc." }
-            if coverage.complete { UINotificationFeedbackGenerator().notificationOccurred(.success); finish() }
+            if coverage.complete { UINotificationFeedbackGenerator().notificationOccurred(previewSparse ? .warning : .success); finish() }
         } catch { self.error = error.localizedDescription; pause() }
     }
     private func surfacePoint(at pixel: CGPoint) -> (position: SIMD3<Float>, estimated: Bool)? {
@@ -484,13 +543,13 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         return nil
     }
     func centerManually() {
-        guard phase == .detecting, let frame = camera.session.currentFrame, case .normal = frame.camera.trackingState else {
+        guard phase == .detecting || phase == .adjusting, let frame = camera.session.currentFrame, case .normal = frame.camera.trackingState else {
             instruction = "Move gently while the camera finds its position."
             return
         }
         let position = SIMD3(frame.camera.transform.columns.3.x, frame.camera.transform.columns.3.y, frame.camera.transform.columns.3.z)
         let pixel = CGPoint(x: camera.bounds.midX, y: camera.bounds.midY)
-        if let hit = surfacePoint(at: pixel) { anchor(at: hit.position, radius: 0.18, position: position, estimated: true) }
+        if let hit = surfacePoint(at: pixel) { anchor(at: hit.position, radius: 0.18, position: position, estimated: hit.estimated) }
         else {
             // Explicitly chosen provisional volume. This is neither detected food nor measured depth.
             let center = frame.camera.transform * SIMD4<Float>(0, -0.025, -0.45, 1)
@@ -498,20 +557,53 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         }
     }
     private func anchor(at center: SIMD3<Float>, radius: Float, position: SIMD3<Float>, estimated: Bool) {
-        target = center
-        self.radius = radius
+        phase = .adjusting
+        volumeConfirmed = false
         estimatedVolume = estimated
         canCenterManually = false
-        silhouette = SilhouettePreview(center: center, radius: radius, minimumY: estimated ? -0.08 : -0.015)
-        startAngle = atan2(Double(position.x-center.x), Double(position.z-center.z))
-        nextSector = 0
-        createOrbit(center)
+        // The base is placed on the table. The user can correct every dimension before recording.
+        setVolume(ScanVolume(origin: center, size: SIMD3(radius * 2, min(0.30, radius), radius * 2),
+            yaw: atan2(position.x-center.x, position.z-center.z)))
+        instruction = "Fit the box around the whole dish, then start recording."
+    }
+    private func setVolume(_ volume: ScanVolume) {
+        guard phase == .adjusting else { return }
+        captureVolume = volume; target = volume.origin; radius = volume.radius
+        gizmo.display(volume, editable: true)
         if let eye = preview.rootNode.childNodes.first(where: { $0.camera != nil }) {
-            eye.position = SCNVector3(0, radius * 1.9 + 0.15, radius * 3 + 0.2)
-            eye.look(at: SCNVector3(0, 0.06, 0))
+            eye.position = SCNVector3(0, max(radius, volume.size.y) * 1.9 + 0.15, radius * 3 + 0.2)
+            eye.look(at: SCNVector3(0, volume.size.y / 2, 0))
         }
+    }
+    func resizeVolume(axis: Int, value: Float) {
+        guard var volume = captureVolume else { return }
+        volume.resize(axis: axis, to: value); setVolume(volume)
+    }
+    private func volumeInFrame() -> Bool {
+        guard let volume = captureVolume, !camera.bounds.isEmpty else { return false }
+        let bounds = camera.bounds.insetBy(dx: 8, dy: 8)
+        return volume.corners.allSatisfy { point in
+            let p = camera.projectPoint(SCNVector3(point))
+            return p.z > 0 && p.z < 1 && bounds.contains(CGPoint(x: CGFloat(p.x), y: CGFloat(p.y)))
+        }
+    }
+    func startCapture() {
+        guard phase == .adjusting, let volume = captureVolume, let frame = camera.session.currentFrame,
+              case .normal = frame.camera.trackingState else {
+            instruction = "Move gently while the camera finds its position."; return
+        }
+        guard volumeInFrame() else { instruction = "Keep the whole dish inside the frame."; return }
+        generation += 1
+        let position = frame.camera.transform.columns.3
+        startAngle = atan2(Double(position.x-volume.origin.x), Double(position.z-volume.origin.z))
+        silhouette = SilhouettePreview(volume: volume)
+        nextSector = 0; previousPose = nil; volumeConfirmed = true
+        createOrbit(volume.origin)
+        gizmo.display(volume, editable: false)
+        previewRoot.eulerAngles = SCNVector3Zero
         previewRoot.runAction(.repeatForever(.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 28)), forKey: "scan-rotation")
         phase = .scanning
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         instruction = "Continue slowly around the highlighted arc."
     }
     func restart() {
@@ -529,12 +621,18 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                 try FileManager.default.moveItem(at: source, to: archive.appendingPathComponent(source.lastPathComponent))
                 try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
             }
+            let originals = CaptureFiles.root(record).appendingPathComponent("Originals", isDirectory: true)
+            if FileManager.default.fileExists(atPath: originals.path) {
+                try FileManager.default.moveItem(at: originals, to: archive.appendingPathComponent("Originals"))
+            }
             var current = CaptureFiles.latest(record)
             current.sourceVideoPath = nil; current.videoPaths = nil; current.imageCount = 0
             current.state = "ready"
             try CaptureFiles.save(current)
             // Prior movie segments stay in Movies; restart never deletes originals.
             coverage = ScanCoverage(); progress = 0; target = nil; candidate = nil; startAngle = nil
+            captureVolume = nil; volumeConfirmed = false; acceptedViewCount = 0; previewPointCount = 0
+            gizmo.display(nil, editable: false)
             stableDetections = 0; lastAcceptedPosition = nil; previousPose = nil; lastViewAngle = nil; milestone = 0
             points.removeAll(); silhouette = nil; lastRaster = nil; lastProjection = nil; meshAnchors.removeAll()
             previewThumbnail = nil; previewHasPoints = false; shownPreview = nil; nextSector = nil
@@ -549,6 +647,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         } catch { self.error = error.localizedDescription; phase = .failed }
     }
     private func createOrbit(_ center: SIMD3<Float>) {
+        targetNode.childNodes.forEach { $0.removeFromParentNode() }; orbitNodes.removeAll()
         targetNode.simdPosition = center
         camera.scene.rootNode.addChildNode(targetNode)
         for index in 0..<ScanCoverage.sectors {
@@ -569,13 +668,6 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             let node = SCNNode(geometry: geometry)
             orbitNodes.append(node); targetNode.addChildNode(node)
         }
-        let volume = SCNCylinder(radius: CGFloat(radius), height: 0.22)
-        volume.radialSegmentCount = 24; volume.heightSegmentCount = 1
-        volume.firstMaterial?.diffuse.contents = UIColor.white.withAlphaComponent(0.18)
-        volume.firstMaterial?.fillMode = .lines
-        volume.firstMaterial?.lightingModel = .constant
-        let node = SCNNode(geometry: volume)
-        node.position.y = 0.10; targetNode.addChildNode(node)
         updateOrbit()
     }
     private func updateOrbit() {
@@ -591,7 +683,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     private func gatherPoints(_ frame: ARFrame, center: SIMD3<Float>) {
         func insert(_ point: SIMD3<Float>) {
             let local = point-center
-            guard hypot(local.x, local.z) < radius, local.y > (estimatedVolume ? -0.08 : -0.015), local.y < 0.25 else { return }
+            guard captureVolume?.contains(point) == true else { return }
             let key = "\(Int(local.x*250)),\(Int(local.y*250)),\(Int(local.z*250))"
             let color = lastProjection?.project(point).flatMap { lastRaster?.sample($0) }.flatMap { $0.inside ? $0.color : nil }
                 ?? SIMD3<Float>(0.3,0.9,0.75)
@@ -644,6 +736,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     }
     private func renderPoints(_ points: ScanPreviewPoints, kind: String) {
         guard !points.positions.isEmpty else { return }
+        previewPointCount = points.positions.count
         let source = SCNGeometrySource(vertices: points.positions.map { SCNVector3($0) })
         let element = SCNGeometryElement(indices: Array(0..<UInt32(points.positions.count)), primitiveType: .point)
         element.pointSize = kind == "Silhouette estimate · provisional" ? 5 : 3
@@ -704,7 +797,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                     let address = source.advanced(by: mesh.vertices.offset+index*mesh.vertices.stride).assumingMemoryBound(to: Float.self)
                     let world = anchor.transform * SIMD4<Float>(address[0],address[1],address[2],1)
                     let local = SIMD3(world.x,world.y,world.z)-center
-                    if hypot(local.x,local.z) <= radius, local.y > (estimatedVolume ? -0.08 : -0.015), local.y < 0.25 { triangle.append(local) }
+                    if captureVolume?.contains(SIMD3(world.x,world.y,world.z)) == true { triangle.append(local) }
                 }
                 guard triangle.count == 3 else { continue }
                 for point in triangle {
@@ -715,6 +808,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             }
         }
         guard vertices.count >= 18 else { return false }
+        previewPointCount = vertices.count
         let geometry = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices),colorSource(colors)],
             elements: [SCNGeometryElement(indices: Array(0..<UInt32(vertices.count)), primitiveType: .triangles)])
         show(geometry, kind: "Measured surface · provisional")
@@ -747,6 +841,7 @@ struct GuidedScanScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var help = false
     @State private var confirmRestart = false
+    @State private var selectedAxis = 0
 
     var body: some View {
         GeometryReader { proxy in
@@ -773,7 +868,7 @@ struct GuidedScanScreen: View {
         .alert("One gentle orbit", isPresented: $help) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Keep the plate still and fully in view. Follow the orange part of the orbit, then raise the phone gently. Green areas are captured. The scan ends when enough useful views cover the orbit and top. The lower preview is provisional; your PC builds the final textured model after upload.")
+            Text("Fit the box around the dish and plate. Drag its white handles or use the size controls; pinch to scale, drag to move, and rotate with two fingers. Start recording, then walk slowly around the stationary dish. Follow the orange arc and raise the phone for the top. The lower preview comes from your observations. Your PC creates the final model after upload. Remove transparent lids and avoid reflections.")
         }
         .confirmationDialog("Start this scan again?", isPresented: $confirmRestart) {
             Button("Restart scan") { scan.restart() }
@@ -796,6 +891,7 @@ struct GuidedScanScreen: View {
                     Spacer()
                     VStack(spacing: 2) {
                         Text("Film and scan my dish").font(.headline)
+                        if scan.phase == .adjusting { Text("1 · Adjust the box").font(.caption) }
                         if scan.recordingVideo {
                             HStack(spacing: 5) {
                                 Circle().fill(.red).frame(width: 7, height: 7)
@@ -805,6 +901,7 @@ struct GuidedScanScreen: View {
                         if scan.phase == .scanning || scan.phase == .review || scan.phase == .paused {
                             Text(scan.progress, format: .percent.precision(.fractionLength(0)))
                                 .font(.title3.monospacedDigit().bold())
+                            Text("Views covered").font(.caption2)
                         }
                     }
                     Spacer()
@@ -814,8 +911,8 @@ struct GuidedScanScreen: View {
                 }.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
                 Spacer(minLength: 0)
                 HStack(spacing: 10) {
-                    Image(systemName: scan.phase == .review ? "checkmark.circle.fill" : scan.guidanceArrow)
-                        .font(.title2).foregroundStyle(scan.phase == .review ? Color.green : Color.orange)
+                    Image(systemName: scan.phase == .adjusting ? "cube.transparent" : scan.phase == .review ? "eye" : scan.guidanceArrow)
+                        .font(.title2).foregroundStyle(Color.orange)
                     Text(LocalizedStringKey(scan.instruction)).font(.callout.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 }.padding(12).frame(maxWidth: .infinity)
@@ -830,11 +927,19 @@ struct GuidedScanScreen: View {
                 Spacer()
                 if scan.phase == .review { Image(systemName: "hand.draw").foregroundStyle(.secondary) }
             }
-            Text(LocalizedStringKey(scan.previewKind)).font(.caption).foregroundStyle(.secondary)
+            if scan.phase == .adjusting {
+                Text("Include the whole plate. Leave neighbouring objects outside.").font(.caption).foregroundStyle(.secondary)
+            } else { Text(LocalizedStringKey(scan.previewKind)).font(.caption).foregroundStyle(.secondary) }
             ZStack {
-                SceneView(scene: scan.preview, options: scan.phase == .review ? [.allowsCameraControl] : [])
+                SceneView(scene: scan.preview, options: scan.phase == .review ? [.allowsCameraControl] : [], preferredFramesPerSecond: 30)
                 if !scan.previewHasPoints {
-                    if let image = scan.previewThumbnail {
+                    if scan.phase == .adjusting {
+                        VStack(spacing: 8) {
+                            Image(systemName: "cube.transparent").font(.system(size: 38, weight: .ultraLight))
+                            Text("Your preview starts when you record and move around the dish.")
+                                .font(.caption).multilineTextAlignment(.center)
+                        }.foregroundStyle(.secondary).padding()
+                    } else if let image = scan.previewThumbnail {
                         VStack(spacing: 6) {
                             Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 10))
                             Text("First view saved. Building the provisional preview…").font(.caption).multilineTextAlignment(.center)
@@ -851,6 +956,21 @@ struct GuidedScanScreen: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if let error = scan.error { Text(LocalizedStringKey(error)).font(.caption).foregroundStyle(.red) }
+            if scan.volumeConfirmedForDisplay {
+                HStack {
+                    Label("Useful views: \(scan.acceptedViewCount)", systemImage: "photo.on.rectangle")
+                    Spacer()
+                    if scan.phase == .scanning {
+                        Image(systemName: scan.trackingReady ? "location.fill" : "location.slash.fill")
+                            .foregroundStyle(scan.trackingReady ? Color.mint : Color.orange)
+                            .accessibilityLabel(scan.trackingReady ? "Position tracked" : "Finding camera position")
+                    }
+                }.font(.caption2)
+                if scan.acceptedViewCount >= 4 && scan.previewSparse {
+                    Text("Few usable points. Check the box, lighting and reflections before continuing.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }
             if scan.phase == .scanning {
                 HStack(spacing: 12) {
                     Label("Captured", systemImage: "circle.fill").foregroundStyle(.mint)
@@ -869,6 +989,25 @@ struct GuidedScanScreen: View {
                 Text("Use this if the table or plate cannot be detected. Keep the dish in the center.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             } else { ProgressView("Locating the dish and table…") }
+        case .adjusting:
+            VStack(spacing: 10) {
+                Picker("Box dimension", selection: $selectedAxis) {
+                    Text("Width").tag(0); Text("Height").tag(1); Text("Depth").tag(2)
+                }.pickerStyle(.segmented)
+                HStack(spacing: 12) {
+                    Slider(value: Binding(get: { Double(scan.captureVolume?.size[selectedAxis] ?? 0.2) },
+                        set: { scan.resizeVolume(axis: selectedAxis, value: Float($0)) }), in: 0.04...0.8)
+                        .accessibilityLabel("Selected box dimension")
+                    Text("~\(Int((scan.captureVolume?.size[selectedAxis] ?? 0.2) * 100)) cm")
+                        .font(.caption.monospacedDigit()).frame(minWidth: 58)
+                }
+                HStack {
+                    Button("Recenter", systemImage: "scope") { scan.centerManually() }.buttonStyle(.bordered)
+                    Spacer()
+                    Button("Start recording", systemImage: "record.circle") { scan.startCapture() }
+                        .buttonStyle(.borderedProminent).disabled(!scan.trackingReady)
+                }
+            }
         case .scanning:
             VStack(spacing: 8) {
                 Text("Video and useful views are saved together").font(.caption).foregroundStyle(.secondary)

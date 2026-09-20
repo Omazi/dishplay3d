@@ -44,6 +44,7 @@ struct SilhouettePreview: Sendable {
     let radius: Float
     let minimumY: Float
     let maximumY: Float
+    private let volume: ScanVolume?
     private var support = [UInt8](repeating: 0, count: side * side * side)
     private var rejected = [UInt8](repeating: 0, count: side * side * side)
     private var colorSums = [SIMD3<Float>](repeating: .zero, count: side * side * side)
@@ -55,9 +56,23 @@ struct SilhouettePreview: Sendable {
         self.radius = max(0.06, min(0.35, radius))
         self.minimumY = minimumY
         self.maximumY = maximumY
+        self.volume = nil
+    }
+    init(volume: ScanVolume) {
+        self.center = volume.origin
+        self.radius = volume.radius
+        self.minimumY = -0.005
+        self.maximumY = volume.size.y
+        self.volume = volume
     }
     private func local(_ x: Int, _ y: Int, _ z: Int) -> SIMD3<Float> {
-        SIMD3((Float(x)+0.5)/Float(Self.side) * 2 * radius-radius,
+        if let volume {
+            let p = SIMD3((Float(x)+0.5)/Float(Self.side) * volume.size.x-volume.size.x/2,
+                          minimumY + (Float(y)+0.5)/Float(Self.side) * (maximumY-minimumY),
+                          (Float(z)+0.5)/Float(Self.side) * volume.size.z-volume.size.z/2)
+            return volume.world(p) - center
+        }
+        return SIMD3((Float(x)+0.5)/Float(Self.side) * 2 * radius-radius,
               minimumY + (Float(y)+0.5)/Float(Self.side) * (maximumY-minimumY),
               (Float(z)+0.5)/Float(Self.side) * 2 * radius-radius)
     }
@@ -68,7 +83,7 @@ struct SilhouettePreview: Sendable {
               raster.rgba.count == raster.width * raster.height * 4 else { return }
         let visible = raster.foreground.filter { $0 > 0 }.count
         guard visible > raster.foreground.count / 100, visible < raster.foreground.count * 9 / 10 else { return }
-        guard let centerUV = projection.project(center + SIMD3(0, 0.04, 0)),
+        guard let centerUV = projection.project(volume?.center ?? (center + SIMD3(0, 0.04, 0))),
               raster.sample(centerUV)?.inside == true else { return }
         let origin = projection.cameraToWorld.columns.3
         let cameraPosition = SIMD3(origin.x, origin.y, origin.z)
@@ -78,7 +93,7 @@ struct SilhouettePreview: Sendable {
         var observed = 0
         for y in 0..<Self.side { for z in 0..<Self.side { for x in 0..<Self.side {
             let point = local(x, y, z)
-            guard point.x * point.x + point.z * point.z <= radius * radius,
+            guard (volume != nil || point.x * point.x + point.z * point.z <= radius * radius),
                   let uv = projection.projectCamera(inverse * SIMD4(center + point, 1)),
                   let sample = raster.sample(uv) else { continue }
             let i = index(x, y, z)
