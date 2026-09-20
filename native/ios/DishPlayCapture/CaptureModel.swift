@@ -67,7 +67,11 @@ final class CaptureModel: ObservableObject {
 
     func prepareAutomatic(mode: String = "arkit-guided") -> CaptureRecord? {
         guard !busy else { return nil }
-        if var current = record, current.sourceVideoPath == nil, CaptureFiles.photos(current).isEmpty {
+        // An aborted guided attempt can already contain a movie. Reuse its empty
+        // photo series and association; the recorder writes a new, unique segment.
+        // Ordinary video import still creates a separate record to preserve original.mov.
+        if var current = record, CaptureFiles.photos(current).isEmpty,
+           current.sourceVideoPath == nil || (mode == "arkit-guided" && current.mode == "arkit-guided") {
             current.mode = mode
             record = current
             persist(state: current.state)
