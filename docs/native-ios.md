@@ -2,11 +2,11 @@
 
 > **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
 
-Source: `native/ios`. Deployment target: iOS/iPadOS 17.0 or later. This minimal app uses Apple's actual Object Capture and photogrammetry APIs; it is separate from the restaurant web login.
+Source: `native/ios`. Deployment target: iOS/iPadOS 17.0 or later. The primary flow uses ARKit and Vision. Apple's on-device photogrammetry is an optional advanced path on supported hardware; PC reconstruction is the default. Restaurant pairing is separate from web login.
 
 ## Build and install
 
-**Version 0.1.0 (build 1.1) is ready for internal TestFlight testing.** The [signed release workflow passed](https://github.com/Omazi/dishplay3d/actions/runs/35523589363) for source `91baec4` on 2026-09-20 using Xcode 26.3 and the iOS 26.2 SDK. Apple completed processing without errors or warnings and reported `VALID` / `READY_FOR_BETA_TESTING`. The build is assigned to the internal group **DishPlay - Tests iPhone**, with French and English test notes. Follow [the installation steps](testflight.md#sur-liphone) to add your own account and install it.
+**Version 0.2.0 (build 3.1) is available for internal TestFlight testing.** The [signed release workflow passed](https://github.com/Omazi/dishplay3d/actions/runs/35532454106) for source `61948e6` on 2026-09-20 using Xcode 26.3 and the iOS 26.2 SDK. Apple reports `VALID` / `IN_BETA_TESTING`. The build is assigned to **DishPlay - Tests iPhone**, with French and English test notes and automatic notifications disabled. Existing testers can update in TestFlight; see [installation steps](testflight.md#sur-liphone).
 
 All compilation and signing ran on hosted Macs with one Xcode build job. The Linux laptop has no Xcode or Apple SDK. Installation, camera behavior and reconstruction on a physical device remain unverified. The separate `iOS unsigned build` workflow still provides compilation evidence; its unsigned artifact cannot be installed directly on an iPhone.
 
