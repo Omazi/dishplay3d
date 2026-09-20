@@ -1,9 +1,17 @@
-import Link from 'next/link';
+'use client';
+import { useI18n, LanguageSwitcher } from '@/components/language';
+
+import { LocalizedLink as Link } from '@/components/language';
 import { ArrowUpRight } from 'lucide-react';
 
 export function Brand({ light = false }: { light?: boolean }) {
+  const { t } = useI18n();
   return (
-    <Link href="/" className={`brand ${light ? 'brand-light' : ''}`} aria-label="DishPlay, accueil">
+    <Link
+      href="/"
+      className={`brand ${light ? 'brand-light' : ''}`}
+      aria-label={t('DishPlay, accueil')}
+    >
       <span className="brand-symbol" aria-hidden="true">
         <i />
         <i />
@@ -15,45 +23,53 @@ export function Brand({ light = false }: { light?: boolean }) {
 }
 
 export function Header() {
+  const { t } = useI18n();
   return (
     <header className="site-header">
       <div className="container nav-inner">
         <Brand />
-        <nav aria-label="Navigation principale">
+        <nav aria-label={t('Navigation principale')}>
           <Link className="nav-text" href="/#comment-ca-marche">
-            Comment ça marche
+            {' '}
+            {t('Comment ça marche')}{' '}
           </Link>
           <Link className="nav-text" href="/menu/demo">
-            Le menu démo
+            {' '}
+            {t('Le menu démo')}{' '}
           </Link>
           <Link className="nav-login" href="/login">
-            Se connecter
+            {' '}
+            {t('Se connecter')}{' '}
           </Link>
           <Link className="button button-dark button-small" href="/signup">
-            Créer ma carte <ArrowUpRight size={16} />
+            {' '}
+            {t('Créer ma carte')} <ArrowUpRight size={16} />
           </Link>
         </nav>
+        <LanguageSwitcher />
       </div>
     </header>
   );
 }
 
 export function Footer() {
+  const { t } = useI18n();
   return (
     <footer className="site-footer">
       <div className="container footer-inner">
         <Brand />
-        <p>De l’assiette à la découverte.</p>
+        <p>{t('De l’assiette à la découverte.')}</p>
         <div>
-          <Link href="/menu/demo">Menu de démonstration</Link>
+          <Link href="/menu/demo">{t('Menu de démonstration')}</Link>
           <Link href="/login">
-            Espace restaurant <ArrowUpRight size={14} />
+            {' '}
+            {t('Espace restaurant')} <ArrowUpRight size={14} />
           </Link>
         </div>
       </div>
       <div className="container footer-bottom">
         <span>© {new Date().getFullYear()} DishPlay</span>
-        <span>Des plats réels. Une nouvelle perspective.</span>
+        <span>{t('Des plats réels. Une nouvelle perspective.')}</span>
       </div>
     </footer>
   );

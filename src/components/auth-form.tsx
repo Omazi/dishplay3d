@@ -1,13 +1,15 @@
 'use client';
+import { useI18n, LanguageSwitcher } from '@/components/language';
 
 import { useState, type FormEvent } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { LocalizedLink as Link } from '@/components/language';
+import { useRouter } from '@/components/language';
 import { ArrowRight, LoaderCircle } from 'lucide-react';
 import { api } from './api-client';
 import { Brand } from './brand';
 
 export function AuthForm({ signup = false }: { signup?: boolean }) {
+  const { t } = useI18n();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -24,7 +26,7 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
       router.push('/dashboard');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connexion impossible.');
+      setError(err instanceof Error ? err.message : t('Connexion impossible.'));
     } finally {
       setBusy(false);
     }
@@ -32,40 +34,46 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
   return (
     <main id="main" className="auth-layout">
       <div className="auth-panel">
-        <Brand />
+        <div className="auth-brand-row">
+          <Brand />
+          <LanguageSwitcher />
+        </div>
         <div className="auth-form-wrap">
-          <p className="eyebrow">VOTRE ESPACE RESTAURANT</p>
-          <h1>{signup ? 'Votre carte commence ici.' : 'De retour en cuisine.'}</h1>
+          <p className="eyebrow">{t('VOTRE ESPACE RESTAURANT')}</p>
+          <h1>{signup ? t('Votre carte commence ici.') : t('De retour en cuisine.')}</h1>
           <p>
             {signup
-              ? 'Quelques informations, puis votre premier plat.'
-              : 'Retrouvez vos plats et préparez la suite.'}
+              ? t('Quelques informations, puis votre premier plat.')
+              : t('Retrouvez vos plats et préparez la suite.')}
           </p>
           <form onSubmit={submit} className="form-stack">
             {signup && (
               <label>
-                Nom du restaurant
+                {' '}
+                {t('Nom du restaurant')}{' '}
                 <input
                   name="restaurantName"
                   required
                   maxLength={100}
                   autoComplete="organization"
-                  placeholder="L’Atelier des saveurs"
+                  placeholder={t('L’Atelier des saveurs')}
                 />
               </label>
             )}
             <label>
-              Adresse e-mail
+              {' '}
+              {t('Adresse e-mail')}{' '}
               <input
                 name="email"
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="vous@restaurant.fr"
+                placeholder={t('vous@restaurant.fr')}
               />
             </label>
             <label>
-              Mot de passe
+              {' '}
+              {t('Mot de passe')}{' '}
               <input
                 name="password"
                 type="password"
@@ -74,11 +82,11 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
                 maxLength={128}
                 autoComplete={signup ? 'new-password' : 'current-password'}
               />
-              {signup && <span className="field-hint">12 caractères minimum.</span>}
+              {signup && <span className="field-hint">{t('12 caractères minimum.')}</span>}
             </label>
             {error && (
               <p className="notice notice-error" role="alert">
-                {error}
+                {t(error)}
               </p>
             )}
             <button className="button button-blue" disabled={busy}>
@@ -86,34 +94,34 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
                 <LoaderCircle className="spin" size={18} />
               ) : (
                 <>
-                  {signup ? 'Créer mon espace' : 'Se connecter'}
+                  {signup ? t('Créer mon espace') : t('Se connecter')}
                   <ArrowRight size={18} />
                 </>
               )}
             </button>
           </form>
           <p className="auth-switch">
-            {signup ? 'Vous avez déjà un compte ?' : 'Vous ouvrez votre espace ?'}{' '}
+            {signup ? t('Vous avez déjà un compte ?') : t('Vous ouvrez votre espace ?')}{' '}
             <Link href={signup ? '/login' : '/signup'}>
-              {signup ? 'Se connecter' : 'Créer un compte'}
+              {signup ? t('Se connecter') : t('Créer un compte')}
             </Link>
           </p>
           <Link href="/menu/demo" className="subtle-link">
-            Découvrir le menu démo
+            {' '}
+            {t('Découvrir le menu démo')}{' '}
           </Link>
         </div>
-        <span className="auth-footnote">Votre cuisine. Votre carte. Votre signature.</span>
+        <span className="auth-footnote">{t('Votre cuisine. Votre carte. Votre signature.')}</span>
       </div>
       <aside className="auth-photo">
-        <img src="/images/salad.jpg" alt="Photographie illustrative d’une salade colorée" />
+        <img src="/images/salad.jpg" alt={t('Photographie illustrative d’une salade colorée')} />
         <div>
-          <span className="eyebrow">FAITES PLACE À LA DÉCOUVERTE</span>
+          <span className="eyebrow">{t('FAITES PLACE À LA DÉCOUVERTE')}</span>
           <h2>
-            Une belle assiette
-            <br />
-            mérite d’être vue.
+            {' '}
+            {t('Une belle assiette')} <br /> {t('mérite d’être vue.')}{' '}
           </h2>
-          <p>Photographie d’illustration.</p>
+          <p>{t('Photographie d’illustration.')}</p>
         </div>
       </aside>
     </main>

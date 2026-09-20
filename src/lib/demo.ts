@@ -1,4 +1,5 @@
 import type { Dish, PublicMenu } from './contracts';
+import { createTranslator, type Locale } from './i18n';
 
 // Illustrative catalogue only. These photographs are not reconstruction inputs.
 export const demoMenu: PublicMenu = {
@@ -66,6 +67,25 @@ export const demoMenu: PublicMenu = {
 };
 
 export const DEMO_MENU = demoMenu;
+
+export function localizedDemoMenu(locale: Locale): PublicMenu {
+  const t = createTranslator(locale);
+  return {
+    ...demoMenu,
+    restaurant: {
+      ...demoMenu.restaurant,
+      name: t(demoMenu.restaurant.name),
+      tagline: t(demoMenu.restaurant.tagline),
+    },
+    categories: demoMenu.categories.map((category) => ({ ...category, name: t(category.name) })),
+    dishes: demoMenu.dishes.map((dish) => ({
+      ...dish,
+      name: t(dish.name),
+      description: t(dish.description),
+      allergens: dish.allergens.map((allergen) => t(allergen)),
+    })),
+  };
+}
 
 export function dishImageUrl(dish: Pick<Dish, 'imageId'>): string | null {
   if (!dish.imageId) return null;

@@ -1,4 +1,5 @@
 'use client';
+import { useI18n } from '@/components/language';
 
 import { useEffect, useState } from 'react';
 import { api } from './api-client';
@@ -21,6 +22,7 @@ const labels: Record<string, string> = {
 };
 
 export function ReconstructionPanel({ scanId }: { scanId: string }) {
+  const { t } = useI18n();
   const [queue, setQueue] = useState<Queue | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,7 +49,7 @@ export function ReconstructionPanel({ scanId }: { scanId: string }) {
           setError('');
         }
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : 'Suivi indisponible.');
+        if (alive) setError(err instanceof Error ? err.message : t('Suivi indisponible.'));
       } finally {
         if (alive && shouldRefresh) timer = setTimeout(refresh, 10_000);
       }
@@ -70,55 +72,64 @@ export function ReconstructionPanel({ scanId }: { scanId: string }) {
       });
       setRevision((value) => value + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'La demande a échoué.');
+      setError(err instanceof Error ? err.message : t('La demande a échoué.'));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <section className="form-stack" aria-label="Reconstruction de cette série">
-      <h3>Le prochain point de vue.</h3>
+    <section className="form-stack" aria-label={t('Reconstruction de cette série')}>
+      <h3>{t('Le prochain point de vue.')}</h3>
       {queue && !queue.workerAvailable && (
         <p className="field-hint">
-          Le calcul 3D est actuellement indisponible. Vos photos restent conservées et exportables.
+          {' '}
+          {t(
+            'Le calcul 3D est actuellement indisponible. Vos photos restent conservées et exportables.',
+          )}{' '}
         </p>
       )}
       {queue?.workerAvailable && jobs.length === 0 && (
         <>
           <p className="field-hint">
-            Lancez le calcul sur cette série finalisée, avec un maximum de 24 photos. Le résultat
-            devra être vérifié avant publication.
+            {' '}
+            {t(
+              'Lancez le calcul sur cette série finalisée, avec un maximum de 24 photos. Le résultat devra être vérifié avant publication.',
+            )}{' '}
           </p>
           <button className="button button-blue" disabled={busy} onClick={() => void mutate()}>
-            Lancer la reconstruction
+            {' '}
+            {t('Lancer la reconstruction')}{' '}
           </button>
         </>
       )}
       {jobs.map((job) => (
         <div className="notice" key={job.id}>
-          <strong>{labels[job.state] || job.state}</strong>
+          <strong>{t(labels[job.state] || job.state)}</strong>
           {job.state === 'running' && (
-            <p>Le moteur traite les photos. Aucune durée restante n’est estimée.</p>
+            <p>{t('Le moteur traite les photos. Aucune durée restante n’est estimée.')}</p>
           )}
           {job.state === 'ready_for_review' && (
             <p>
-              Les fichiers sont prêts sur la machine de calcul. Vérifiez le modèle et ses textures
-              avant de l’importer dans la fiche du plat.
+              {' '}
+              {t(
+                'Les fichiers sont prêts sur la machine de calcul. Vérifiez le modèle et ses textures avant de l’importer dans la fiche du plat.',
+              )}{' '}
             </p>
           )}
           {['failed', 'cancelled'].includes(job.state) && (
-            <p>Vos originaux et le modèle précédent sont conservés.</p>
+            <p>{t('Vos originaux et le modèle précédent sont conservés.')}</p>
           )}
           {['queued', 'running'].includes(job.state) && (
             <button className="text-button" disabled={busy} onClick={() => void mutate(job.id)}>
-              Annuler le calcul
+              {' '}
+              {t('Annuler le calcul')}{' '}
             </button>
           )}
         </div>
       ))}
       {error && (
         <p className="notice notice-error" role="alert">
-          {error}
+          {t(error)}
         </p>
       )}
     </section>
