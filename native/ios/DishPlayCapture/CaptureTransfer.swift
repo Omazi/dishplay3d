@@ -116,7 +116,8 @@ private enum NativeAPI {
     }
     static func finalize(_ secret: String) async throws {
         _ = try checked(await session.data(for: request("finalize", method: "POST", secret: secret)))
-    }    static func reconstruction(_ secret: String, start: Bool = false) async throws -> ReconstructionSnapshot {
+    }
+    static func reconstruction(_ secret: String, start: Bool = false) async throws -> ReconstructionSnapshot {
         if start { _ = try checked(await session.data(for: request("reconstruction", method: "POST", secret: secret))) }
         return try JSONDecoder().decode(ReconstructionSnapshot.self, from: checked(await session.data(for: request("reconstruction", secret: secret))))
     }
