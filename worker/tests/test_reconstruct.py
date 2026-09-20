@@ -23,6 +23,14 @@ class WorkerContracts(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
+    def test_virtual_memory_guard_requires_a_verified_kernel_ram_limit(self):
+        with patch("pathlib.Path.read_text", return_value="max"):
+            self.assertIsNone(worker.bounded_cgroup_memory())
+        with patch("pathlib.Path.read_text", return_value=str(4 * 1024**3)):
+            self.assertIsNone(worker.bounded_cgroup_memory())
+        with patch("pathlib.Path.read_text", return_value=str(2 * 1024**3)):
+            self.assertEqual(worker.bounded_cgroup_memory(), 2 * 1024**3)
+
     def photos(self):
         for number in range(3):
             (self.root / f"{number}.jpg").write_bytes(b"\xff\xd8\xff" + bytes([number]))

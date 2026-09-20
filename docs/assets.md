@@ -12,29 +12,24 @@ Images downloaded from Unsplash's image CDN for the labelled example catalogue:
 
 See https://unsplash.com/license. Replace these with your own dish photographs for an actual restaurant. Example names, prices and allergen lists do not describe the stock photographs reliably and must never be used as food advice.
 
-## Interactive 3D demonstration
+## Original-photo relief and illustrative 360° dishes
 
-`public/models/avocado-demo.glb` is Microsoft's **Avocado** sample, released under
-[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/legalcode).
-[Original model and attribution](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Avocado).
-This is a labelled demonstration object, not a DishPlay reconstruction or a restaurant's dish.
+The photo mode is a shallow WebGL parallax treatment of the three photographs above. It never claims to reconstruct unseen surfaces. The 360° mode uses separate, similar dishes under **CC BY 4.0**, explicitly accepted as illustrations and labelled separately from the photographs. Artist and licence links appear beside each viewer.
 
-The original GLB was downloaded from Khronos' `glTF-Sample-Assets` on 2026-09-20:
-`Models/Avocado/glTF-Binary/Avocado.glb`.
-Its geometry is unchanged. Embedded textures were resized from 2048px to 1024px
-(base color, JPEG quality 90) and 512px (normal and roughness, PNG), using Sharp.
-The self-contained GLB is **365,196 bytes**, down from 8,110,040 bytes. It needs no
-external decoder or texture downloads. `public/images/avocado-3d.webp` is a render
-of that same model made with the installed model-viewer, encoded as WebP.
+| File                      | Artist                | Original source                                                                                                   | Bytes     |
+| ------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
+| `burger-illustration.glb` | darklord3d / erebus3d | [Burger Realistic (Free)](https://sketchfab.com/3d-models/burger-realistic-free-18e59d7dbd2243c69f469e0f056f44c4) | 1,851,652 |
+| `pasta-illustration.glb`  | ne0ns / Ervinas       | [Pasta](https://sketchfab.com/3d-models/pasta-bec7601a89f14d0bbe7eb40b48d14b26)                                   | 1,542,076 |
+| `salad-illustration.glb`  | churaed               | [Salad](https://sketchfab.com/3d-models/salad-5254132bd1b24be7a2dc888aba5e51a3)                                   | 1,405,228 |
 
-SHA-256:
+[CC BY 4.0 licence](https://creativecommons.org/licenses/by/4.0/). These are modified assets: colour textures resized to 1024 px JPEG, other textures to 512 px; meshes simplified with official gltfpack 1.2 (`-si 0.6 -se 0.002 -ke`). Pasta's legacy specular-glossiness material was converted to nonmetallic metallic-roughness with its original diffuse texture. Models contain their textures and need no external mesh or texture decoder. The matching `*-model.webp` posters are actual renders of these optimized models, not photographs.
 
-- Original GLB: `ccc9c3ce56423720b09399c2351537207cd5a65f859f9e6e2f30922762f3abd4`
-- Optimized GLB: `c2e37f707937d463f6b486702b6620448ceb5336abe233c290fc032916880a4c`
-- Poster: `0fd20cbbc7bfdc386d1e6c28c741588156a851aae916a662ad953cdfa6ee6328`
+Burger was retrieved from [this pinned mirror](https://github.com/AtulSemwal963/signature-burger/tree/6205a7e48c9278a96352d69da25fa0401c267e06/public/models/burger), preserving its embedded source/author/licence attribution. Pasta and salad came from AllenAI's Objaverse distribution: `glbs/000-082/bec7601a89f14d0bbe7eb40b48d14b26.glb` and `glbs/000-081/5254132bd1b24be7a2dc888aba5e51a3.glb`. Original metadata and current Sketchfab pages agree on CC BY 4.0.
 
-The homepage requests the engine and GLB only after an explicit click. Automatic
-rotation pauses when the section leaves the viewport, the document is hidden, or
-the visitor moves the camera; reduced-motion users start with rotation disabled.
-Returning to the image removes the viewer and its observers/listeners. The shared
-model cache is limited to one entry; the existing menu uses the same engine.
+Optimized GLB SHA-256:
+
+- Burger: `3e19471c2f9633f6f31522de276b7b97022520934b23e5e6221e6de3cf79aa82`
+- Pasta: `2a000ff788dd69f0f45d6a01963473d4fc8ee5e56a09853fe5f1023a4bfd528f`
+- Salad: `77d45a6082413858981e7f3dca4ebb1d6907e610fe8209b987052faa228517fd`
+
+Only an explicit 360° action imports the model engine and selected GLB. One viewer/cache entry is retained. Motion pauses offscreen or when hidden, reduced-motion starts without autoplay, and leaving the mode releases its viewer. Photo relief has no animation loop: it renders on interaction or resize with a maximum 1400 × 1000 drawing buffer.

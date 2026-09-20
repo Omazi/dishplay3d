@@ -391,6 +391,7 @@ export function Capture() {
     let count = frames.length;
     let total = bytes;
     let added = 0;
+    let importedCleanly = false;
     try {
       for (const file of Array.from(files)) {
         if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
@@ -447,6 +448,7 @@ export function Capture() {
           ]),
         );
       }
+      importedCleanly = true;
       if (navigator.storage?.persist) void navigator.storage.persist().catch(() => {});
       if (captured) markCaptured(captured.gray);
       setGalleryPage(0);
@@ -461,9 +463,12 @@ export function Capture() {
       setAssisted(false);
       setError(err instanceof Error ? err.message : t('L’import a échoué.'));
     } finally {
-      setFrames(await listFrames(sessionId).catch(() => frames));
+      const updated = await listFrames(sessionId).catch(() => frames);
+      setFrames(updated);
       setBusy(false);
       operation.current = false;
+      if (importedCleanly && !captured && dishId && updated.length >= 3)
+        await uploadFrames(updated);
     }
   }
   async function takePhoto() {
@@ -582,7 +587,7 @@ export function Capture() {
       setBusy(false);
     }
   }
-  async function uploadFrames() {
+  async function uploadFrames(batch = frames) {
     if (!dishId) return;
     setBusy(true);
     setError('');
@@ -614,7 +619,7 @@ export function Capture() {
         return;
       }
       const known = new Set(existing.frames.map((frame) => frame.sha256));
-      for (const [index, frame] of frames.entries()) {
+      for (const [index, frame] of batch.entries()) {
         const copy = await uploadCopy(await getOriginal(frame.id));
         const hash = await sha256(copy);
         if (!known.has(hash)) {
@@ -628,16 +633,23 @@ export function Capture() {
         setStatus(
           t('Transfert vérifié : {0} / {1} photos. Une reprise ignore les images déjà reçues.', [
             index + 1,
-            frames.length,
+            batch.length,
           ]),
         );
       }
       setSynchronized(true);
-      setStatus(
-        t(
-          'Photos transférées et vérifiées. Vous pouvez finaliser cette série ou ajouter des vues. Les originaux restent sur cet appareil.',
-        ),
-      );
+      if (known.size >= 3) {
+        await api(`/api/scans/${id}/finalize`, { method: 'POST', body: '{}' });
+        setFinalized(true);
+        setRemoteState('finalized');
+        setStatus(
+          t(
+            'Scan envoyé. La reconstruction est demandée automatiquement ; suivez son état ci-dessous.',
+          ),
+        );
+      } else {
+        setStatus(t('Ajoutez d’autres vues avec recouvrement pour reconstruire le plat.'));
+      }
     } catch (err) {
       setError(
         t('{0} Vos originaux sont conservés. Réessayez pour reprendre.', [
@@ -658,7 +670,7 @@ export function Capture() {
       setRemoteState('finalized');
       setStatus(
         t(
-          'Série finalisée : les fichiers reçus sont figés. Le calcul 3D nécessite un worker de reconstruction configuré.',
+          'Scan envoyé. La reconstruction est demandée automatiquement ; suivez son état ci-dessous.',
         ),
       );
     } catch (err) {
@@ -1059,11 +1071,11 @@ export function Capture() {
               <>
                 <button
                   className="button button-secondary"
-                  onClick={uploadFrames}
+                  onClick={() => void uploadFrames()}
                   disabled={busy || !frames.length || finalized}
                 >
                   <CloudUpload size={17} />{' '}
-                  {remoteId ? t('Reprendre le transfert') : t('Transférer vers le plat')}
+                  {remoteId ? t('Reprendre le transfert') : t('Envoyer et créer le modèle 3D')}
                 </button>
                 {remoteId && !finalized && (
                   <button

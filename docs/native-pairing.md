@@ -1,5 +1,7 @@
 # iPhone capture → restaurant dish
 
+> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
+
 ## Using the implemented flow
 
 1. Install a signed build of the [iOS app](native-ios.md). The GitHub unsigned build alone cannot be installed. Object Capture support is checked on the actual phone; unsupported phones can still take ordinary photos.

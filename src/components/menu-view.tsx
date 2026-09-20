@@ -14,11 +14,12 @@ import {
   X,
 } from 'lucide-react';
 import type { Dish, PublicMenu } from '@/lib/contracts';
+import { showcaseModels, type ShowcaseModel } from '@/lib/showcase-models';
 import { dishImageUrl, localizedDemoMenu } from '@/lib/demo';
 import { formatPrice } from './api-client';
 import { Brand } from './brand';
 
-function ModelView({ dish }: { dish: Dish }) {
+function ModelView({ dish, illustration }: { dish: Dish; illustration?: ShowcaseModel }) {
   const { t } = useI18n();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
@@ -65,20 +66,23 @@ function ModelView({ dish }: { dish: Dish }) {
         {
           src: dish.modelGlbUrl,
           'ios-src': dish.modelUsdzUrl || undefined,
-          poster: dishImageUrl(dish) || undefined,
+          poster: illustration?.poster ?? dishImageUrl(dish) ?? undefined,
+          'camera-orbit': illustration?.orbit,
           alt: t('Modèle 3D de {0}', [dish.name]),
           'camera-controls': true,
           'touch-action': 'pan-y',
-          ar: true,
+          ar: !illustration,
           'ar-modes': dish.modelUsdzUrl ? 'webxr scene-viewer quick-look' : 'webxr scene-viewer',
           'ar-scale': 'fixed',
           'shadow-intensity': '1',
           'interaction-prompt': 'auto',
           style: { width: '100%', height: '100%', minHeight: '320px' },
         },
-        <button className="button button-blue ar-button" slot="ar-button">
-          <Camera size={17} /> {t('Voir sur ma table')}{' '}
-        </button>,
+        !illustration && (
+          <button className="button button-blue ar-button" slot="ar-button">
+            <Camera size={17} /> {t('Voir sur ma table')}{' '}
+          </button>
+        ),
       )}
       <p className="viewer-hint">{t('Glissez pour tourner · Pincez pour zoomer')}</p>
     </div>
@@ -91,6 +95,9 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
   const [category, setCategory] = useState('all');
   const [selected, setSelected] = useState<Dish | null>(null);
   const [mode, setMode] = useState<'photo' | '3d'>('photo');
+  const illustration = menu.isDemo
+    ? showcaseModels.find((item) => selected?.imageId === `demo-${item.id}`)
+    : undefined;
   const dialog = useRef<HTMLDialogElement>(null);
   const openButton = useRef<HTMLButtonElement | null>(null);
   const available = menu.dishes
@@ -256,7 +263,7 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
           <>
             <div className="dish-dialog-visual">
               {mode === '3d' && selected.modelGlbUrl ? (
-                <ModelView dish={selected} />
+                <ModelView dish={selected} illustration={illustration} />
               ) : dishImageUrl(selected) ? (
                 <img src={dishImageUrl(selected)!} alt={selected.name} />
               ) : (
@@ -276,6 +283,23 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
                   </button>
                 )}
               </div>
+              {mode === '3d' && illustration && (
+                <p className="field-hint">
+                  {t('Modèle 3D illustratif d’un plat similaire, distinct de la photo.')}
+                  <br />
+                  <a href={illustration.source} target="_blank" rel="noreferrer">
+                    {illustration.author}
+                  </a>{' '}
+                  ·{' '}
+                  <a
+                    href="https://creativecommons.org/licenses/by/4.0/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    CC BY 4.0
+                  </a>
+                </p>
+              )}
               <div className="dish-dialog-heading">
                 <h2>{selected.name}</h2>
                 <strong>

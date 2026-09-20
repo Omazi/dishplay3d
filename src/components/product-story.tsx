@@ -64,7 +64,7 @@ const chapters = [
   {
     name: 'Capturez',
     title: 'Le bon geste. Au bon moment.',
-    text: 'Le plat reste immobile. Vous faites le tour à trois hauteurs. Le guide vous aide à garder le rythme et signale les images à vérifier.',
+    text: 'Le plat reste immobile. Dans l’app iPhone, suivez une orbite légèrement montante : les bonnes vues sont enregistrées automatiquement.',
     link: 'Essayer la capture',
     href: '/capture',
   },
@@ -261,7 +261,7 @@ export function ProductStory({ qr }: { qr: string }) {
               </Link>
               <p className="story-footnote">
                 {chapter === 0
-                  ? t('La capture web conserve des photos. Le calcul 3D est une étape séparée.')
+                  ? t('Aperçu pendant le scan. Modèle final après le calcul sur votre PC.')
                   : t('Démo interactive · modifications non enregistrées')}
               </p>
             </div>
@@ -287,7 +287,7 @@ export function ProductStory({ qr }: { qr: string }) {
                       </button>
                     ))}
                   </div>
-                  <p>{t('Choisissez une hauteur pour voir le mouvement conseillé.')}</p>
+                  <p>{t('Découvrez les positions d’une même orbite progressive.')}</p>
                 </div>
               )}
               {chapter === 1 && (

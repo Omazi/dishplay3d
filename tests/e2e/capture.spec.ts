@@ -70,6 +70,9 @@ test('linked capture uploads all photos, finalizes and restores its immutable st
   expect(created.status(), await created.text()).toBe(201);
   const { dish } = await created.json();
   await page.goto(`/capture?dish=${dish.id}`);
+  const completed = page.waitForResponse(
+    (response) => response.url().endsWith('/finalize') && response.request().method() === 'POST',
+  );
   await page
     .getByLabel('Importer les photos', { exact: true })
     .setInputFiles([
@@ -78,13 +81,6 @@ test('linked capture uploads all photos, finalizes and restores its immutable st
       'public/images/salad.jpg',
     ]);
   await expect(page.getByRole('img', { name: 'salad.jpg', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Transférer vers le plat', exact: true }).click();
-  const finalize = page.getByRole('button', { name: 'Finaliser la série', exact: true });
-  await expect(finalize).toBeEnabled();
-  const completed = page.waitForResponse(
-    (response) => response.url().endsWith('/finalize') && response.request().method() === 'POST',
-  );
-  await finalize.click();
   const result = await completed;
   expect(result.ok()).toBe(true);
   const { scan } = await result.json();

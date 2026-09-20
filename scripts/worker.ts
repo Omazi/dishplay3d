@@ -32,6 +32,7 @@ import {
   type JobLease,
   type WorkerCapabilities,
 } from '../src/lib/server/jobs';
+import { ARTIFACT_PART_BYTES, storeArtifactPart } from '../src/lib/server/reconstruction-artifacts';
 import { validateImageBytes } from '../src/lib/image-validation';
 
 const exec = promisify(execFile);
@@ -44,7 +45,7 @@ const workerScript = path.join(project, 'worker/reconstruct.py');
 const capabilities: WorkerCapabilities = normalizeSettings({
   maxImages: Number(process.env.WORKER_MAX_IMAGES || 24),
   longEdge: Number(process.env.WORKER_LONG_EDGE || 1600),
-  memoryMiB: Number(process.env.WORKER_MEMORY_MIB || 1536),
+  memoryMiB: Number(process.env.WORKER_MEMORY_MIB || 1024),
   diskMiB: Number(process.env.WORKER_DISK_MIB || 2048),
   stageSeconds: Number(process.env.WORKER_STAGE_SECONDS || 900),
   openMvsCudaBuild: process.env.WORKER_OPENMVS_CUDA_BUILD === 'true',
@@ -379,7 +380,11 @@ async function verifyResult(
         'A real export is absent or differs from its validated manifest.',
       );
     }
-    verified[kind] = { bytes: item.bytes, sha256: item.sha256 };
+    verified[kind] = {
+      bytes: item.bytes,
+      sha256: item.sha256,
+      parts: Math.ceil(item.bytes / ARTIFACT_PART_BYTES),
+    };
   }
   const summary = {
     outputs: verified,
@@ -417,7 +422,11 @@ async function runJob(db: Database, lease: JobLease): Promise<void> {
     heartbeating = true;
     void (async () => {
       try {
-        if (stage !== 'materializing' && stage !== 'validating_exports') {
+        if (
+          stage !== 'materializing' &&
+          stage !== 'validating_exports' &&
+          stage !== 'uploading_model'
+        ) {
           try {
             const manifest = await readManifest(output);
             stage = typeof manifest.active_stage === 'string' ? manifest.active_stage : stage;
@@ -512,6 +521,17 @@ async function runJob(db: Database, lease: JobLease): Promise<void> {
       );
     stage = 'validating_exports';
     const result = await verifyResult(lease, output, hashes);
+    stage = 'uploading_model';
+    for (const kind of ['glb', 'usdz'] as const) {
+      let part = 0;
+      for await (const chunk of createReadStream(path.join(output, `model.${kind}`), {
+        highWaterMark: ARTIFACT_PART_BYTES,
+      })) {
+        if (stopping || lostLease)
+          throw new WorkerFailure('LEASE_LOST', 'Model upload interrupted.');
+        await storeArtifactPart(db, lease, kind, part++, chunk as Buffer);
+      }
+    }
     result.peakSampledProcessMiB = Math.round(peakMiB);
     if (!(await completeJob(db, lease, result)))
       throw new WorkerFailure(
@@ -519,7 +539,7 @@ async function runJob(db: Database, lease: JobLease): Promise<void> {
         'A newer lease or cancellation prevented this completion.',
       );
     safeLog(
-      `Job ${lease.id}: ready_for_review. Private output: ${output}. No models or menu were published.`,
+      `Job ${lease.id}: ready_for_review. Model returned privately to the app. Local output: ${output}. Menu publication is unchanged.`,
     );
   } catch (error) {
     const code = error instanceof WorkerFailure ? error.code : 'WORKER_FAILURE';

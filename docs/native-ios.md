@@ -1,5 +1,7 @@
 # iOS capture app
 
+> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
+
 Source: `native/ios`. Deployment target: iOS/iPadOS 17.0 or later. This minimal app uses Apple's actual Object Capture and photogrammetry APIs; it is separate from the restaurant web login.
 
 ## Build and install

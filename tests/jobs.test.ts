@@ -4,6 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import type { Database, Row } from '../src/lib/server/db';
+import { artifactPart, storeArtifactPart } from '../src/lib/server/reconstruction-artifacts';
+import {
+  requestScanReconstruction,
+  scanReconstructionStatus,
+} from '../src/lib/server/automatic-reconstruction';
 import { ApiError } from '../src/lib/server/domain';
 import {
   acknowledgeStopped,
@@ -34,6 +39,7 @@ before(async () => {
   memory = new PGlite();
   await memory.exec(await readFile('migrations/001_initial.sql', 'utf8'));
   await memory.exec(await readFile('migrations/002_reconstruction_queue.sql', 'utf8'));
+  await memory.exec(await readFile('migrations/004_reconstruction_artifacts.sql', 'utf8'));
   db = {
     query: async <T extends Row>(sql: string, params: unknown[] = []) => ({
       rows: (await memory.query<T>(sql, params)).rows,
@@ -280,4 +286,73 @@ test('expired leases and retryable failures stop after two attempts', async () =
   assert.equal(await claimJob(db, worker, capabilities), null);
   assert.equal((await listJobs(db, a.restaurant))[0].state, 'failed');
   assert.equal((await listJobs(db, a.restaurant))[0].errorCode, 'LEASE_EXPIRED');
+});
+
+test('automatic reconstruction queues offline, deduplicates and reports actual PC availability', async () => {
+  const priorEnabled = process.env.ENABLE_RECONSTRUCTION,
+    priorDb = process.env.DATABASE_URL;
+  process.env.ENABLE_RECONSTRUCTION = 'true';
+  process.env.DATABASE_URL = 'test-only';
+  try {
+    const a = await fixture();
+    const request = () =>
+      db.transaction((tx) => requestScanReconstruction(tx, a.restaurant, a.user, a.scan));
+    const first = await request();
+    assert.equal(first.state, 'queued');
+    assert.deepEqual(
+      (await scanReconstructionStatus(db, a.restaurant, a.scan)).workerAvailable,
+      false,
+    );
+    const again = await request();
+    assert.ok('id' in first && 'id' in again && first.id === again.id);
+    const worker = await readyWorker();
+    const lease = await claimJob(db, worker, capabilities);
+    assert.ok(lease);
+    assert.equal((await scanReconstructionStatus(db, a.restaurant, a.scan)).job?.state, 'running');
+    assert.equal((await scanReconstructionStatus(db, randomUUID(), a.scan)).job, null);
+  } finally {
+    if (priorEnabled === undefined) delete process.env.ENABLE_RECONSTRUCTION;
+    else process.env.ENABLE_RECONSTRUCTION = priorEnabled;
+    if (priorDb === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = priorDb;
+  }
+});
+
+test('model parts are private until fenced completion and inaccessible to other dishes or tenants', async () => {
+  const a = await fixture(),
+    b = await fixture();
+  const worker = await readyWorker();
+  const queued = await enqueueReconstruction(db, a.restaurant, a.user, a.scan);
+  const lease = (await claimJob(db, worker, capabilities))!;
+  const bytes = Buffer.from('artifact transport fixture; not reconstruction evidence');
+  await storeArtifactPart(db, lease, 'glb', 0, bytes);
+  await assert.rejects(
+    () => artifactPart(db, a.restaurant, queued.id, 'glb', '0'),
+    (err: unknown) => err instanceof ApiError && err.status === 404,
+  );
+  assert.equal(
+    await completeJob(db, lease, {
+      leaseGeneration: lease.generation,
+      summary: {
+        outputs: { glb: { bytes: bytes.length, sha256: hash(bytes.toString()), parts: 1 } },
+      },
+    }),
+    true,
+  );
+  const response = await artifactPart(db, a.restaurant, queued.id, 'glb', '0', a.scan);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+  assert.equal(response.headers.get('X-Artifact-SHA256'), hash(bytes.toString()));
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  for (const [restaurant, scan] of [
+    [b.restaurant, b.scan],
+    [a.restaurant, b.scan],
+  ]) {
+    await assert.rejects(
+      () => artifactPart(db, restaurant, queued.id, 'glb', '0', scan),
+      (err: unknown) => err instanceof ApiError && err.status === 404,
+    );
+  }
+  await assert.rejects(() => artifactPart(db, a.restaurant, queued.id, 'glb', '1'));
+  await assert.rejects(() => artifactPart(db, a.restaurant, queued.id, '../secret', '0'));
+  await assert.rejects(() => storeArtifactPart(db, lease, 'glb', 1, bytes), /lease expired/);
 });

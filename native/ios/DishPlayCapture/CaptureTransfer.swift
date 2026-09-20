@@ -225,7 +225,7 @@ final class CaptureTransfer: ObservableObject {
               let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "code" })?.value,
               value.replacingOccurrences(of: "-", with: "").range(of: "^[A-Fa-f0-9]{16}$", options: .regularExpression) != nil else { return }
         code = value
-        status = "Association code received. Open or capture a series, then choose Pair with website. No photos have been sent."
+        status = "Association code received. Link this dish before scanning."
     }
     func pair(_ record: CaptureRecord, onPaired: @escaping (String) -> Void) {
         guard !busy, snapshot == nil else { return }

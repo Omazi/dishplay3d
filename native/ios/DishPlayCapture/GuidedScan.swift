@@ -13,6 +13,7 @@ private struct FrameAnalysis {
     var brightness: Double
     var clipped: Double
     var jpeg: Data?
+    var orientation: UInt32 = 1
 }
 
 // Only one retained ARFrame and one serial image analysis at a time. No video recording.
@@ -132,6 +133,7 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
         onSaved?()
     }
     func sessionWasInterrupted(_ session: ARSession) { pause() }
+    func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { true }
     func session(_ session: ARSession, didFailWithError error: Error) {
         generation += 1
         phase = .failed
@@ -176,8 +178,15 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
         lastAnalysis = frame.timestamp
         let ticket = generation
         let context = self.context
+        let orientation: CGImagePropertyOrientation
+        switch camera.window?.windowScene?.interfaceOrientation ?? .portrait {
+        case .portrait: orientation = .right
+        case .portraitUpsideDown: orientation = .left
+        case .landscapeLeft: orientation = .down
+        default: orientation = .up
+        }
         processing.async { [weak self] in
-            let result = Self.analyze(frame.capturedImage, context: context)
+            let result = Self.analyze(frame.capturedImage, context: context, orientation: orientation)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.analyzing = false
@@ -186,7 +195,7 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
             }
         }
     }
-    nonisolated private static func analyze(_ buffer: CVPixelBuffer, context: CIContext) -> FrameAnalysis {
+    nonisolated private static func analyze(_ buffer: CVPixelBuffer, context: CIContext, orientation: CGImagePropertyOrientation) -> FrameAnalysis {
         autoreleasepool {
             let image = CIImage(cvPixelBuffer: buffer)
             let size = 96
@@ -202,6 +211,7 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
                 if v < 8 || v > 248 { clipped += 1 }
             }}
             var result = FrameAnalysis(sharpness: lapSquared/count - pow(lap/count, 2), brightness: sum/count, clipped: clipped/count)
+            result.orientation = orientation.rawValue
             // Segmentation locates foreground; it is not a food classifier or a depth estimate.
             let request = VNGenerateForegroundInstanceMaskRequest()
             let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up)
@@ -227,9 +237,10 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
                 }
             } catch { /* Detecting continues; never invent a target if segmentation failed. */ }
             if result.sharpness >= 35 && result.brightness > 25 && result.brightness < 230 && result.clipped < 0.45 && result.box != nil {
-                // Camera pixels and intrinsics share the same native orientation. Retain full frame overlap.
-                let scale = min(1, 1920 / image.extent.width)
-                let export = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                // Preserve the full frame and record the orientation applied relative to native intrinsics.
+                let upright = image.oriented(orientation)
+                let scale = min(1, 1920 / max(upright.extent.width, upright.extent.height))
+                let export = upright.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 result.jpeg = context.jpegRepresentation(of: export, colorSpace: CGColorSpaceCreateDeviceRGB(), options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.9])
             }
             return result
@@ -249,7 +260,7 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
             let transform = frame.displayTransform(for: orientation, viewportSize: camera.bounds.size)
             let normalized = CGPoint(x: box.midX, y: box.midY).applying(transform)
             let pixel = CGPoint(x: normalized.x * camera.bounds.width, y: normalized.y * camera.bounds.height)
-            guard let query = camera.raycastQuery(from: pixel, allowing: .estimatedPlane, alignment: .horizontal),
+            guard let query = camera.raycastQuery(from: pixel, allowing: .existingPlaneInfinite, alignment: .horizontal),
                   let hit = camera.session.raycast(query).first else {
                 instruction = "Move gently so the camera can locate the table."; return
             }
@@ -277,7 +288,7 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
                 "transform": (0..<4).flatMap { c in (0..<4).map { r in frame.camera.transform[c][r] } },
                 "intrinsics": (0..<3).flatMap { c in (0..<3).map { r in frame.camera.intrinsics[c][r] } },
                 "imageResolution": [frame.camera.imageResolution.width, frame.camera.imageResolution.height],
-                "sharpness": result.sharpness, "angle": angle, "elevation": elevation, "metricScaleVerified": false]
+                "photoOrientationApplied": result.orientation, "sharpness": result.sharpness, "angle": angle, "elevation": elevation, "metricScaleVerified": false]
             try JSONSerialization.data(withJSONObject: metadata).write(to: CaptureFiles.checkpoints(record).appendingPathComponent(name + ".json"), options: .atomic)
             coverage.accept(angle: angle, elevation: elevation, time: frame.timestamp)
             lastAcceptedPosition = position
@@ -467,6 +478,11 @@ struct GuidedScanScreen: View {
                     .disabled(scan.coverage.accepted < 3)
             }
         case .failed:
+            if AVCaptureDevice.authorizationStatus(for: .video) == .denied {
+                Button("Open camera permission settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }.buttonStyle(.borderedProminent)
+            }
             Button("Back to my dish") { dismiss() }.buttonStyle(.bordered)
         }
     }

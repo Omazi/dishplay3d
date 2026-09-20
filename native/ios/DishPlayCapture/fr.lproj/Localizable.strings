@@ -159,3 +159,5 @@
 "Your scan is waiting for its turn on your PC." = "Votre scan attend son tour sur votre PC.";
 "Waiting for your PC. Keep it on, connected, with DishPlay running and enough free memory." = "En attente de votre PC. Laissez-le allumé et connecté, avec DishPlay en cours et suffisamment de mémoire libre.";
 "Your PC is reconstructing the dish. You can check the result here or on DishPlay." = "Votre PC reconstruit le plat. Vous pourrez consulter le résultat ici ou sur DishPlay.";
+
+"Association code received. Link this dish before scanning." = "Code reçu. Associez ce plat avant de scanner.";

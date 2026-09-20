@@ -334,13 +334,28 @@ def arm_parent_death(expected_parent_pid: int, death_signal: int = signal.SIGTER
         raise RuntimeError("Supervising parent changed before startup")
 
 
+def bounded_cgroup_memory() -> int | None:
+    for filename in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            value = int(Path(filename).read_text().strip())
+            if 0 < value <= 2048 * MIB:
+                return value
+        except (OSError, ValueError):
+            pass
+    return None
+
+
 def process_limits(settings: dict, parent_pid: int):
     # Engine processes start a separate session; do not let that detach them
     # from Python when it is killed without a chance to run normal cleanup.
     arm_parent_death(parent_pid, signal.SIGKILL)
     import resource
     os.nice(10)
-    resource.setrlimit(resource.RLIMIT_AS, (settings["memory_mib"] * MIB,) * 2)
+    # Native engines reserve much more virtual address space than resident RAM.
+    # Skip the virtual-address guard only with a verified <=2 GiB kernel cgroup RAM limit.
+    # The Node supervisor still measures resident memory and stops under host pressure.
+    if bounded_cgroup_memory() is None:
+        resource.setrlimit(resource.RLIMIT_AS, (settings["memory_mib"] * MIB,) * 2)
     resource.setrlimit(resource.RLIMIT_FSIZE, (512 * MIB,) * 2)
     resource.setrlimit(resource.RLIMIT_CPU, (settings["stage_seconds"],) * 2)
 

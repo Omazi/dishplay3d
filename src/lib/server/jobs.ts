@@ -81,7 +81,7 @@ export function normalizeSettings(value: unknown = {}): ReconstructionSettings {
   return {
     maxImages: bounded(settings.maxImages ?? 24, 'Maximum image count', 3, 40),
     longEdge: bounded(settings.longEdge ?? 1600, 'Image long edge', 320, 1600),
-    memoryMiB: bounded(settings.memoryMiB ?? 1536, 'Memory limit MiB', 512, 2048),
+    memoryMiB: bounded(settings.memoryMiB ?? 1024, 'Memory limit MiB', 512, 2048),
     diskMiB: bounded(settings.diskMiB ?? 2048, 'Disk limit MiB', 256, 4096),
     stageSeconds: bounded(settings.stageSeconds ?? 900, 'Stage time limit seconds', 30, 1800),
     scaleMetersPerUnit: scale as number | null,
@@ -162,6 +162,7 @@ export async function enqueueReconstruction(
   actorId: string,
   scanIdValue: unknown,
   settingsValue: unknown = {},
+  allowOffline = false,
 ) {
   const scanId = idField(scanIdValue, 'Capture ID');
   const settings = normalizeSettings(settingsValue);
@@ -209,6 +210,7 @@ export async function enqueueReconstruction(
       );
     const workers = await freshWorkers(tx);
     if (
+      !allowOffline &&
       !workers.some((worker) =>
         workerCanRun(worker.capabilities as unknown as WorkerCapabilities, settings),
       )

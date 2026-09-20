@@ -1,5 +1,7 @@
 # Local reconstruction worker
 
+> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
+
 ## Current evidence
 
 The CLI, CPU-only command plan, input checks, limits, output validation and Blender export script are implemented. Only lightweight contract/rejection tests and `--doctor` have been executed. **No dish has been reconstructed with this repository.** COLMAP, OpenMVS and Blender were absent from the development laptop. There is no native capture build or physical iPhone/Android acceptance result.
