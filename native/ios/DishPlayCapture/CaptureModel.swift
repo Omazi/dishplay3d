@@ -24,6 +24,7 @@ final class CaptureModel: ObservableObject {
     @Published var imageCount = 0
     @Published var isPaused = false
     @Published var passComplete = false
+    @Published var currentPass = 1
     @Published var feedback = ""
     @Published var sdkProgress: Double?
     @Published var showCamera = false
@@ -75,6 +76,7 @@ final class CaptureModel: ObservableObject {
                 sdkProgress = nil
                 feedback = ""
                 passComplete = false
+                currentPass = 1
                 isPaused = false
                 if native && nativeSupported {
                     let session = ObjectCaptureSession()
@@ -127,6 +129,10 @@ final class CaptureModel: ObservableObject {
                 for await complete in session.userCompletedScanPassUpdates {
                     guard !Task.isCancelled else { return }
                     self?.passComplete = complete
+                    if complete, session.state == .capturing {
+                        session.pause()
+                        self?.message = self?.currentPass == 3 ? "Third pass complete. Finish to save the capture." : "Pass complete. Raise the phone for the next view, then continue. Keep the dish still."
+                    }
                 }
             },
             Task { [weak self] in
@@ -193,10 +199,13 @@ final class CaptureModel: ObservableObject {
         if session.isPaused { session.resume() } else { session.pause() }
     }
     func newHeight() {
-        guard let session = captureSession, session.state == .capturing else { return }
-        if session.isPaused { session.resume() }
+        guard let session = captureSession, session.state == .capturing,
+              session.userCompletedScanPass, currentPass < 3 else { return }
+        currentPass += 1
+        passComplete = false
         session.beginNewScanPass() // Deliberately never calls beginNewScanPassAfterFlip for food.
-        message = "Continue from a different height. Do not move or turn over the dish."
+        session.resume()
+        message = currentPass == 2 ? "Second pass: raise the phone to an oblique view. Keep the plate centered and walk around it." : "Third pass: look down into the dish from above. Walk around it without moving the food."
     }
     func finish() {
         guard let session = captureSession, session.state == .capturing else { return }
@@ -315,6 +324,12 @@ final class CaptureModel: ObservableObject {
     func exportModel() {
         guard let url = savedModel, !busy else { return }
         exportFile = ExportFile(url: url)
+    }
+    func markRemote(_ scanId: String?) {
+        guard var current = record else { return }
+        current.remoteScanId = scanId
+        record = current
+        persist(state: current.state)
     }
     private func stopObservers() { observers.forEach { $0.cancel() }; observers.removeAll() }
     private func persist(state: String) {

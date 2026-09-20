@@ -54,10 +54,14 @@ export function checkOrigin(request: Request): void {
 }
 export function api<T extends unknown[]>(
   handler: (request: NextRequest, ...args: T) => Promise<Response>,
+  options: { nativeCapability?: boolean } = {},
 ) {
   return async (request: NextRequest, ...args: T): Promise<Response> => {
     try {
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) checkOrigin(request);
+      // Only capability-authenticated native endpoints may omit Origin. Cookies never authorize them.
+      if (options.nativeCapability) {
+        if (request.headers.has('origin')) checkOrigin(request);
+      } else if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) checkOrigin(request);
       const result = await handler(request, ...args);
       result.headers.set('X-Content-Type-Options', 'nosniff');
       if (!result.headers.has('Cache-Control')) result.headers.set('Cache-Control', 'no-store');

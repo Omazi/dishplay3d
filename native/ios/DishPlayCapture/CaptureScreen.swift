@@ -5,6 +5,8 @@ import UIKit
 
 struct CaptureScreen: View {
     @ObservedObject var model: CaptureModel
+    @StateObject private var transfer = CaptureTransfer()
+    @State private var showForget = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -13,9 +15,10 @@ struct CaptureScreen: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("From your dish. From real observations.")
                         .font(.title2.bold())
-                    Text("Capture stays on this device. Export to Files when you are ready.")
+                    Text("Originals stay on this iPhone. Pair a dish and choose when to send photo copies to the website.")
                         .foregroundStyle(.secondary)
                     if let session = model.captureSession {
+                        captureSteps
                         ObjectCaptureView(session: session)
                             .frame(height: 390)
                             .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -30,17 +33,17 @@ struct CaptureScreen: View {
                         }
                         nativeControls
                     } else if model.phase != .processing {
-                        setup
+                        setup.disabled(transfer.busy)
                     }
 
-                    Label(model.message, systemImage: model.phase == .failed ? "exclamationmark.triangle" : "info.circle")
+                    Label(LocalizedStringKey(model.message), systemImage: model.phase == .failed ? "exclamationmark.triangle" : "info.circle")
                         .font(.callout)
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
                         .accessibilityIdentifier("capture-status")
                     if !model.feedback.isEmpty {
-                        Text(model.feedback).font(.headline).accessibilityAddTraits(.updatesFrequently)
+                        Text(LocalizedStringKey(model.feedback)).font(.headline).accessibilityAddTraits(.updatesFrequently)
                     }
                     if model.phase == .preparing || model.phase == .finishing {
                         ProgressView(model.phase == .finishing ? "Saving capture…" : "Preparing camera…")
@@ -55,9 +58,10 @@ struct CaptureScreen: View {
                             .buttonStyle(.bordered)
                     }
                     if let record = model.record, model.captureSession == nil {
-                        savedCapture(record)
+                        savedCapture(record).disabled(transfer.busy)
+                        transferPanel(record)
                     }
-                    if !model.library.isEmpty && !model.busy {
+                    if !model.library.isEmpty && !model.busy && !transfer.busy {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Saved captures").font(.headline)
                             ForEach(model.library) { record in
@@ -97,10 +101,77 @@ struct CaptureScreen: View {
             }
             .quickLookPreview($model.previewURL)
             .onChange(of: scenePhase) { _, value in
-                if value != .active { model.pauseForInterruption() }
+                if value != .active { model.pauseForInterruption(); transfer.pause() }
             }
+            .onAppear { transfer.select(model.record) }
+            .onChange(of: model.record?.id) { _, _ in transfer.select(model.record) }
+            .onChange(of: model.imageCount) { _, _ in transfer.readyToFinalize = false }
+            .onOpenURL { transfer.receive($0) }
         }
         .tint(.blue)
+    }
+
+    private var captureSteps: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                ForEach(1...3, id: \.self) { pass in
+                    Text(pass == 1 ? "1 · Low" : pass == 2 ? "2 · Oblique" : "3 · Above")
+                        .font(.caption.bold())
+                        .padding(.vertical, 10).frame(maxWidth: .infinity)
+                        .background(model.currentPass == pass ? Color.blue.opacity(0.15) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            Text(model.phase == .ready ? "1. Detect the dish on the table." : model.phase == .detecting ? "2. Adjust the volume to include the whole plate, then start." : model.currentPass == 1 ? "3. First pass: circle the plate at about 30°. Move the phone, not the food." : model.currentPass == 2 ? "Second pass: circle from an oblique view, about 45°." : "Third pass: look down into the bowl, about 65–80°. Keep walking around it.")
+                .font(.headline)
+            Text("Follow the native capture dial. A completed circle pauses the camera so you can change height. Finish early only if you want to keep a partial series.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func transferPanel(_ record: CaptureRecord) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            Label("Pair with website", systemImage: "link").font(.headline)
+            if let snapshot = transfer.snapshot {
+                Text(snapshot.restaurantName).font(.subheadline)
+                Text(snapshot.dishName).font(.title3.bold())
+                Text("Only this dish can receive these photos. Sending does not publish the menu.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if snapshot.scan.state == "capturing" {
+                    Button("Confirm dish and send / resume", systemImage: "icloud.and.arrow.up") { transfer.upload(record) }
+                        .buttonStyle(.borderedProminent).disabled(model.busy || transfer.busy || model.imageCount == 0)
+                    if transfer.readyToFinalize {
+                        Button("Finalize transferred series") { transfer.finalize(record) }
+                            .buttonStyle(.bordered).disabled(model.busy || transfer.busy)
+                        Text("Finalizing closes the series to new photos. It does not generate or publish a 3D model.").font(.caption)
+                    }
+                } else { Text(snapshot.scan.state == "finalized" ? "Series finalized on the website." : "Series cancelled on the website.") }
+                Link("Review photos on DishPlay", destination: URL(string: "https://dishplay3d.vercel.app/dashboard")!)
+                Button("Change association", role: .destructive) { showForget = true }
+                    .disabled(model.busy || transfer.busy)
+            } else {
+                TextField("Private code from the dish page", text: $transfer.code)
+                    .textFieldStyle(.roundedBorder).textInputAutocapitalization(.characters).autocorrectionDisabled()
+                    .disabled(model.busy || transfer.busy)
+                Button("Pair with website") { transfer.pair(record, onPaired: { model.markRemote($0) }) }
+                    .buttonStyle(.bordered).disabled(model.busy || transfer.busy)
+                Text("On DishPlay, open the saved dish → Prepare new photos → Create a code for iPhone. Codes last 10 minutes.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if transfer.busy {
+                ProgressView()
+                if transfer.total > 0 { Text("\(transfer.completed) / \(transfer.total) photos checked").monospacedDigit() }
+                Button("Pause transfer", role: .cancel) { transfer.pause() }
+            }
+            if !transfer.status.isEmpty { Text(LocalizedStringKey(transfer.status)).font(.callout).accessibilityAddTraits(.updatesFrequently) }
+            Text("JPEG copies are sent one at a time. HEIC originals, depth and checkpoints stay on this device. Keep the app open during transfer.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(16).background(Color.blue.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+        .confirmationDialog("Change this capture’s association?", isPresented: $showForget, titleVisibility: .visible) {
+            Button("Remove local association", role: .destructive) { transfer.forget(record); if transfer.snapshot == nil { model.markRemote(nil) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Photos already sent remain on the website. Revoke the old access there, then create a fresh code. Local originals are kept.") }
     }
 
     private var setup: some View {
@@ -110,7 +181,7 @@ struct CaptureScreen: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .disabled(model.busy)
-            Text("This label does not pair the capture with a restaurant account.")
+            Text("First capture or open a saved series. Then use the code from your dish page to pair it with the website.")
                 .font(.caption).foregroundStyle(.secondary)
             if model.nativeSupported {
                 Button("Start native Object Capture", systemImage: "viewfinder") { model.start(native: true) }
@@ -142,13 +213,17 @@ struct CaptureScreen: View {
         case .capturing:
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Button(model.isPaused ? "Resume" : "Pause and inspect points") { model.togglePause() }
-                        .buttonStyle(.bordered)
+                    if !model.passComplete {
+                        Button(model.isPaused ? "Resume" : "Pause and inspect points") { model.togglePause() }
+                            .buttonStyle(.bordered)
+                    }
                     Button("Finish capture") { model.finish() }.buttonStyle(.borderedProminent)
                 }
                 if model.passComplete {
-                    Button("Continue at another height") { model.newHeight() }.buttonStyle(.bordered)
-                    Text("This scan pass is complete according to the capture SDK.").font(.caption)
+                    if model.currentPass < 3 {
+                        Button(model.currentPass == 1 ? "Raise to 45° and continue" : "Raise to 65–80° and continue") { model.newHeight() }.buttonStyle(.borderedProminent)
+                    }
+                    Text("This scan pass is complete according to Object Capture. The angle suggestions are guidance, not measured coverage.").font(.caption)
                 }
             }
         default: EmptyView()

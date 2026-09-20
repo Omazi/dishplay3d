@@ -36,6 +36,7 @@ import {
 } from './capture-store';
 import { validateImageBytes } from '@/lib/image-validation';
 import { ReconstructionPanel } from './reconstruction-panel';
+import { NativeCapturePanel } from './native-capture-panel';
 import { CaptureCoach } from './capture-coach';
 import { useCaptureFeedback } from './capture-feedback';
 import {
@@ -686,6 +687,7 @@ export function Capture() {
             <Camera size={16} /> {t('Photos guidées · Navigateur')}{' '}
           </span>
         </div>
+        {dishId && <NativeCapturePanel key={dishId} dishId={dishId} />}
         <div className="capture-session-bar">
           <label htmlFor="capture-series">
             {' '}

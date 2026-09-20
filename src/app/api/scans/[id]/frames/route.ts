@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { api, readBytes } from '@/lib/server/http';
-import { digest, newId, requireUser } from '@/lib/server/auth';
+import { digest, requireUser } from '@/lib/server/auth';
 import { database } from '@/lib/server/db';
 import { ApiError, idField, MAX_IMAGE_BYTES, validateImage } from '@/lib/server/domain';
 import { lockRestaurant } from '@/lib/server/catalogue';
-import { ownedScan } from '@/lib/server/scans';
-import { saveMedia } from '@/lib/server/media';
+import { appendScanFrame } from '@/lib/server/scans';
 
 export const POST = api(async (request, context: { params: Promise<{ id: string }> }) => {
   const identity = await requireUser(request);
@@ -25,42 +24,7 @@ export const POST = api(async (request, context: { params: Promise<{ id: string 
     await database()
   ).transaction(async (tx) => {
     await lockRestaurant(tx, identity.restaurantId);
-    const scan = await ownedScan(tx, id, identity.restaurantId, true);
-    if (scan.state !== 'capturing')
-      throw new ApiError(
-        409,
-        'This capture is closed. Start another capture to add new photos.',
-        'SCAN_CLOSED',
-      );
-    const duplicate = (
-      await tx.query('SELECT id,media_id FROM scan_frames WHERE scan_id=$1 AND sha256=$2', [
-        id,
-        sha256,
-      ])
-    ).rows[0];
-    if (duplicate)
-      return {
-        frame: {
-          id: String(duplicate.id),
-          mediaId: String(duplicate.media_id),
-          sha256,
-          url: `/api/media/${duplicate.media_id}`,
-        },
-        duplicate: true,
-      };
-    const count = (
-      await tx.query('SELECT count(*)::integer AS count FROM scan_frames WHERE scan_id=$1', [id])
-    ).rows[0];
-    if (Number(count.count) >= 150) throw new ApiError(400, 'A capture supports up to 150 photos.');
-    const asset = await saveMedia(tx, identity.restaurantId, bytes, mime);
-    const frameId = newId();
-    await tx.query('INSERT INTO scan_frames(id,scan_id,media_id,sha256) VALUES($1,$2,$3,$4)', [
-      frameId,
-      id,
-      asset.id,
-      sha256,
-    ]);
-    return { frame: { id: frameId, mediaId: asset.id, sha256, url: asset.url }, duplicate: false };
+    return appendScanFrame(tx, id, identity.restaurantId, bytes, mime);
   });
   return NextResponse.json(result, { status: result.duplicate ? 200 : 201 });
 });

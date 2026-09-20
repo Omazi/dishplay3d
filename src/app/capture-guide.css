@@ -507,3 +507,127 @@
     gap: 3px;
   }
 }
+
+.native-capture-panel {
+  margin: 28px 0 40px;
+  padding: clamp(22px, 4vw, 40px);
+  border: 1px solid #dce4f0;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #f4f7ff, #fff 70%);
+}
+.native-capture-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  max-width: 850px;
+}
+.native-capture-icon {
+  padding: 14px;
+  border-radius: 18px;
+  background: #17243c;
+  color: white;
+}
+.native-capture-intro h2 {
+  font-size: clamp(24px, 3vw, 36px);
+  letter-spacing: -0.04em;
+  margin: 6px 0 12px;
+}
+.native-capture-intro p {
+  line-height: 1.65;
+}
+.native-capture-steps {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  margin: 30px 0 20px;
+}
+.native-capture-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  line-height: 1.6;
+}
+.native-capture-steps span,
+.native-receipt span {
+  color: #566074;
+  font-size: 14px;
+}
+.native-pair-code {
+  margin: 20px 0;
+  background: white;
+  border: 1px solid #dce4f0;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+}
+.native-pair-code > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.native-pair-code strong {
+  font: 600 clamp(16px, 3vw, 24px) monospace;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+.native-pair-code > small {
+  flex-basis: 100%;
+}
+.native-receipts {
+  margin-top: 28px;
+}
+.native-receipt {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 15px;
+  border-top: 1px solid #dce4f0;
+  padding: 18px 0;
+}
+.native-receipt > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.native-received-gallery {
+  margin-top: 24px;
+  border-top: 1px solid #dce4f0;
+  padding-top: 24px;
+}
+.native-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.native-photo-grid figure {
+  margin: 0;
+}
+.native-photo-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 12px;
+}
+.native-photo-grid button {
+  text-align: left;
+  padding: 10px 0;
+}
+@media (max-width: 700px) {
+  .native-capture-steps {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .native-capture-icon {
+    display: none;
+  }
+  .native-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
