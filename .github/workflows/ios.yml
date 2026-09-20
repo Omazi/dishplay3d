@@ -34,6 +34,11 @@ jobs:
             native/ios/DishPlayCapture/VideoFrameExtractor.swift native/ios/Tests/VideoExtractionTests.swift \
             -o /tmp/dishplay-video-tests
           /tmp/dishplay-video-tests
+      - name: Verify progressive silhouette geometry
+        run: |
+          swiftc -O -parse-as-library native/ios/DishPlayCapture/ScanPreview.swift native/ios/Tests/ScanPreviewTests.swift \
+            -o /tmp/dishplay-preview-tests
+          /tmp/dishplay-preview-tests
       - name: Test signing profile guards
         run: python3 scripts/apple/test_signing.py
       - name: Download pinned project generator

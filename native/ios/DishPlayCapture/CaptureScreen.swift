@@ -20,7 +20,7 @@ struct CaptureScreen: View {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Your dish. In a new dimension.").font(.largeTitle.bold())
-                        Text("Film around your dish. We prepare the photos. Your PC builds the 3D model.")
+                        Text("Follow one gentle orbit. Watch the provisional preview grow. Your PC builds the final model.")
                             .font(.body).foregroundStyle(.secondary)
                     }
                     TextField("Dish reference (optional, saved locally)", text: $model.dishReference)
@@ -30,21 +30,16 @@ struct CaptureScreen: View {
                         Text(snapshot.restaurantName).font(.subheadline).foregroundStyle(.secondary)
                     }
                     Button {
-                        showVideoCamera = true
+                        guard let record = model.prepareAutomatic() else { return }
+                        let next = GuidedScan(record: record)
+                        next.onSaved = { model.refreshAutomatic() }
+                        scan = next
                     } label: {
-                        Label("Film your dish", systemImage: "video.fill")
+                        Label(model.imageCount > 0 ? "Start a new scan" : "Scan your dish", systemImage: "viewfinder")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
                     }.buttonStyle(.borderedProminent).disabled(model.busy || transfer.busy)
-                    Text("Press Record, walk slowly around the plate, then press Stop. Aim for 20–40 seconds in good light.")
+                    Text("Keep the dish still. Follow the highlighted orbit and raise the phone gently. Useful views are saved automatically.")
                         .font(.callout).foregroundStyle(.secondary)
-                    PhotosPicker(selection: $selectedVideo, matching: .videos) {
-                        Label("Use an existing video", systemImage: "film")
-                            .frame(maxWidth: .infinity)
-                    }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
-                    PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 24, matching: .images) {
-                        Label("Use existing photos", systemImage: "photo.on.rectangle")
-                            .frame(maxWidth: .infinity)
-                    }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
                     if model.phase == .preparing {
                         ProgressView(value: model.videoProgress) { Text(LocalizedStringKey(model.message)) }
                         Text("Keep the app open while the photos are prepared.").font(.caption).foregroundStyle(.secondary)
@@ -116,19 +111,20 @@ struct CaptureScreen: View {
                             }.padding(.top).disabled(transfer.busy)
                         }
                     }
-                    DisclosureGroup("Advanced spatial scan") {
+                    DisclosureGroup("Other capture methods") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("This mode detects the table and shows observed points. If detection gets stuck, use Film your dish.")
-                                .font(.callout).foregroundStyle(.secondary)
-                            Button("Start spatial scan", systemImage: "viewfinder") {
-                                guard let record = model.prepareAutomatic() else { return }
-                                let next = GuidedScan(record: record)
-                                next.onSaved = { model.refreshAutomatic() }
-                                scan = next
-                            }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
-                        }.padding(.top)
+                            Button("Film your dish", systemImage: "video.fill") { showVideoCamera = true }
+                            PhotosPicker(selection: $selectedVideo, matching: .videos) {
+                                Label("Use an existing video", systemImage: "film")
+                            }
+                            PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 24, matching: .images) {
+                                Label("Use existing photos", systemImage: "photo.on.rectangle")
+                            }
+                            Text("Video and photo import prepare views for your PC without a live spatial preview.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }.padding(.top).buttonStyle(.bordered).disabled(model.busy || transfer.busy)
                     }
-                    Text("Your original video stays on this iPhone. Selected photos are sent to your linked dish. Check the reconstructed model before publishing it.")
+                    Text("The live preview is provisional. Your saved views are sent to the linked dish; your PC calculates the final 3D model. Check its shape and scale before publishing.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }.padding(22).frame(maxWidth: 650).frame(maxWidth: .infinity)
             }
