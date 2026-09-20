@@ -1,0 +1,26 @@
+name: Build local reconstruction tools
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dishplay-worker-tools
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Compile pinned CPU tools away from the laptop
+        run: docker build -t dishplay-reconstruction:1 -f worker/container/Dockerfile worker/container
+      - name: Export image and checksum
+        run: |
+          docker save dishplay-reconstruction:1 | gzip -1 > dishplay-reconstruction.tar.gz
+          sha256sum dishplay-reconstruction.tar.gz > dishplay-reconstruction.tar.gz.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dishplay-reconstruction-tools
+          path: dishplay-reconstruction.tar.gz*
+          compression-level: 0
+          retention-days: 7
