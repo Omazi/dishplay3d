@@ -31,6 +31,7 @@ import {
   type CaptureFrame,
 } from './capture-store';
 import { validateImageBytes } from '@/lib/image-validation';
+import { ReconstructionPanel } from './reconstruction-panel';
 
 const CAPTURE_LIMIT = 100 * 1024 * 1024;
 const guides = [
@@ -754,6 +755,9 @@ export function Capture() {
                       ? 'Série annulée · Originaux conservés'
                       : 'Série finalisée'}
                   </p>
+                )}
+                {remoteId && remoteState === 'finalized' && (
+                  <ReconstructionPanel scanId={remoteId} />
                 )}
               </>
             ) : (

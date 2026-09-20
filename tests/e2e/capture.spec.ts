@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { unzipSync } from 'fflate';
 
 test('camera denial recovers to stable import; originals persist and export unchanged', async ({
@@ -45,4 +45,53 @@ test('camera denial recovers to stable import; originals persist and export unch
   const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']));
   expect(manifest.poses).toBeNull();
   expect(manifest.frames).toHaveLength(1);
+});
+
+test('linked capture uploads all photos, finalizes and restores its immutable state', async ({
+  page,
+}) => {
+  const headers = { Origin: 'http://127.0.0.1:3000' };
+  const signup = await page.request.post('/api/auth/signup', {
+    headers,
+    data: {
+      email: `capture-${randomUUID()}@example.test`,
+      password: `DishPlay-${randomUUID()}`,
+      restaurantName: 'Capture test',
+    },
+  });
+  expect(signup.status(), await signup.text()).toBe(201);
+  const created = await page.request.post('/api/dishes', {
+    headers,
+    data: { name: 'Capture liée', priceCents: 1000 },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const { dish } = await created.json();
+  await page.goto(`/capture?dish=${dish.id}`);
+  await page
+    .getByLabel('Importer les photos', { exact: true })
+    .setInputFiles([
+      'public/images/burger.jpg',
+      'public/images/pasta.jpg',
+      'public/images/salad.jpg',
+    ]);
+  await expect(page.getByRole('img', { name: 'salad.jpg', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Transférer vers le plat', exact: true }).click();
+  const finalize = page.getByRole('button', { name: 'Finaliser la série', exact: true });
+  await expect(finalize).toBeEnabled();
+  const completed = page.waitForResponse(
+    (response) => response.url().endsWith('/finalize') && response.request().method() === 'POST',
+  );
+  await finalize.click();
+  const result = await completed;
+  expect(result.ok()).toBe(true);
+  const { scan } = await result.json();
+  expect(scan.frameCount).toBe(3);
+  await expect(page.getByText('Série finalisée', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Le calcul 3D est actuellement indisponible/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Série finalisée', { exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'salad.jpg', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Reprendre le transfert', exact: true }),
+  ).toBeDisabled();
 });

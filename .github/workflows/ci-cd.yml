@@ -63,9 +63,14 @@ jobs:
         with:
           node-version: '24'
       - name: Advance the verified production branch
+        id: release
         run: |
-          git push origin "$GITHUB_SHA:refs/heads/production"
+          release_commit=$(node scripts/prepare-release.mjs)
+          git push origin "$release_commit:refs/heads/production"
+          echo "commit=$release_commit" >> "$GITHUB_OUTPUT"
       - name: Wait for the exact commit on Vercel
-        run: node scripts/wait-for-deployment.mjs "$DEPLOYMENT_URL" "$GITHUB_SHA"
+        env:
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: node scripts/wait-for-deployment.mjs "$DEPLOYMENT_URL" "$RELEASE_COMMIT" "$GITHUB_SHA"
       - name: Check live public menu
         run: node scripts/smoke.mjs "$DEPLOYMENT_URL"

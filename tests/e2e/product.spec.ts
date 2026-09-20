@@ -203,10 +203,12 @@ test('accounts isolate drafts, publish atomically and retain their stable menu U
   await page.getByRole('button', { name: '3D', exact: true }).click();
   await expect.poll(() => requestedModels).toBe(1);
   await expect
-    .poll(() =>
-      page
-        .locator('model-viewer')
-        .evaluate((element) => (element as HTMLElement & { loaded: boolean }).loaded),
+    .poll(
+      () =>
+        page
+          .locator('model-viewer')
+          .evaluate((element) => (element as HTMLElement & { loaded: boolean }).loaded),
+      { timeout: 30_000 }, // Software WebGL shader compilation can be slow on an 8 GB laptop.
     )
     .toBe(true);
   await page.getByRole('button', { name: 'Photo', exact: true }).click();

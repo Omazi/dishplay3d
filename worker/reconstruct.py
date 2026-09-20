@@ -313,7 +313,31 @@ def resource_guard(output: Path, settings: dict):
         raise ValueError("Available memory fell below 512 MiB; stopped to protect the laptop")
 
 
-def process_limits(settings: dict):
+def arm_parent_death(expected_parent_pid: int, death_signal: int = signal.SIGTERM):
+    """Stop this Linux process if its supervising parent disappears.
+
+    prctl does not report a parent that died before the call, so checking the
+    expected PID after arming is essential. This protects direct children;
+    deployment-level cgroups are still needed to contain arbitrary descendants.
+    """
+    if sys.platform != "linux" or expected_parent_pid <= 0:
+        raise ValueError("Parent supervision requires Linux and a positive parent PID")
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    libc.prctl.restype = ctypes.c_int
+    if libc.prctl(1, int(death_signal), 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if os.getppid() != expected_parent_pid:
+        os.kill(os.getpid(), death_signal)
+        raise RuntimeError("Supervising parent changed before startup")
+
+
+def process_limits(settings: dict, parent_pid: int):
+    # Engine processes start a separate session; do not let that detach them
+    # from Python when it is killed without a chance to run normal cleanup.
+    arm_parent_death(parent_pid, signal.SIGKILL)
     import resource
     os.nice(10)
     resource.setrlimit(resource.RLIMIT_AS, (settings["memory_mib"] * MIB,) * 2)
@@ -332,9 +356,11 @@ def execute_stage(stage: dict, output: Path, settings: dict) -> dict:
     start = time.monotonic()
     record = {**stage, "state": "running", "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     log = output / f"{stage['name']}.log"
+    parent_pid = os.getpid()
     with log.open("wb") as stream:
         process = subprocess.Popen(stage["command"], cwd=output, stdout=stream, stderr=subprocess.STDOUT,
-                                   env=environment(), start_new_session=True, preexec_fn=lambda: process_limits(settings))
+                                   env=environment(), start_new_session=True,
+                                   preexec_fn=lambda: process_limits(settings, parent_pid))
         try:
             while process.poll() is None:
                 if time.monotonic() - start > settings["stage_seconds"]:
@@ -354,13 +380,22 @@ def execute_stage(stage: dict, output: Path, settings: dict) -> dict:
 
 def verify_versions(settings: dict, output: Path) -> dict:
     versions = {}
+    parent_pid = os.getpid()
     for tool in TOOLS:
         version = PINS["colmap" if tool == "colmap" else "blender" if tool == "blender" else "openmvs"]
         command = [tool, "--version" if tool == "blender" else "-h"]
         log = output / f"version-{tool}.log"
         with log.open("wb") as stream:
-            subprocess.run(command, cwd=output, env=environment(), stdout=stream, stderr=subprocess.STDOUT,
-                           timeout=10, check=False, preexec_fn=lambda: process_limits(settings))
+            process = subprocess.Popen(command, cwd=output, env=environment(), stdout=stream,
+                                       stderr=subprocess.STDOUT, start_new_session=True,
+                                       preexec_fn=lambda: process_limits(settings, parent_pid))
+            try:
+                process.wait(timeout=10)
+            except BaseException:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+                raise
         text = log.read_text(errors="replace")
         if not re.search(rf"(?<![\d.])v?{re.escape(version)}(?![\d.])", text):
             raise ValueError(f"{tool} must match pinned {version}; inspect {log.name}")
@@ -445,6 +480,12 @@ def run(source: Path, output: Path, frames: list[dict], settings: dict, restaura
 
 
 def main() -> int:
+    # The queue supervisor cancels with SIGTERM. Raising an interruption lets the
+    # current stage terminate its separate engine process group and persist state.
+    def interrupt(_signum, _frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, interrupt)
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--doctor", action="store_true")
@@ -453,6 +494,8 @@ def main() -> int:
     parser.add_argument("--input", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--restaurant", default="local-private")
+    parser.add_argument("--supervisor-pid", type=int,
+                        help="Linux parent PID whose death cancels this supervised --run")
     parser.add_argument("--max-images", type=int, default=24)
     parser.add_argument("--long-edge", type=int, default=1600)
     parser.add_argument("--memory-mib", type=int, default=1536)
@@ -463,6 +506,10 @@ def main() -> int:
     parser.add_argument("--openmvs-cuda-build", action="store_true", help="Use CPU mode -2 in a CUDA-enabled OpenMVS build")
     args = parser.parse_args()
     try:
+        if args.supervisor_pid is not None:
+            if not args.run:
+                parser.error("--supervisor-pid is only valid with --run")
+            arm_parent_death(args.supervisor_pid)
         if args.doctor:
             print(json.dumps(doctor(), indent=2))
             return 0

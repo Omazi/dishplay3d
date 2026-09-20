@@ -1,13 +1,17 @@
 # Native capture acceptance boundary
 
-This checkout provides browser photo capture usable on iOS Safari and Android Chrome over HTTPS. It does **not** contain installable Swift/RealityKit or Kotlin/ARCore applications. No native compilation, iPhone capture, Android capture or dense live point cloud has been verified.
+This checkout includes browser capture, an iOS SwiftUI/RealityKit app and an Android Kotlin/ARCore app. Sources and cloud build workflows are provided; a successful compiler result does not establish physical capture quality.
 
-The dossier's native apps remain required for the full product, and require a dedicated implementation:
+- [iOS implementation and build](native-ios.md): actual Object Capture guidance, volume and point-cloud view where supported; ordinary camera fallback, preserved images, ZIP export, independently checked local USDZ reconstruction and Quick Look. ARKit spatial guidance on unsupported Object Capture devices is still absent.
+- [Android implementation and build](native-android.md): runtime ARCore/camera checks, actual tracked points and anchored bounds, preserved image/pose/intrinsics records, export and ordinary camera fallback. Sparse tracking points are not a dense reconstruction.
+- Web `/capture`: real HTTPS camera and photo import, IndexedDB originals, resumable checksummed upload, immutable finalization and optional worker status. No invented native poses. Video sampling is not implemented.
 
-1. iOS: check `ObjectCaptureSession.isSupported` and reconstruction support separately; connect native capture view and point-cloud view to actual session state. Fall back to browser photos where unsupported.
-2. Android: runtime camera permission and ARCore availability; real anchors, bounded volume controls and tracked points. Depth only when the session reports support.
-3. Preserve image intrinsics, timestamps, coordinate conventions and segment boundaries after tracking loss. Validate reprojection before using poses in reconstruction.
-4. Pair to a dish through a short-lived single-use code; never put account secrets in the public QR.
-5. Test the full lifecycle including interruption, recovery, finalization, exported originals and upload resumption on physical phones.
+## Remaining integration and physical evidence
 
-Do not describe a browser framing guide as a spatial anchor, or photo counts as scene coverage. Do not use arbitrary sample 3D objects as proof of food reconstruction.
+1. Sign/install the iOS app with an Apple development account; install the CI-generated Android APK on a compatible device.
+2. Pair native captures to restaurant dishes with a short-lived single-use code and authenticated resumable upload. Current native export is manual; public menu QR codes contain no account credentials.
+3. Verify pose conventions, image orientation, intrinsics and tracking segment boundaries by reprojection before using native poses in reconstruction. The CPU worker currently calibrates from images.
+4. Exercise interruption, permission denial, finalization, original export and recovery on actual phones.
+5. Capture a real dish, reconstruct it, inspect textured GLB/USDZ and metric scale, then publish and scan the same QR on both platforms.
+
+No physical iPhone or Android was available during this build. A browser framing guide is not a spatial anchor, and photo counts do not measure geometric coverage. Synthetic geometry used by viewer tests is not evidence of food reconstruction.
