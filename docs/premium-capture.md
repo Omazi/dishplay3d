@@ -6,6 +6,16 @@ The redesign retains DishPlay's warm white, graphite, restrained blue and existi
 
 The homepage explains capture, editing/publication and the customer menu through keyboard-accessible tabs. Demo price changes are explicitly local examples, and the displayed QR opens the actual demo menu. Capture links open the real capture page. Reduced-motion preferences disable animations; the server-rendered page remains readable without JavaScript. No WebGL engine or 3D viewer is loaded for this presentation.
 
+## Mobile gallery and scroll presentation
+
+The previous 145%-wide mobile gallery clipped both side photographs: at 390 px, only about 34 px of each side card remained visible. The gallery now stays inside the screen. On mobile, a large main photo sits above two full side cards with visible captions. Desktop retains three columns, also within the viewport.
+
+The hero text enters in sequence, the photographs settle into place as they enter the screen, and scrolling advances the Capture/Create/Share explanation inside a sticky panel. Tabs also select chapters directly; interactive price/publication controls remain usable. A tap or keystroke gives manual controls priority until the next intentional swipe/wheel gesture or exit from the section; browser focus scrolling cannot replace the selected demo. Keyboard-focused controls also prevent the scroll handler from replacing the focused panel. The dark capture section reveals its three instructions individually.
+
+Scroll animation uses passive listeners and at most one scheduled animation frame per listener, without a permanent animation loop or a new animation dependency. Gallery transforms are written to a CSS custom property; React rerenders only when the selected chapter changes. The panel pins only when its measured height fits the viewport, so short screens, landscape, and enlarged content keep normal scrolling. Reduced motion disables pinning and transforms. No content is hidden when JavaScript is unavailable.
+
+The mobile presentation regression tests cover complete photo bounds (not just absence of page overflow), both languages at 320/375/390/430/768/1280 px, scroll-driven chapters, manual and keyboard controls, short/landscape screens, and changes to reduced-motion preferences. They run in Chromium and an iPhone-sized WebKit context on GitHub; WebKit emulation is not a physical iPhone test.
+
 ## Browser capture behaviour
 
 - Three selectable passes describe the sides (~30°), relief (~45°) and top (~65–80°). The angle is an instruction, not a measured phone pose. The plate remains still.

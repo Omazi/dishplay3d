@@ -66,15 +66,13 @@
   min-height: 44px;
 }
 .premium-food-gallery {
-  width: min(1390px, 110%);
-  margin: 56px 0 0;
+  width: min(1390px, calc(100% - 80px));
+  margin: 56px auto 0;
   display: grid;
   grid-template-columns: 0.75fr 1.45fr 0.75fr;
   gap: 22px;
   align-items: center;
   position: relative;
-  left: 50%;
-  transform: translateX(-50%);
 }
 .premium-food-gallery figure {
   margin: 0;
@@ -129,10 +127,10 @@
   height: 365px;
 }
 .food-left {
-  transform: rotate(-6deg) translateY(30px);
+  transform: translateY(30px);
 }
 .food-right {
-  transform: rotate(6deg) translateY(30px);
+  transform: translateY(30px);
 }
 .food-side figcaption {
   font-size: 12px;
@@ -597,20 +595,69 @@
     transform: none;
   }
 }
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) and (min-width: 900px) {
-    .premium-food-gallery .food-main {
-      animation: food-reveal linear both;
-      animation-timeline: view();
-      animation-range: entry 0% cover 45%;
+.gallery-motion .food-main {
+  transform: translateY(calc((1 - var(--gallery-progress, 1)) * 32px))
+    scale(calc(0.94 + var(--gallery-progress, 1) * 0.06));
+}
+.gallery-motion .food-left {
+  transform: translateY(calc((1 - var(--gallery-progress, 1)) * 70px))
+    rotate(calc((1 - var(--gallery-progress, 1)) * -4deg))
+    scale(calc(0.9 + var(--gallery-progress, 1) * 0.1));
+}
+.gallery-motion .food-right {
+  transform: translateY(calc((1 - var(--gallery-progress, 1)) * 100px))
+    rotate(calc((1 - var(--gallery-progress, 1)) * 4deg))
+    scale(calc(0.9 + var(--gallery-progress, 1) * 0.1));
+}
+.story-scroll-track {
+  overflow-anchor: none;
+}
+.story-sticky {
+  top: 112px;
+}
+.story-scroll-track[data-scroll='true'] .story-sticky {
+  position: sticky;
+}
+.story-scroll-progress {
+  height: 3px;
+  border-radius: 3px;
+  background: #e1e4da;
+  margin: 16px auto 0;
+  width: 96px;
+  overflow: hidden;
+  visibility: hidden;
+}
+.story-scroll-track[data-scroll='true'] .story-scroll-progress {
+  visibility: visible;
+}
+.story-scroll-progress span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transform-origin: left;
+  transform: scaleX(var(--story-progress, 0));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .premium-hero-copy > * {
+    animation: hero-arrive 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .premium-hero-copy h1 {
+    animation-delay: 0.08s;
+  }
+  .premium-hero-description {
+    animation-delay: 0.16s;
+  }
+  .premium-actions {
+    animation-delay: 0.24s;
+  }
+  @keyframes hero-arrive {
+    from {
+      opacity: 0;
+      transform: translateY(28px);
     }
-    @keyframes food-reveal {
-      from {
-        transform: translateY(20px) scale(0.94);
-      }
-      to {
-        transform: none;
-      }
+    to {
+      opacity: 1;
+      transform: none;
     }
   }
 }
@@ -658,17 +705,32 @@
     gap: 6px;
   }
   .premium-food-gallery {
-    width: 145%;
-    grid-template-columns: 0.45fr 1.4fr 0.45fr;
+    width: calc(100% - 40px);
+    max-width: 520px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: 'main main' 'left right';
     gap: 12px;
     margin-top: 35px;
   }
   .premium-food-gallery .food-main {
-    height: 340px;
+    grid-area: main;
+    height: 280px;
     border-radius: 18px;
   }
   .premium-food-gallery .food-side {
-    height: 250px;
+    height: clamp(155px, 45vw, 220px);
+    border-radius: 14px;
+    transform: none;
+  }
+  .premium-food-gallery .food-left {
+    grid-area: left;
+  }
+  .premium-food-gallery .food-right {
+    grid-area: right;
+  }
+  .gallery-motion .food-side {
+    transform: translateY(calc((1 - var(--gallery-progress, 1)) * 28px))
+      scale(calc(0.96 + var(--gallery-progress, 1) * 0.04));
   }
   .food-main figcaption {
     padding: 30px 23px 20px;
@@ -677,7 +739,10 @@
     font-size: 31px;
   }
   .food-side figcaption {
-    display: none;
+    display: block;
+    padding: 30px 12px 12px;
+    font-size: 11px;
+    line-height: 1.4;
   }
   .premium-proof {
     gap: 13px 18px;
@@ -720,6 +785,7 @@
     justify-content: space-between;
     padding: 4px;
     gap: 0;
+    margin-bottom: 14px;
   }
   .story-tabs button {
     gap: 6px;
@@ -732,36 +798,55 @@
   .story-panel {
     grid-template-columns: minmax(0, 1fr);
     border-radius: 22px;
-    min-height: 0;
+    min-height: 620px;
+    align-content: center;
+  }
+  .story-sticky {
+    top: 12px;
   }
   .story-text {
-    padding: 30px 25px 0;
+    padding: 22px 22px 0;
   }
   .story-index {
-    font-size: 39px;
-    margin-bottom: 20px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
   }
   .story-text h3 {
-    font-size: 32px;
+    font-size: 27px;
   }
   .story-text > p {
     font-size: 14px;
-    margin: 18px 0;
+    line-height: 1.55;
+    margin: 12px 0;
   }
   .story-text .story-footnote {
-    margin-block: 15px;
+    font-size: 10px;
+    margin-block: 6px;
   }
   .story-stage {
-    padding: 18px;
+    padding: 14px;
   }
   .story-capture {
-    padding: 17px;
+    padding: 14px;
   }
   .story-capture .capture-diagram {
-    height: 215px;
+    height: 140px;
   }
   .story-capture h4 {
-    font-size: 20px;
+    font-size: 17px;
+    min-height: 0;
+  }
+  .story-heights {
+    margin-top: 12px;
+  }
+  .story-heights button {
+    font-size: 16px;
+    padding-block: 8px;
+    min-height: 60px;
+  }
+  .story-capture > p {
+    margin-top: 10px;
   }
   .story-stage-top {
     font-size: 8px;
@@ -785,16 +870,32 @@
     max-width: 260px;
   }
   .story-menu > img {
-    height: 230px;
+    height: 120px;
   }
   .story-menu > div:last-child {
-    padding-left: 40px;
+    padding: 14px 14px 14px 40px;
   }
   .story-menu h4 {
-    font-size: 24px;
+    font-size: 21px;
+  }
+  .story-menu p {
+    margin-block: 8px;
+  }
+  .story-editor > img {
+    height: 110px;
   }
   .story-editor-body {
-    padding: 18px;
+    padding: 14px;
+  }
+  .story-editor-body > p {
+    margin-block: 6px 10px;
+  }
+  .story-editor-body h4 {
+    font-size: 23px;
+  }
+  .story-price {
+    padding-block: 7px;
+    margin-bottom: 8px;
   }
   .story-editor > .story-stage-top {
     padding-inline: 14px;
@@ -805,6 +906,10 @@
   .story-price output {
     min-width: 68px;
     font-size: 14px;
+  }
+  .story-price button {
+    width: 44px;
+    height: 44px;
   }
   .premium-capture-section {
     padding-block: 70px;
