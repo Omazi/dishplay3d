@@ -13,6 +13,7 @@ struct CaptureRecord: Codable, Identifiable {
     var error: String?
     var modelPath: String?
     var sourceVideoPath: String?
+    var videoPaths: [String]?
     var remoteScanId: String?
     var metricScaleVerified = false
     var physicallyReviewed = false
@@ -42,6 +43,13 @@ enum CaptureFiles {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(record).write(to: root(record).appendingPathComponent("capture.json"), options: .atomic)
+    }
+    static func latest(_ record: CaptureRecord) -> CaptureRecord {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let data = try? Data(contentsOf: root(record).appendingPathComponent("capture.json")),
+              let saved = try? decoder.decode(CaptureRecord.self, from: data) else { return record }
+        return saved
     }
     static func library() -> [CaptureRecord] {
         let decoder = JSONDecoder()

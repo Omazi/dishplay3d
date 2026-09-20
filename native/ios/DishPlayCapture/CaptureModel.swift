@@ -43,6 +43,16 @@ final class CaptureModel: ObservableObject {
     private var reconstruction: PhotogrammetrySession?
     private var reconstructionTask: Task<Void, Never>?
 
+    init() {
+        if let latest = library.first { open(latest) }
+    }
+    func reloadSavedRecord() {
+        library = CaptureFiles.library()
+        if let id = record?.id, let fresh = library.first(where: { $0.id == id }) {
+            record = fresh
+        }
+    }
+
     var busy: Bool { captureSession != nil || phase == .preparing || phase == .processing || exporting || showCamera }
     var savedModel: URL? {
         guard let record, let path = record.modelPath else { return nil }
@@ -74,6 +84,7 @@ final class CaptureModel: ObservableObject {
         } catch { fail(error); return nil }
     }
     func refreshAutomatic() {
+        reloadSavedRecord()
         guard let record else { return }
         imageCount = CaptureFiles.photos(record).count
         phase = .review
@@ -366,7 +377,7 @@ final class CaptureModel: ObservableObject {
 
     func open(_ saved: CaptureRecord) {
         guard !busy else { return }
-        record = saved
+        record = CaptureFiles.library().first(where: { $0.id == saved.id }) ?? saved
         dishReference = saved.dishReference
         imageCount = CaptureFiles.photos(saved).count
         phase = .review

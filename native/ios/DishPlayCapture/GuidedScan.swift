@@ -19,7 +19,7 @@ private struct FrameAnalysis {
     var hull: SilhouettePreview?
 }
 
-// Only one retained ARFrame and one serial image analysis at a time. No video recording.
+// One retained analysis frame; movie encoding admits at most one additional camera buffer.
 @MainActor
 final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDelegate, Identifiable {
     let id = UUID()
@@ -38,6 +38,13 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     @Published var nextSector: Int?
     @Published var guidanceArrow = "arrow.clockwise"
     @Published var error: String?
+    @Published var recordingSeconds = 0
+    @Published var recordingVideo = false
+    @Published var savingVideo = false
+    private var movie: ScanMovieRecorder?
+    private var movieStarted: Double?
+    private var movieFinalization: Task<Void, Never>?
+    private var backgroundSave: UIBackgroundTaskIdentifier = .invalid
     let camera = ARSCNView(frame: .zero)
     let preview = SCNScene()
     let record: CaptureRecord
@@ -92,7 +99,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         guard phase == .preparing, !configured, !stopped else { return }
         guard ARWorldTrackingConfiguration.isSupported else {
             phase = .failed
-            error = "Spatial tracking is unavailable on this device. Return to your dish and choose Film your dish under Other capture methods."
+            error = "Spatial tracking is unavailable on this device. Use Video only under Other capture methods; your PC can still reconstruct the saved views."
             return
         }
         Task {
@@ -111,6 +118,59 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             runSession(reset: true)
             beginDetection()
         }
+    }
+    private func recordMovie(_ frame: ARFrame) {
+        guard !savingVideo else { return }
+        if movie == nil {
+            let folder = CaptureFiles.root(record).appendingPathComponent("Movies", isDirectory: true)
+            do { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+            catch { self.error = "The video could not be saved. Your captured views remain available."; pause(); return }
+            let angle: CGFloat
+            switch camera.window?.windowScene?.interfaceOrientation ?? .portrait {
+            case .portrait: angle = .pi / 2
+            case .portraitUpsideDown: angle = -.pi / 2
+            case .landscapeLeft: angle = .pi
+            default: angle = 0
+            }
+            movie = ScanMovieRecorder(url: folder.appendingPathComponent(UUID().uuidString + ".mov"), transform: CGAffineTransform(rotationAngle: angle)) { [weak self] in
+                Task { @MainActor in
+                    self?.error = "The video could not be saved. Your captured views remain available."
+                    self?.pause()
+                }
+            }
+            movieStarted = frame.timestamp
+            recordingSeconds = 0
+        }
+        recordingSeconds = Int(frame.timestamp - (movieStarted ?? frame.timestamp))
+        if recordingSeconds >= 90 {
+            pause()
+            instruction = "Video segment saved. Resume to capture the missing areas."
+            return
+        }
+        if movie?.append(frame.capturedImage, timestamp: frame.timestamp) == true { recordingVideo = true }
+    }
+    private func finishMovie() {
+        guard let movie else { return }
+        self.movie = nil; movieStarted = nil; recordingVideo = false; savingVideo = true
+        // Give the small encoder queue time to finish when the app goes into the background.
+        backgroundSave = UIApplication.shared.beginBackgroundTask(withName: "Save scan video") { [weak self] in
+            Task { @MainActor in self?.endBackgroundSave() }
+        }
+        movieFinalization = Task {
+            defer { savingVideo = false; movieFinalization = nil; endBackgroundSave(); onSaved?() }
+            do {
+                if let url = try await movie.finish() {
+                    var current = CaptureFiles.latest(record)
+                    let path = "Movies/" + url.lastPathComponent
+                    current.sourceVideoPath = path
+                    current.videoPaths = (current.videoPaths ?? []) + [path]
+                    try CaptureFiles.save(current)
+                }
+            } catch { self.error = "The video could not be saved. Your captured views remain available." }
+        }
+    }
+    private func endBackgroundSave() {
+        if backgroundSave != .invalid { UIApplication.shared.endBackgroundTask(backgroundSave); backgroundSave = .invalid }
     }
     private func beginDetection() {
         phase = .detecting
@@ -142,10 +202,11 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         generation += 1
         camera.session.pause()
         phase = .paused
+        finishMovie()
         instruction = "Scan paused. Return to the same view, then resume."
     }
     func resume() {
-        guard configured, phase == .paused || phase == .review else { return }
+        guard configured, !savingVideo, phase == .paused || phase == .review else { return }
         generation += 1
         previousPose = nil
         runSession(reset: false)
@@ -157,6 +218,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         generation += 1
         camera.session.pause()
         phase = .review
+        finishMovie()
         previewRoot.removeAction(forKey: "scan-rotation")
         instruction = coverage.complete ? "Your dish has been scanned." : "Some views are missing. You can scan only the missing areas."
         savePreview()
@@ -167,6 +229,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         generation += 1
         camera.session.pause()
         camera.session.delegate = nil
+        finishMovie()
         onSaved?()
     }
     func sessionWasInterrupted(_ session: ARSession) { pause() }
@@ -174,10 +237,12 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     func session(_ session: ARSession, didFailWithError error: Error) {
         generation += 1
         phase = .failed
+        finishMovie()
         self.error = error.localizedDescription
         onSaved?()
     }
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        if phase == .detecting || phase == .scanning { recordMovie(frame) }
         guard phase == .detecting || phase == .scanning, !analyzing,
               frame.timestamp - lastAnalysis >= 0.35 else { return }
         canCenterManually = phase == .detecting && Date().timeIntervalSince(detectingSince) > 4
@@ -393,7 +458,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
             nextSector = coverage.nextNeeded(from: angle, direction: orbitDirection)
             updateOrbit()
             gatherPoints(frame, center: target)
-            var current = record
+            var current = CaptureFiles.latest(record)
             current.imageCount = CaptureFiles.photos(record).count
             current.state = "scanning"
             try CaptureFiles.save(current)
@@ -450,7 +515,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         instruction = "Continue slowly around the highlighted arc."
     }
     func restart() {
-        guard phase == .review || phase == .paused else { return }
+        guard !savingVideo, phase == .review || phase == .paused else { return }
         generation += 1
         camera.session.pause()
         do {
@@ -464,6 +529,11 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
                 try FileManager.default.moveItem(at: source, to: archive.appendingPathComponent(source.lastPathComponent))
                 try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
             }
+            var current = CaptureFiles.latest(record)
+            current.sourceVideoPath = nil; current.videoPaths = nil; current.imageCount = 0
+            current.state = "ready"
+            try CaptureFiles.save(current)
+            // Prior movie segments stay in Movies; restart never deletes originals.
             coverage = ScanCoverage(); progress = 0; target = nil; candidate = nil; startAngle = nil
             stableDetections = 0; lastAcceptedPosition = nil; previousPose = nil; lastViewAngle = nil; milestone = 0
             points.removeAll(); silhouette = nil; lastRaster = nil; lastProjection = nil; meshAnchors.removeAll()
@@ -671,6 +741,7 @@ struct ScanCameraView: UIViewRepresentable {
 
 struct GuidedScanScreen: View {
     @StateObject var scan: GuidedScan
+    let linked: Bool
     let onContinue: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -721,10 +792,16 @@ struct GuidedScanScreen: View {
                 HStack {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark").frame(width: 44, height: 44)
-                    }.accessibilityLabel("Close")
+                    }.accessibilityLabel("Close").disabled(scan.savingVideo)
                     Spacer()
                     VStack(spacing: 2) {
-                        Text("Scan your dish").font(.headline)
+                        Text("Film and scan my dish").font(.headline)
+                        if scan.recordingVideo {
+                            HStack(spacing: 5) {
+                                Circle().fill(.red).frame(width: 7, height: 7)
+                                Text("Recording"); Text(scan.recordingSeconds, format: .number).monospacedDigit(); Text("s")
+                            }.font(.caption)
+                        }
                         if scan.phase == .scanning || scan.phase == .review || scan.phase == .paused {
                             Text(scan.progress, format: .percent.precision(.fractionLength(0)))
                                 .font(.title3.monospacedDigit().bold())
@@ -794,7 +871,7 @@ struct GuidedScanScreen: View {
             } else { ProgressView("Locating the dish and table…") }
         case .scanning:
             VStack(spacing: 8) {
-                Text("Views are saved automatically").font(.caption).foregroundStyle(.secondary)
+                Text("Video and useful views are saved together").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Pause", systemImage: "pause") { scan.pause() }.buttonStyle(.bordered)
                     Spacer()
@@ -803,17 +880,18 @@ struct GuidedScanScreen: View {
             }
         case .paused:
             HStack {
-                Button("Resume scan") { scan.resume() }.buttonStyle(.borderedProminent)
+                Button("Resume scan") { scan.resume() }.buttonStyle(.borderedProminent).disabled(scan.savingVideo)
                 Button("Review scan") { scan.finish() }.buttonStyle(.bordered).disabled(scan.coverage.accepted < 8)
             }
         case .review:
             VStack(spacing: 10) {
-                Button("Continue", systemImage: "arrow.up.circle.fill") { onContinue(); dismiss() }
-                    .buttonStyle(.borderedProminent).disabled(scan.coverage.accepted < 8)
+                if scan.savingVideo { ProgressView("Saving your video…") }
+                Button(linked ? "Send and create my 3D dish" : "Save and link my dish", systemImage: "arrow.up.circle.fill") { onContinue(); dismiss() }
+                    .buttonStyle(.borderedProminent).disabled(scan.coverage.accepted < 8 || scan.savingVideo)
                 HStack {
                     if !scan.coverage.complete { Button("Scan a missing area") { scan.resume() } }
                     Button("Restart scan") { confirmRestart = true }
-                }.buttonStyle(.bordered).font(.callout)
+                }.buttonStyle(.bordered).font(.callout).disabled(scan.savingVideo)
             }
         case .failed:
             if AVCaptureDevice.authorizationStatus(for: .video) == .denied {

@@ -28,6 +28,15 @@ jobs:
         run: |
           swiftc native/ios/DishPlayCapture/ScanCoverage.swift native/ios/Tests/main.swift -o /tmp/dishplay-scan-tests
           /tmp/dishplay-scan-tests
+      - name: Verify durable scan receipts
+        run: |
+          swiftc -parse-as-library native/ios/DishPlayCapture/CaptureDelivery.swift native/ios/Tests/CaptureDeliveryTests.swift -o /tmp/dishplay-receipt-tests
+          /tmp/dishplay-receipt-tests
+      - name: Verify live camera movie recording
+        run: |
+          swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
+            native/ios/DishPlayCapture/ScanMovieRecorder.swift native/ios/Tests/ScanMovieTests.swift -o /tmp/dishplay-movie-tests
+          /tmp/dishplay-movie-tests
       - name: Verify real video frame extraction
         run: |
           swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \

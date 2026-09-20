@@ -6,7 +6,7 @@ import Security
 import UniformTypeIdentifiers
 
 struct NativeSnapshot: Codable {
-    struct Scan: Codable { let id: String; let state: String; let frameCount: Int }
+    struct Scan: Codable { let id: String; let state: String; let frameCount: Int; let dishId: String? }
     let scan: Scan
     let dishName: String
     let restaurantName: String
@@ -202,22 +202,31 @@ final class CaptureTransfer: ObservableObject {
     @Published var status = ""
     @Published var completed = 0
     @Published var total = 0
-    @Published var readyToFinalize = false
-    @Published var remoteState = ""
+    @Published var delivery = CaptureDelivery()
     @Published var modelURL: URL?
     var onModel: ((URL) -> Void)?
     private var task: Task<Void, Never>?
+    private var poll: Task<Void, Never>?
     private var selected: UUID?
 
     func select(_ record: CaptureRecord?) {
         guard !busy, selected != record?.id else { return }
+        poll?.cancel(); poll = nil
         selected = record?.id
-        snapshot = nil; modelURL = nil; remoteState = ""; completed = 0; total = 0; readyToFinalize = false; status = ""
+        snapshot = nil; modelURL = nil; completed = 0; total = 0; status = ""; code = ""
+        delivery = record.map { CaptureDelivery.read(from: CaptureFiles.root($0)) } ?? CaptureDelivery()
         guard let record else { return }
+        completed = delivery.sent; total = delivery.total
+        status = delivery.message ?? ""
+        if let path = record.modelPath {
+            let url = CaptureFiles.root(record).appendingPathComponent(path)
+            if FileManager.default.fileExists(atPath: url.path) { modelURL = url; delivery.stage = .ready }
+        }
         do {
             let credential = try CaptureKeychain.load(record.id)
             snapshot = credential?.snapshot
             if snapshot == nil, let pending = credential?.code { code = pending }
+            if snapshot != nil { refresh(record) }
         } catch { status = error.localizedDescription }
     }
     func receive(_ url: URL) {
@@ -231,39 +240,47 @@ final class CaptureTransfer: ObservableObject {
         guard !busy, snapshot == nil else { return }
         let normalized = code.replacingOccurrences(of: "-", with: "").replacingOccurrences(of: " ", with: "").uppercased()
         guard normalized.range(of: "^[A-F0-9]{16}$", options: .regularExpression) != nil else { status = "Enter the 16-character code from the dish page."; return }
-        run {
+        run(record) {
             var credential: CaptureCredential
             if let saved = try CaptureKeychain.load(record.id), saved.code == normalized { credential = saved }
             else {
                 credential = CaptureCredential(code: normalized, secret: try CaptureKeychain.randomSecret())
-                // Persist before requesting so a lost response can be retried with the same secret.
                 try CaptureKeychain.save(credential, id: record.id)
             }
             let received = try await NativeAPI.pair(credential)
-            credential.snapshot = received
-            try CaptureKeychain.save(credential, id: record.id)
-            self.snapshot = received
+            try Task.checkCancellation()
+            try self.accept(received, credential: &credential, record: record)
             onPaired(received.scan.id)
-            self.status = "Check the restaurant and dish below before sending. No photos have been sent."
+            self.update(.paired, "Check the dish name, then tap Send and create my 3D dish.", record: record)
         }
+    }
+    private func accept(_ received: NativeSnapshot, credential: inout CaptureCredential, record: CaptureRecord) throws {
+        credential.snapshot = received
+        try CaptureKeychain.save(credential, id: record.id)
+        snapshot = received
+        delivery.dishName = received.dishName
+        delivery.restaurantName = received.restaurantName
+        delivery.dishID = received.scan.dishId
+        delivery.checkedAt = Date()
     }
     func upload(_ record: CaptureRecord) {
         guard !busy, snapshot != nil else { return }
-        readyToFinalize = false
-        run {
+        run(record) {
             guard var credential = try CaptureKeychain.load(record.id) else { throw CaptureProblem("Pair this capture again from the website.") }
             var received = try await NativeAPI.snapshot(credential.secret)
-            self.snapshot = received
-            credential.snapshot = received
-            try CaptureKeychain.save(credential, id: record.id)
+            try Task.checkCancellation()
+            try self.accept(received, credential: &credential, record: record)
             if received.scan.state == "finalized" {
-                try await self.track(credential, record: record)
+                self.delivery.uploadedAt = self.delivery.uploadedAt ?? Date()
+                try await self.track(credential, record: record, start: true)
                 return
             }
             guard received.scan.state == "capturing" else { throw CaptureProblem("This series was cancelled. Your photos remain saved.") }
             let files = CaptureFiles.photos(record)
             guard !files.isEmpty, files.count <= 150 else { throw CaptureProblem("A transfer requires between 1 and 150 saved photos.") }
             self.total = files.count; self.completed = 0
+            self.delivery.total = files.count; self.delivery.sent = 0
+            self.update(.uploading, "Keep the app open until the upload is confirmed. Your originals stay on this iPhone.", record: record)
             var known = Set(received.hashes)
             for (index, file) in files.enumerated() {
                 try Task.checkCancellation()
@@ -271,84 +288,109 @@ final class CaptureTransfer: ObservableObject {
                 try Task.checkCancellation()
                 if !known.contains(hash) {
                     try await NativeAPI.upload(copy, hash: hash, secret: credential.secret)
+                    try Task.checkCancellation()
                     known.insert(hash)
                 }
                 self.completed = index + 1
+                self.delivery.sent = index + 1
+                self.persist(record)
             }
             received = try await NativeAPI.snapshot(credential.secret)
-            credential.snapshot = received
-            try CaptureKeychain.save(credential, id: record.id)
-            self.snapshot = received
-            self.readyToFinalize = received.scan.state == "capturing" && received.hashes.count >= 3
-            guard self.readyToFinalize else { throw CaptureProblem("More overlapping views are needed. Your photos remain saved.") }
-            try await NativeAPI.finalize(credential.secret)
-            received = try await NativeAPI.snapshot(credential.secret)
-            credential.snapshot = received
-            try CaptureKeychain.save(credential, id: record.id)
-            self.snapshot = received
-            self.readyToFinalize = false
-            try await self.track(credential, record: record)
-        }
-    }
-    func finalize(_ record: CaptureRecord) {
-        guard !busy, readyToFinalize else { return }
-        run {
-            guard var credential = try CaptureKeychain.load(record.id) else { throw CaptureProblem("Capture association unavailable.") }
-            try await NativeAPI.finalize(credential.secret)
-            let received = try await NativeAPI.snapshot(credential.secret)
-            credential.snapshot = received
-            try CaptureKeychain.save(credential, id: record.id)
-            self.snapshot = received
-            self.readyToFinalize = false
-            self.status = "Series finalized on the website. Review the photos there; a model still needs reconstruction and review."
-        }
-    }
-    private func track(_ credential: CaptureCredential, record: CaptureRecord) async throws {
-        var state = try await NativeAPI.reconstruction(credential.secret, start: true)
-        while true {
             try Task.checkCancellation()
-            guard let job = state.job else {
-                remoteState = "unavailable"
-                status = state.enabled ? "The scan is saved, but reconstruction could not start. Check the capture on DishPlay." : "Photos are saved. Connect the DishPlay service on your PC to enable reconstruction."
-                return
-            }
-            remoteState = job.state
-            switch job.state {
-            case "ready_for_review":
-                status = "Your 3D model is ready. Downloading…"
-                let url = try await NativeAPI.download(job.id, secret: credential.secret, record: record)
-                self.modelURL = url
-                onModel?(url)
-                status = "Your 3D model is ready. Rotate it and check the result."
-                return
-            case "failed", "cancelled":
-                status = "Reconstruction stopped. Your photos are saved. Check the result on DishPlay before trying again."
-                return
-            case "queued":
-                status = state.workerAvailable ? "Your scan is waiting for its turn on your PC." : "Waiting for your PC. Keep it on, connected, with DishPlay running and enough free memory."
-            default:
-                status = "Your PC is reconstructing the dish. You can check the result here or on DishPlay."
-            }
-            try await Task.sleep(for: .seconds(10))
-            state = try await NativeAPI.reconstruction(credential.secret)
+            guard received.hashes.count >= 3 else { throw CaptureProblem("More overlapping views are needed. Your photos remain saved.") }
+            try await NativeAPI.finalize(credential.secret)
+            received = try await NativeAPI.snapshot(credential.secret)
+            try Task.checkCancellation()
+            try self.accept(received, credential: &credential, record: record)
+            self.delivery.uploadedAt = Date()
+            self.update(.uploaded, "Your scan was received. Starting reconstruction on your PC…", record: record)
+            try await self.track(credential, record: record, start: true)
         }
+    }
+    /// Read-only recovery: opening an old scan never uploads files or starts another job.
+    func refresh(_ record: CaptureRecord?) {
+        guard let record, record.id == selected, !busy, snapshot != nil, modelURL == nil else { return }
+        run(record) {
+            guard var credential = try CaptureKeychain.load(record.id) else { return }
+            let received = try await NativeAPI.snapshot(credential.secret)
+            try Task.checkCancellation()
+            try self.accept(received, credential: &credential, record: record)
+            if received.scan.state == "finalized" {
+                self.delivery.uploadedAt = self.delivery.uploadedAt ?? Date()
+                try await self.track(credential, record: record, start: false)
+            } else {
+                self.persist(record)
+            }
+        }
+    }
+    private func track(_ credential: CaptureCredential, record: CaptureRecord, start: Bool) async throws {
+        let state = try await NativeAPI.reconstruction(credential.secret, start: start)
+        try Task.checkCancellation()
+        delivery.checkedAt = Date()
+        guard let job = state.job else {
+            update(.uploaded, state.enabled ? "Upload confirmed. Tap Check my 3D model to start reconstruction." : "Photos are saved. Connect the DishPlay service on your PC to enable reconstruction.", record: record)
+            return
+        }
+        delivery.jobID = job.id
+        delivery.failureCode = job.errorCode
+        switch job.state {
+        case "ready_for_review":
+            update(.downloading, "Your 3D model is ready. Downloading…", record: record)
+            let url = try await NativeAPI.download(job.id, secret: credential.secret, record: record)
+            try Task.checkCancellation()
+            self.modelURL = url
+            onModel?(url)
+            update(.ready, "Your 3D model is ready. Rotate it and check the result.", record: record)
+        case "failed", "cancelled":
+            update(.failed, "Reconstruction stopped. Your photos are saved. Check the result on DishPlay before trying again.", record: record)
+        case "queued":
+            update(.queued, state.workerAvailable ? "Your scan is waiting for its turn on your PC." : "Waiting for your PC. Keep it on, connected, with DishPlay running and enough free memory.", record: record)
+            schedule(record)
+        default:
+            update(.reconstructing, "Your PC is reconstructing the dish. You can close the app; the result is checked when you return.", record: record)
+            schedule(record)
+        }
+    }
+    private func schedule(_ record: CaptureRecord) {
+        poll?.cancel()
+        poll = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(10)) } catch { return }
+            guard let self, !Task.isCancelled, self.selected == record.id else { return }
+            self.refresh(record)
+        }
+    }
+    private func update(_ stage: CaptureDelivery.Stage, _ message: String, record: CaptureRecord) {
+        delivery.stage = stage; delivery.message = message; status = message
+        persist(record)
+    }
+    private func persist(_ record: CaptureRecord) {
+        do { try delivery.save(to: CaptureFiles.root(record)) }
+        catch { status = "Could not save transfer status. Your original capture remains on this iPhone." }
     }
     func forget(_ record: CaptureRecord) {
         guard !busy else { return }
+        poll?.cancel()
         do {
             try CaptureKeychain.remove(record.id)
-            snapshot = nil; code = ""; readyToFinalize = false
-            status = "Local association removed. Revoke its access on the website if needed. Saved photos remain in both places."
+            snapshot = nil; code = ""; delivery = CaptureDelivery()
+            update(.saved, "Local association removed. Saved originals remain on this iPhone.", record: record)
         } catch { status = error.localizedDescription }
     }
-    func pause() { task?.cancel() }
-    private func run(_ work: @escaping @MainActor () async throws -> Void) {
-        busy = true; status = ""
+    func pause() { poll?.cancel(); task?.cancel() }
+    private func run(_ record: CaptureRecord, _ work: @escaping @MainActor () async throws -> Void) {
+        poll?.cancel()
+        busy = true
         task = Task {
             defer { busy = false; task = nil }
             do { try await work() }
             catch {
-                status = Task.isCancelled ? "Transfer paused. Resume to skip photos already received. Originals are preserved." : error.localizedDescription
+                if Task.isCancelled, delivery.needsTracking, delivery.stage != .downloading {
+                    // Closing the app does not pause the PC's reconstruction.
+                    persist(record)
+                } else {
+                    let message = Task.isCancelled ? "Transfer paused. Resume to skip photos already received. Originals are preserved." : error.localizedDescription
+                    update(.paused, message, record: record)
+                }
             }
         }
     }
