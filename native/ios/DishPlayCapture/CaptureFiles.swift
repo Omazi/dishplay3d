@@ -12,6 +12,7 @@ struct CaptureRecord: Codable, Identifiable {
     var imageCount: Int = 0
     var error: String?
     var modelPath: String?
+    var sourceVideoPath: String?
     var remoteScanId: String?
     var metricScaleVerified = false
     var physicallyReviewed = false
