@@ -88,37 +88,37 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <Smartphone size={28} />
         </div>
         <div>
-          <p className="eyebrow">{t('CAPTURE SPATIALE · IPHONE')}</p>
-          <h2 id="native-capture-title">{t('Le volume. Les points. Votre plat.')}</h2>
+          <p className="eyebrow">{t('CAPTURE VIDÉO · IPHONE')}</p>
+          <h2 id="native-capture-title">{t('Filmez votre plat. Retrouvez-le en 3D.')}</h2>
           <p>
             {t(
-              'Dans l’app iPhone, appuyez sur Scanner le plat et suivez l’orbite. La capture choisit les bonnes vues et montre les points réellement observés.',
+              'Dans l’app iPhone, appuyez sur Filmer mon plat, puis Enregistrer. Tournez lentement autour de l’assiette et appuyez sur Arrêter. Aucune détection du plat n’est nécessaire pour démarrer.',
             )}
           </p>
         </div>
       </div>
       <ol className="native-capture-steps">
         <li>
-          <strong>{t('1. Capturez sur iPhone')}</strong>
+          <strong>{t('1. Associez ce plat')}</strong>
           <span>
             {t(
-              'Installez la dernière version de DishPlay Capture. Le scan guidé utilise ARKit, même sans Object Capture ; vous pouvez aussi importer des photos.',
+              'Mettez DishPlay Capture à jour dans TestFlight. Créez un code privé ici et saisissez-le dans l’app avant de filmer. Le code est valable 10 minutes.',
             )}
           </span>
         </li>
         <li>
-          <strong>{t('2. Associez ce plat')}</strong>
+          <strong>{t('2. Filmez pendant 20 à 40 secondes')}</strong>
           <span>
             {t(
-              'Créez un code privé valable 10 minutes et saisissez-le dans l’app. Vous pouvez associer le plat avant le scan.',
+              'Gardez le plat immobile et toute l’assiette dans le cadre. Tournez lentement avec une bonne lumière et terminez un peu plus haut. Vous pouvez aussi importer une vidéo ou des photos.',
             )}
           </span>
         </li>
         <li>
-          <strong>{t('3. Vérifiez puis envoyez')}</strong>
+          <strong>{t('3. Retrouvez le résultat')}</strong>
           <span>
             {t(
-              'Continuez après le scan : l’app envoie les vues, votre PC reconstruit le plat et le modèle revient dans l’app. Les originaux restent sur l’iPhone.',
+              'L’app prépare les photos et les envoie au plat associé. Laissez votre PC allumé pour le calcul, puis vérifiez le modèle dans l’app ou sur le site. La vidéo originale reste sur l’iPhone.',
             )}
           </span>
         </li>

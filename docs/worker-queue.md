@@ -1,6 +1,6 @@
 # Opt-in PostgreSQL reconstruction worker
 
-> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
+> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the current app uses simple video capture, automatic photo preparation and queue submission, and private result downloads; ARKit capture remains an advanced option. Physical food reconstruction acceptance is still required.
 
 The web application now has a durable queue and an independently started Linux worker. The feature is **off by default**. No engine is launched by opening a menu, editing a price, viewing 3D, or running the Next.js server. No paid compute is provisioned.
 

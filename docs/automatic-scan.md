@@ -47,4 +47,8 @@ Actual execution exposed and fixed two OpenMVS interface/export issues: mesh sta
 
 After resuming from the computed intermediates, every stage executed successfully and both final files passed structural checks and Blender reimport checks: GLB 10,310,168 bytes and USDZ 8,774,527 bytes. The export report records 43,404 faces and a readable texture in both formats. Local evidence is private under `.data/worker-validation/run-01/` (the original failure logs and continuation reports are retained). This is a building reference test; it does not establish food fidelity, metric scale, or iPhone Quick Look behavior.
 
-The [web validation and deployment](https://github.com/Omazi/dishplay3d/actions/runs/35532964910) passed all 23 browser checks, including FR/EN, three original photo effects, three real illustrative GLBs, mobile layout and native transfer. [TestFlight 0.2.0 (3.1)](testflight.md) is available to the existing internal group.
+The [web validation and deployment](https://github.com/Omazi/dishplay3d/actions/runs/35532964910) passed all 23 browser checks, including FR/EN, three original photo effects, three real illustrative GLBs, mobile layout and native transfer. [TestFlight 0.3.0 (5.1)](testflight.md) is available to the existing internal group.
+
+## Video release evidence
+
+[TestFlight 0.3.0 (5.1)](https://github.com/Omazi/dishplay3d/actions/runs/35536319612), source `b03d671`, passed real movie extraction tests, unsigned and signed Xcode 26.3 archives, resource validation and Apple upload. Apple reports build `733cdfa6-e889-4d15-9285-90312db794ce` as `VALID` / `IN_BETA_TESTING`. It is assigned to the existing internal iPhone group with FR/EN notes and automatic notifications disabled. Physical camera operation and reconstruction of a real dish remain acceptance checks.

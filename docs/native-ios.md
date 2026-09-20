@@ -1,65 +1,50 @@
 # iOS capture app
 
-> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
+Source: `native/ios`. iOS/iPadOS 17 or later. DishPlay Capture is the website's companion for creating captures; the restaurant account and public menu remain on the website.
 
-Source: `native/ios`. Deployment target: iOS/iPadOS 17.0 or later. The primary flow uses ARKit and Vision. Apple's on-device photogrammetry is an optional advanced path on supported hardware; PC reconstruction is the default. Restaurant pairing is separate from web login.
+## Current capture flow
 
-## Build and install
+Version 0.3 makes **Film your dish** the primary action. It uses a rear-camera video recording, with **Record** and **Stop and use video** fixed at the bottom of the screen. Starting does not depend on Object Capture compatibility, ARKit tracking, foreground recognition or table detection. Instructions and errors are available in French and English.
 
-**Version 0.2.0 (build 3.1) is available for internal TestFlight testing.** The [signed release workflow passed](https://github.com/Omazi/dishplay3d/actions/runs/35532454106) for source `61948e6` on 2026-09-20 using Xcode 26.3 and the iOS 26.2 SDK. Apple reports `VALID` / `IN_BETA_TESTING`. The build is assigned to **DishPlay - Tests iPhone**, with French and English test notes and automatic notifications disabled. Existing testers can update in TestFlight; see [installation steps](testflight.md#sur-liphone).
+Keep the dish still and well lit, walk slowly around the plate for about 20–40 seconds, finish slightly higher, and stop. Recording has no audio input and stops at 60 seconds or 180 MiB. Camera permission is requested when opening capture; denial offers Settings and leaves video/photo import available.
 
-All compilation and signing ran on hosted Macs with one Xcode build job. The Linux laptop has no Xcode or Apple SDK. Installation, camera behavior and reconstruction on a physical device remain unverified. The separate `iOS unsigned build` workflow still provides compilation evidence; its unsigned artifact cannot be installed directly on an iPhone.
+The original video is saved in Documents/Captures. AVAssetImageGenerator sequentially prepares at most 24 upright JPEGs, 1600 px on their longest edge. Basic sharpness, exposure and near-duplicate checks require at least eight usable views. These checks do not measure angular coverage or guarantee a reconstructable dish. The saved original can be replayed, exported in the capture ZIP, or used to retry interrupted preparation. Failed extraction does not expose partial images to upload.
 
-On a Mac with a current stable Xcode and [XcodeGen 2.46.0+](https://github.com/yonaskolb/XcodeGen/releases/tag/2.46.0):
+**Use an existing video** uses file-based PhotosPicker transfer, limited to 250 MiB and 5–90 seconds; it does not read the entire movie into memory. Photo import is also available. Only JPEGs are uploaded, not the video. Existing capture records remain readable.
+
+The previous ARKit/Vision scanner is available under **Advanced spatial scan**. It uses detected table/foreground positions, accepted camera angles and actual observed points. Its recognition gates can be unsuitable for some scenes; video mode bypasses those gates. Apple on-device USDZ reconstruction remains an optional advanced action only when `PhotogrammetrySession.isSupported`. PC reconstruction is the default. See [the complete flow and limits](automatic-scan.md).
+
+## Pairing and reconstruction
+
+Create a private code on a saved dish's website capture page and link it in the app. When the dish is already linked, successful video preparation starts image upload and reconstruction automatically. Otherwise, the capture remains local until linked and sent. Pairing credentials stay in the device-only Keychain and never enter exported ZIP files.
+
+Photo upload is serial, checksummed and resumable. Backgrounding pauses transfer; return to the saved capture to resume. The PC consumes the durable reconstruction queue while awake and connected, under its existing one-CPU / 1.5 GiB hard RAM limit. Jobs wait when the PC is offline or memory is insufficient. The app verifies USDZ size and SHA-256 before opening the result in Quick Look. The website also provides the textured GLB. Publishing remains a separate review action.
+
+## Build, tests and TestFlight
+
+The [TestFlight guide](testflight.md) records the currently distributed build and installation steps. The manual [release workflow](../.github/workflows/testflight.yml) runs tests and an unsigned archive, then signs, validates and uploads the IPA. Existing signing material is reused; temporary secrets and the runner's signing keychain are removed after the job.
+
+All compilation runs on hosted Macs with one Xcode build job, not on the 8 GB Linux laptop. The video suite encodes and decodes real MOV files and checks orientation, bounded frame count, rejection of static/dark/short movies, source preservation, staging cleanup and protection against overwriting existing photos. Spatial coverage tests remain in place. Neither suite exercises a physical camera.
+
+On a Mac with Xcode 26.3 and XcodeGen 2.46.0:
 
 ```bash
 cd native/ios
 xcodegen generate --spec project.yml
 xcodebuild -project DishPlayCapture.xcodeproj -scheme DishPlayCapture \
-  -configuration Debug -destination 'generic/platform=iOS' \
+  -configuration Release -destination 'generic/platform=iOS' \
   -derivedDataPath build -jobs 1 CODE_SIGNING_ALLOWED=NO build
-open DishPlayCapture.xcodeproj
 ```
 
-For installation, select your own development team in Signing & Capabilities, choose a unique bundle identifier if necessary, connect the test iPhone/iPad, select it as the run destination and build/run. No team, certificate, provisioning profile or paid subscription is embedded. Camera and reconstruction capabilities still need runtime checks on the actual device.
+The unsigned artifact cannot be installed directly on an iPhone; use TestFlight or a development-signed build.
 
-## TestFlight distribution
+## Physical acceptance
 
-The manual [iOS TestFlight workflow](../.github/workflows/testflight.yml) verifies an unsigned Release archive, then signs with the configured distribution identity and exports/uploads an IPA. It uses a hosted Mac, one Xcode build job and temporary keychain storage. The repository's `testflight` environment is configured for the `main` branch; credentials are stored as encrypted GitHub secrets. See [the TestFlight setup guide](testflight.md) for release evidence, installation and future account setup.
-
-## Implemented flow
-
-- Ask for camera permission only after a capture button. If denied, offer Settings and keep saved captures.
-- Check `ObjectCaptureSession.isSupported` **before constructing a session**. On supported hardware, show genuine `ObjectCaptureView` spatial volume controls and `ObjectCapturePointCloudView` observations.
-- Wait for SDK states. `startDetecting()` returning `false` leaves detection unstarted and displays recovery guidance. Native controls support volume reset, capture, pause/resume, another pass at a different height, finishing, and cancellation. Food is never flipped.
-- Display actual SDK photo counts, feedback and scan-pass completion. No random points, invented poses or timer-driven coverage exist. SDK tracking and reconstruction quality remain hardware acceptance items.
-- Wait for `.completed` before tearing down the capture session or offering reconstruction. Leaving the app pauses capture; the user chooses Resume. A failed/interrupted spatial session gets a new capture folder instead of combining independent coordinate frames.
-- Unsupported Object Capture devices can use `UIImagePickerController` for a sequence of ordinary photos. This path deliberately has no spatial anchor, depth, intrinsics or point-cloud claim. JPEGs are encoded from the captured image; it is not a sensor RAW capture mode.
-- Check `PhotogrammetrySession.isSupported` separately. An explicit action requests a real `.reduced` USDZ from saved images, shows only SDK progress, and handles completion/cancellation/errors. Each reconstruction attempt writes a new output directory; a failure never overwrites the last saved model.
-- Inspect the actual model through Quick Look. A generated model is marked for human review; metric scale and food fidelity are not certified automatically. **No GLB export is claimed by this app.** Convert and validate GLB separately.
-- Store captures in Documents/Captures with originals, checkpoints and metadata. Reopen saved captures, export a ZIP containing actual photos with SHA-256 hashes, and export the generated USDZ through the Files picker as a copy. No automatic cleanup deletes originals.
-
-## Account and worker boundary
-
-The optional dish reference remains a local label. The separate **Pair with website** section now claims a private, single-use code created for a saved dish in the restaurant website. Capture first, then generate the ten-minute code. Confirm the returned restaurant and dish before sending. The native capability only permits that capture’s status, image upload and finalization; it cannot access the restaurant account or publish its menu.
-
-Credentials and pending claim retries live in the device-only Keychain, never in Documents or exported ZIPs. Uploads use one orientation-corrected JPEG working copy at a time (1920 px long edge, at most 3 MiB), cached in Application Support by original SHA-256. Originals, HEIC/depth/checkpoints and the local USDZ are retained unchanged. The server returns received hashes; resuming skips identical bytes. Backgrounding pauses transfer; reopen the saved series and resume. See [the pairing protocol and operator flow](native-pairing.md).
-
-Capture guidance now uses three non-flipping passes. The SDK’s `userCompletedScanPass` event pauses at each completed pass; the next button resets the native dial for the new height. Suggested 30°/45°/65–80° angles are coaching, not measured coverage. Manual early finishing remains possible. Native UI guidance is available in French and English.
-
-Object Capture can save HEIC images and associated depth/checkpoint data. The standalone Python worker currently accepts JPEG/PNG; retain the original native folder, and create an explicitly converted JPEG working set before using that worker. On compatible devices, local Apple reconstruction uses the original images directly. Do not rename HEIC files to `.jpg`.
-
-The fallback path does not implement an ARKit anchored volume. This is a real photo-capture fallback, not native AR parity. Photo-library/video import, automatic USDZ/GLB upload, reconstruction checkpoints across app termination, native ARKit fallback, image-quality scoring, automatic crop/scale calibration, public publishing, and automated physical-camera tests remain outstanding.
-
-## Physical acceptance required
-
-Use one supported Object Capture device and an unsupported iPhone if available. Record device, OS and capture mode. Test permission refusal/recovery, native volume placement, handle adjustment, one stationary dish at multiple heights, genuine observed points, pause/resume, background interruption, cancellation, disk-full handling, saved-file export, reconstruction failure and preservation of the previous model. Validate the resulting USDZ in Quick Look and compare a measured plate dimension. Repeat the complete publication/QR flow using the web app and an Android phone. A simulator or unsigned build cannot satisfy these checks.
+On a real iPhone, test camera permission refusal/recovery, preview orientation, start/stop, a small screen with large text, leaving the app during recording, disk-full handling, movie import, original playback, retry, pairing, transfer interruption and result download. Capture a real dish, reconstruct it, and inspect surface fidelity and scale before publishing. A successful archive and reference reconstruction do not establish food quality or an easy physical capture experience.
 
 ## API references
 
-- [ObjectCaptureSession](https://developer.apple.com/documentation/realitykit/objectcapturesession), including its support check and asynchronous state updates.
-- [startDetecting()](<https://developer.apple.com/documentation/realitykit/objectcapturesession/startdetecting()>) and [finish()](<https://developer.apple.com/documentation/realitykit/objectcapturesession/finish()>) state preconditions.
-- [ObjectCaptureView](https://developer.apple.com/documentation/realitykit/objectcaptureview) and [ObjectCapturePointCloudView](https://developer.apple.com/documentation/realitykit/objectcapturepointcloudview).
-- [Meet Object Capture for iOS](https://developer.apple.com/videos/play/wwdc2023/10191/) explains the capture lifecycle, non-flipping passes and reduced-detail on-device reconstruction.
-- [PhotogrammetrySession](https://developer.apple.com/documentation/realitykit/photogrammetrysession) and [modelFile request](<https://developer.apple.com/documentation/realitykit/photogrammetrysession/request/modelfile(url:detail:geometry:)>).
-- [File coordination for uploading](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/foruploading) creates a ZIP snapshot of a directory; [document export as a copy](<https://developer.apple.com/documentation/uikit/uidocumentpickerviewcontroller/init(forexporting:ascopy:)>) preserves the original.
+- [AVCaptureMovieFileOutput](https://developer.apple.com/documentation/AVFoundation/AVCaptureMovieFileOutput).
+- [AVAssetImageGenerator](https://developer.apple.com/documentation/avfoundation/avassetimagegenerator).
+- [FileRepresentation](https://developer.apple.com/documentation/coretransferable/filerepresentation).
+- [Photographs for Object Capture](https://developer.apple.com/documentation/realitykit/capturing-photographs-for-realitykit-object-capture/).
