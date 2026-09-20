@@ -12,9 +12,10 @@ import {
 } from 'lucide-react';
 import { Footer, Header } from '@/components/brand';
 import { ProductStory, RevealMotion } from '@/components/product-story';
-import { ModelShowcase } from '@/components/model-showcase';
+import { PhotoGallery, PhotoShowcase } from '@/components/photo-showcase';
 import QRCode from 'qrcode';
 import '../premium.css';
+import '../showcase.css';
 
 export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -32,63 +33,30 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
           <div className="container premium-hero-copy">
             <p className="eyebrow">
               <span className="tiny-dot" />
-              {t('VOTRE CARTE. UNE NOUVELLE DIMENSION.')}
+              {t('LA CARTE QUI DONNE ENVIE')}
             </p>
             <h1>
-              {t('Le goût.')}
+              {t('Votre cuisine.')}
               <br />
-              <span>{t('Sous un nouvel angle.')}</span>
+              <span>{t('Une nouvelle dimension.')}</span>
             </h1>
             <p className="premium-hero-description">
-              {t('Faites découvrir vos plats avant la première bouchée.')}
+              {t('Une carte aussi remarquable que ce que vous servez.')}
               <br />
-              {t('De votre cuisine à leur écran, avec DishPlay.')}
+              {t('Photographies immersives. Plats en 3D. Un simple QR.')}
             </p>
             <div className="premium-actions">
               <Link className="button button-blue" href="/signup">
                 {t('Créer ma carte')}
                 <ArrowUpRight size={18} />
               </Link>
-              <a className="text-button" href="#comment-ca-marche">
-                {t('Voir comment ça marche')}
+              <a className="text-button" href="#experience-3d">
+                {t('Découvrir l’expérience')}
                 <ArrowDown size={17} />
               </a>
             </div>
           </div>
-          <div className="premium-food-gallery" aria-label={t('Photographies de présentation')}>
-            <figure className="food-side food-left">
-              <img
-                src="/images/salad.jpg"
-                width="700"
-                height="900"
-                alt={t('Une salade, photographie d’illustration')}
-              />
-              <figcaption>03 / {t('La fraîcheur.')}</figcaption>
-            </figure>
-            <figure className="food-main">
-              <img
-                src="/images/burger.jpg"
-                width="900"
-                height="1100"
-                fetchPriority="high"
-                alt={t('Un burger photographié, exemple de présentation d’un plat')}
-              />
-              <figcaption>
-                <span>{t('Le goût commence ici.')}</span>
-                <strong>{t('L’envie se voit.')}</strong>
-                <span>{t('PHOTOGRAPHIE D’ILLUSTRATION')}</span>
-              </figcaption>
-            </figure>
-            <figure className="food-side food-right">
-              <img
-                src="/images/pasta.jpg"
-                width="700"
-                height="900"
-                alt={t('Photographie illustrative d’un plat de pâtes')}
-              />
-              <figcaption>02 / {t('Le savoir-faire.')}</figcaption>
-            </figure>
-          </div>
+          <PhotoGallery />
           <div className="premium-proof container">
             <span>
               <Camera size={18} />
@@ -117,7 +85,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
             )}
           </p>
         </section>
-        <ModelShowcase />
+        <PhotoShowcase />
         <ProductStory qr={qr} />
         <section className="premium-capture-section">
           <div className="container premium-capture-layout">
@@ -130,7 +98,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
               </h2>
               <p>
                 {t(
-                  'Trois hauteurs. Des petits pas. Une pause à chaque vue. Le guide vous accompagne sans vous demander de deviner la suite.',
+                  'Dans l’app iPhone, suivez une orbite en montant doucement le téléphone. Les vues utiles sont sélectionnées automatiquement.',
                 )}
               </p>
               <Link className="button button-white" href="/capture">
@@ -147,13 +115,13 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
                 ],
                 [
                   '02',
-                  'Tournez. Faites une pause.',
-                  'Gardez le plat entier dans le cadre. La lumière, la stabilité et les détails de l’image vous donnent des repères.',
+                  'Tournez. Le scan vous guide.',
+                  'Gardez le plat entier dans le cadre. L’orbite se remplit à mesure que de nouvelles vues sont acceptées.',
                 ],
                 [
                   '03',
-                  'Montez. Puis recommencez.',
-                  'Capturez les côtés, les reliefs, puis le dessus. Revoyez les prises signalées avant de transférer votre série.',
+                  'Validez. Retrouvez votre modèle.',
+                  'Complétez les zones manquantes, puis continuez. Les images partent vers votre PC et le modèle revient dans l’app.',
                 ],
               ].map(([number, title, description]) => (
                 <article key={number} data-reveal>
@@ -191,7 +159,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
               <h3>{t('Un modèle, une étape en plus.')}</h3>
               <p>
                 {t(
-                  'Une série de photos ne devient pas automatiquement un modèle 3D. La reconstruction est séparée. Vous pouvez aussi importer un modèle GLB/USDZ validé et le proposer sur votre carte.',
+                  'Après l’envoi, votre PC calcule le modèle 3D. Vérifiez le résultat avant de le proposer sur votre carte. Vous pouvez aussi importer un modèle GLB/USDZ existant.',
                 )}
               </p>
             </article>

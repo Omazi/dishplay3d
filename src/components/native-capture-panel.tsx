@@ -92,7 +92,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <h2 id="native-capture-title">{t('Le volume. Les points. Votre plat.')}</h2>
           <p>
             {t(
-              'Dans l’app iPhone, ajustez le volume autour du plat puis suivez trois passages. Les points affichés viennent des observations réelles du téléphone.',
+              'Dans l’app iPhone, appuyez sur Scanner le plat et suivez l’orbite. La capture choisit les bonnes vues et montre les points réellement observés.',
             )}
           </p>
         </div>
@@ -102,7 +102,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('1. Capturez sur iPhone')}</strong>
           <span>
             {t(
-              'App DishPlay Capture installée requise. Elle vérifie la compatibilité Object Capture ; sinon, les photos restent disponibles.',
+              'Installez la dernière version de DishPlay Capture. Le scan guidé utilise ARKit, même sans Object Capture ; vous pouvez aussi importer des photos.',
             )}
           </span>
         </li>
@@ -110,7 +110,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('2. Associez ce plat')}</strong>
           <span>
             {t(
-              'Une fois la capture enregistrée sur l’iPhone, créez un code privé valable 10 minutes. Il associe cette série au plat.',
+              'Créez un code privé valable 10 minutes et saisissez-le dans l’app. Vous pouvez associer le plat avant le scan.',
             )}
           </span>
         </li>
@@ -118,7 +118,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('3. Vérifiez puis envoyez')}</strong>
           <span>
             {t(
-              'Confirmez le plat dans l’app et envoyez les photos. Une interruption reprend sans doublons. Les originaux restent sur l’iPhone.',
+              'Continuez après le scan : l’app envoie les vues, votre PC reconstruit le plat et le modèle revient dans l’app. Les originaux restent sur l’iPhone.',
             )}
           </span>
         </li>

@@ -162,6 +162,7 @@ export async function enqueueReconstruction(
   actorId: string,
   scanIdValue: unknown,
   settingsValue: unknown = {},
+  allowOffline = false,
 ) {
   const scanId = idField(scanIdValue, 'Capture ID');
   const settings = normalizeSettings(settingsValue);
@@ -209,6 +210,7 @@ export async function enqueueReconstruction(
       );
     const workers = await freshWorkers(tx);
     if (
+      !allowOffline &&
       !workers.some((worker) =>
         workerCanRun(worker.capabilities as unknown as WorkerCapabilities, settings),
       )

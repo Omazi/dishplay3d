@@ -1,5 +1,7 @@
 # Opt-in PostgreSQL reconstruction worker
 
+> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the new app uses ARKit automatic capture, automatic queue submission and private result downloads. Physical food reconstruction acceptance is still required.
+
 The web application now has a durable queue and an independently started Linux worker. The feature is **off by default**. No engine is launched by opening a menu, editing a price, viewing 3D, or running the Next.js server. No paid compute is provisioned.
 
 The queue state/fencing tests run against an isolated PostgreSQL-compatible PGlite database. They do not validate the COLMAP/OpenMVS/Blender pipeline, reconstruction fidelity, physical scale, or iPhone/Android output. The real engines have not been executed in this delivery environment. See [reconstruction.md](./reconstruction.md) for engine setup, pins, licenses and the separate real-dish acceptance work.

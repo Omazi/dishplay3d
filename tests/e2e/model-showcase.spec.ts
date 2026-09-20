@@ -1,14 +1,13 @@
 import { test, expect } from '@playwright/test';
 import type { ModelViewerElement } from '@google/model-viewer';
 
-// CI renders WebGL in software; allow shader compilation within the UI's 30s limit.
 const modelTimeout = 25_000;
-
-test('homepage loads real 3D only on demand and supports keyboard views with reduced motion', async ({
+test('three original photos have interactive relief; all three illustrative models load only on demand', async ({
   page,
 }) => {
-  const models: string[] = [];
-  const errors: string[] = [];
+  test.setTimeout(120_000);
+  const models: string[] = [],
+    errors: string[] = [];
   page.on('request', (request) => {
     if (/\.(glb|usdz)(\?|$)/.test(request.url())) models.push(request.url());
   });
@@ -17,64 +16,71 @@ test('homepage loads real 3D only on demand and supports keyboard views with red
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/en');
   const section = page.locator('#experience-3d');
-  await section.scrollIntoViewIfNeeded();
-  await expect(section.getByRole('img')).toBeVisible();
   expect(models).toEqual([]);
   expect(await page.evaluate(() => !!customElements.get('model-viewer'))).toBe(false);
-  await section.getByRole('button', { name: 'Explore in 3D' }).click();
-  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready', {
-    timeout: modelTimeout,
-  });
-  const viewer = section.locator('model-viewer');
-  expect(await viewer.evaluate((element) => (element as ModelViewerElement).loaded)).toBe(true);
-  expect(await viewer.evaluate((element) => (element as ModelViewerElement).autoRotate)).toBe(
-    false,
+  for (const [name, id] of [
+    ['The burger', 'burger'],
+    ['The pasta', 'pasta'],
+    ['The salad', 'salad'],
+  ]) {
+    await section.getByRole('button', { name: new RegExp(name + '$') }).click();
+    await section.getByRole('button', { name: 'Explore this photo', exact: true }).click();
+    await expect(section.locator('.photo-scene')).toHaveAttribute('data-status', 'ready');
+    await expect(section.locator('.photo-source')).toHaveAttribute('src', `/images/${id}.jpg`);
+    const canvas = section.locator('canvas');
+    const before = await canvas.screenshot();
+    await section.getByRole('slider').fill('85');
+    await expect.poll(async () => !(await canvas.screenshot()).equals(before)).toBe(true);
+    await section.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(canvas).toHaveCount(0);
+  }
+  expect(models).toEqual([]);
+  await section.getByRole('button', { name: '360° view', exact: true }).click();
+  for (const [name, id] of [
+    ['The burger', 'burger'],
+    ['The pasta', 'pasta'],
+    ['The salad', 'salad'],
+  ]) {
+    await section.getByRole('button', { name: new RegExp(name + '$') }).click();
+    await expect(section.locator('.dish-model')).toHaveAttribute('data-status', 'ready', {
+      timeout: modelTimeout,
+    });
+    const viewer = section.locator('model-viewer');
+    expect(await viewer.evaluate((el) => (el as ModelViewerElement).loaded)).toBe(true);
+    expect(await viewer.evaluate((el) => (el as ModelViewerElement).autoRotate)).toBe(false);
+    await expect(viewer).toHaveAttribute('src', `/models/${id}-illustration.glb`);
+    await expect(section.getByText('ILLUSTRATIVE 3D MODEL', { exact: true })).toBeVisible();
+    await expect(section.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
+  }
+  expect(models.every((url) => /\/models\/(burger|pasta|salad)-illustration\.glb$/.test(url))).toBe(
+    true,
   );
-  expect(models).toHaveLength(1);
-  expect(models[0]).toContain('/models/avocado-demo.glb');
-  await section.getByRole('button', { name: 'Side view' }).focus();
-  await page.keyboard.press('Enter');
-  await expect(section.getByRole('button', { name: 'Side view' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect
-    .poll(() =>
-      viewer.evaluate((element) => (element as ModelViewerElement).getCameraOrbit().theta),
-    )
-    .toBeCloseTo((65 * Math.PI) / 180, 2);
-  await section.getByRole('button', { name: 'Top view' }).click();
-  await expect
-    .poll(() => viewer.evaluate((element) => (element as ModelViewerElement).getCameraOrbit().phi))
-    .toBeCloseTo((25 * Math.PI) / 180, 2);
+  await section.getByRole('button', { name: 'Photo with depth', exact: true }).click();
+  await expect(section.locator('model-viewer')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await section.getByRole('button', { name: 'Back to image' }).click();
-  await expect(viewer).toHaveCount(0);
-  await expect(section.getByRole('img')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('rotation pauses off screen and dragging lets the visitor control the model', async ({
-  page,
-}) => {
+test('rotation pauses off screen and dragging gives control to the visitor', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   const section = page.locator('#experience-3d');
-  await section.getByRole('button', { name: 'Explorer en 3D' }).click();
-  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready', {
+  await section.getByRole('button', { name: 'Vue à 360°', exact: true }).click();
+  await expect(section.locator('.dish-model')).toHaveAttribute('data-status', 'ready', {
     timeout: modelTimeout,
   });
   const viewer = section.locator('model-viewer');
+  await viewer.scrollIntoViewIfNeeded();
   await expect
-    .poll(() => viewer.evaluate((element) => (element as ModelViewerElement).autoRotate))
+    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).autoRotate))
     .toBe(true);
   await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
   await expect
-    .poll(() => viewer.evaluate((element) => (element as ModelViewerElement).autoRotate))
+    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).autoRotate))
     .toBe(false);
   await viewer.scrollIntoViewIfNeeded();
   await expect
-    .poll(() => viewer.evaluate((element) => (element as ModelViewerElement).autoRotate))
+    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).autoRotate))
     .toBe(true);
   const box = (await viewer.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -82,31 +88,49 @@ test('rotation pauses off screen and dragging lets the visitor control the model
   await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 10 });
   await page.mouse.up();
   await expect(section.getByRole('button', { name: 'Lancer la rotation' })).toBeVisible();
-  expect(await viewer.evaluate((element) => (element as ModelViewerElement).autoRotate)).toBe(
-    false,
-  );
+  expect(await viewer.evaluate((el) => (el as ModelViewerElement).autoRotate)).toBe(false);
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await section.getByRole('button', { name: 'Vue de face' }).click();
+  await section.getByRole('button', { name: 'Vue initiale', exact: true }).click();
   await expect
-    .poll(() =>
-      viewer.evaluate((element) => (element as ModelViewerElement).getCameraOrbit().theta),
-    )
+    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().theta))
     .toBeCloseTo(0, 2);
 });
 
-test('failed model keeps the preview available and can be retried', async ({ page }) => {
-  await page.route('**/models/avocado-demo.glb', (route) =>
+test('failed model retains its real poster and retry fetches a new cache key', async ({ page }) => {
+  await page.route('**/models/burger-illustration.glb', (route) =>
     route.fulfill({ status: 503, body: 'Unavailable' }),
   );
   await page.goto('/en');
   const section = page.locator('#experience-3d');
-  await section.getByRole('button', { name: 'Explore in 3D' }).click();
+  await section.getByRole('button', { name: '360° view', exact: true }).click();
   await expect(section.getByRole('alert')).toContainText('3D could not start');
   await expect(section.getByRole('img')).toBeVisible();
   await expect(section.locator('model-viewer')).toHaveCount(0);
-  await page.unroute('**/models/avocado-demo.glb');
+  await page.unroute('**/models/burger-illustration.glb');
   await section.getByRole('button', { name: 'Retry 3D' }).click();
-  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready', {
+  await expect(section.locator('.dish-model')).toHaveAttribute('data-status', 'ready', {
     timeout: modelTimeout,
   });
+});
+
+test('without WebGL the original photo remains visible and the effect reports failure', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      kind: string,
+      ...args: unknown[]
+    ) {
+      if (kind === 'webgl') return null;
+      return Reflect.apply(original, this, [kind, ...args]);
+    } as typeof original;
+  });
+  await page.goto('/en');
+  const section = page.locator('#experience-3d');
+  await section.getByRole('button', { name: 'Explore this photo', exact: true }).click();
+  await expect(section.getByRole('alert')).toBeVisible();
+  await expect(section.locator('.photo-source')).toBeVisible();
+  await expect(section.locator('canvas')).toHaveCount(0);
 });

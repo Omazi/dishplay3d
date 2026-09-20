@@ -51,7 +51,12 @@ final class CaptureModel: ObservableObject {
 
     func prepareAutomatic(mode: String = "arkit-guided") -> CaptureRecord? {
         guard !busy else { return nil }
-        if let record, CaptureFiles.photos(record).isEmpty { return record }
+        if var current = record, CaptureFiles.photos(current).isEmpty {
+            current.mode = mode
+            record = current
+            persist(state: current.state)
+            return current
+        }
         do {
             let fresh = CaptureRecord(id: UUID(), createdAt: Date(), dishReference: String(dishReference.prefix(120)),
                 mode: mode, state: "ready", device: UIDevice.current.model, systemVersion: UIDevice.current.systemVersion)

@@ -3,6 +3,7 @@ import { useI18n } from '@/components/language';
 
 import { useEffect, useState } from 'react';
 import { api } from './api-client';
+import { ReconstructionDownload } from './reconstruction-download';
 
 type Job = {
   id: string;
@@ -10,6 +11,7 @@ type Job = {
   state: string;
   stage: string | null;
   errorCode: string | null;
+  review?: { outputs?: { glb?: { parts?: number }; usdz?: { parts?: number } } };
 };
 type Queue = { jobs: Job[]; enabled: boolean; workerAvailable: boolean };
 const labels: Record<string, string> = {
@@ -79,8 +81,8 @@ export function ReconstructionPanel({ scanId }: { scanId: string }) {
   }
   return (
     <section className="form-stack" aria-label={t('Reconstruction de cette série')}>
-      <h3>{t('Le prochain point de vue.')}</h3>
-      {queue && !queue.workerAvailable && (
+      <h3>{t('Votre modèle 3D.')}</h3>
+      {queue && !queue.workerAvailable && jobs.length === 0 && (
         <p className="field-hint">
           {' '}
           {t(
@@ -93,7 +95,7 @@ export function ReconstructionPanel({ scanId }: { scanId: string }) {
           <p className="field-hint">
             {' '}
             {t(
-              'Lancez le calcul sur cette série finalisée, avec un maximum de 24 photos. Le résultat devra être vérifié avant publication.',
+              'Votre scan est prêt. Lancez sa reconstruction sur votre PC, puis vérifiez le résultat avant publication.',
             )}{' '}
           </p>
           <button className="button button-blue" disabled={busy} onClick={() => void mutate()}>
@@ -105,6 +107,13 @@ export function ReconstructionPanel({ scanId }: { scanId: string }) {
       {jobs.map((job) => (
         <div className="notice" key={job.id}>
           <strong>{t(labels[job.state] || job.state)}</strong>
+          {job.state === 'queued' && (
+            <p>
+              {t(
+                'En attente du PC. Laissez DishPlay ouvert sur le PC, avec suffisamment de mémoire libre.',
+              )}
+            </p>
+          )}
           {job.state === 'running' && (
             <p>{t('Le moteur traite les photos. Aucune durée restante n’est estimée.')}</p>
           )}
@@ -112,9 +121,12 @@ export function ReconstructionPanel({ scanId }: { scanId: string }) {
             <p>
               {' '}
               {t(
-                'Les fichiers sont prêts sur la machine de calcul. Vérifiez le modèle et ses textures avant de l’importer dans la fiche du plat.',
+                'Votre modèle est prêt. Téléchargez-le et vérifiez sa forme, ses textures et son échelle avant publication.',
               )}{' '}
             </p>
+          )}
+          {job.state === 'ready_for_review' && job.review?.outputs?.glb?.parts && (
+            <ReconstructionDownload id={job.id} />
           )}
           {['failed', 'cancelled'].includes(job.state) && (
             <p>{t('Vos originaux et le modèle précédent sont conservés.')}</p>
