@@ -51,7 +51,8 @@ The bilingual production build passed locally at **726 MiB sampled task RSS**. T
 
 ## Native build evidence
 
-- [iOS unsigned compile passed](https://github.com/Omazi/dishplay3d/actions/runs/35035015993): Xcode 16.4, iOS 18.5 SDK, source `c2aadc6`. Requires Apple signing before installation.
+- [Initial iOS unsigned compile passed](https://github.com/Omazi/dishplay3d/actions/runs/35035015993): Xcode 16.4, iOS 18.5 SDK, source `c2aadc6`. This historical unsigned artifact cannot be installed directly.
+- [Signed TestFlight release passed](https://github.com/Omazi/dishplay3d/actions/runs/35523589363) on 2026-09-20: source `91baec4`, Xcode 26.3 / iOS 26.2 SDK, version **0.1.0 (1.1)**. Four signing-profile guard tests, Release archive, bundled resources, signing, IPA export and Apple validation/upload passed. Apple reported upload `COMPLETE`, build `VALID` and `READY_FOR_BETA_TESTING`, with no processing errors or warnings. The build is in the internal **DishPlay - Tests iPhone** group with French and English test notes. Account assignment, installation and physical capture remain pending; see [the installation guide](testflight.md).
 - [Android debug APK and lint passed](https://github.com/Omazi/dishplay3d/actions/runs/35486507579): source `55ff169`. APK available in the workflow artifact.
 - Builds ran on hosted runners; no mobile SDK or reconstruction engine was installed on the 8 GB laptop.
 

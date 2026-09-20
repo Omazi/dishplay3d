@@ -2,6 +2,12 @@
 
 DishPlay reste un site web pour les clients et l’espace restaurant. L’app iPhone est son compagnon de capture. La distribution TestFlight utilise un runner Mac GitHub ; aucun SDK Apple n’est installé sur le laptop Linux de 8 Go.
 
+## Première version disponible
+
+Le 20 septembre 2026, **0.1.0 (build 1.1)** a passé [le workflow de signature et d’envoi](https://github.com/Omazi/dishplay3d/actions/runs/35523589363), depuis le commit `91baec4`, avec Xcode 26.3 et le SDK iOS 26.2. L’API Apple confirme un transfert `COMPLETE`, un build `VALID` et l’état `READY_FOR_BETA_TESTING`, sans erreur ni avertissement de traitement.
+
+La fiche [DishPlay Capture dans TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios) contient le groupe interne **DishPlay - Tests iPhone**, auquel ce build est associé. Les consignes de test sont disponibles en français et en anglais. Le groupe est initialement vide : le titulaire doit y ajouter son propre compte pour recevoir l’invitation et installer l’app. Aucun testeur externe ni lien public de bêta n’a été ajouté.
+
 ## Prérequis du compte
 
 - Une inscription active à l’Apple Developer Program et un accès App Store Connect.
@@ -58,13 +64,20 @@ Seuls l’IPA et les symboles de débogage sont conservés en artefact privé pe
 
 ## Sur l’iPhone
 
-Après l’envoi, attendre le traitement Apple. Dans App Store Connect → DishPlay Capture → TestFlight, vérifier l’état du build, compléter les informations éventuellement demandées par Apple et ajouter le titulaire du compte à un groupe de test interne. Installer **TestFlight** sur l’iPhone, puis ouvrir le build attribué à ce compte.
+Pour la première version, le traitement Apple est terminé et le build est déjà associé au groupe interne :
+
+1. Installer [TestFlight](https://apps.apple.com/app/testflight/id899247664) sur l’iPhone.
+2. Ouvrir [DishPlay Capture → TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios), puis **Tests internes → DishPlay - Tests iPhone**.
+3. Dans **Testeurs**, cliquer sur **+ / Inviter des testeurs**, sélectionner son propre compte App Store Connect et l’ajouter.
+4. Ouvrir l’invitation sur l’iPhone, l’accepter dans TestFlight et installer **DishPlay Capture 0.1.0 (1.1)**. [Procédure Apple](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers).
+
+Pour les prochains envois, vérifier la fin du traitement Apple, compléter les informations éventuellement demandées et ajouter le nouveau build au groupe interne. Le workflow signe et envoie l’app ; il ne gère pas l’affectation des builds aux groupes.
 
 Le succès de `altool --upload-app` signifie que le transfert a réussi. Il ne garantit pas la fin du traitement Apple, la disponibilité du build pour le testeur ou une capture réussie sur le téléphone. Le pipeline n’envoie pas d’invitations et ne crée pas de lien public de bêta. Pour des testeurs externes, Apple impose un parcours de revue distinct.
 
 ## Limites et vérifications restantes
 
-Le pipeline peut être vérifié sans secrets jusqu’à l’archive Release et au contrôle des ressources. La signature, la validation Apple, l’envoi, le traitement TestFlight et l’installation nécessitent les accès du compte. Un artefact non signé ne s’installe pas directement sur iPhone.
+L’archive Release, les ressources embarquées, la signature, l’export IPA, la validation Apple, l’envoi et le traitement TestFlight sont vérifiés pour le build 1.1. L’installation par le titulaire et les essais physiques restent à effectuer. Un artefact non signé ne s’installe pas directement sur iPhone.
 
 Après installation : permissions caméra, vrai volume/nuage de points, trois passages, sauvegarde, association au plat, transfert interrompu puis repris, vérification des photos, reconstruction USDZ et fidélité du modèle. Ces essais sur appareil réel ne sont pas remplacés par la compilation cloud.
 
