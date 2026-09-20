@@ -49,7 +49,7 @@ struct CaptureScreen: View {
                     }
                     if model.phase == .failed { Text(LocalizedStringKey(model.message)).foregroundStyle(.red) }
                     connection
-                    if !transfer.status.isEmpty {
+                    if !transfer.status.isEmpty && model.imageCount == 0 && model.savedVideo == nil && transfer.delivery.uploadedAt == nil {
                         Text(LocalizedStringKey(transfer.status)).font(.callout)
                             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
@@ -59,7 +59,7 @@ struct CaptureScreen: View {
                         if transfer.delivery.stage != .uploading { ProgressView("Checking your scan…") }
                         Button("Pause transfer and tracking", role: .cancel) { transfer.pause() }
                     }
-                    if !model.library.isEmpty && !model.busy && !transfer.busy {
+                    if !model.library.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("My scans").font(.title2.bold())
                             ForEach(model.library) { record in
@@ -69,14 +69,14 @@ struct CaptureScreen: View {
                                         VStack(alignment: .leading, spacing: 4) {
                                             let saved = record.id == model.record?.id ? transfer.delivery : CaptureDelivery.read(from: CaptureFiles.root(record))
                                             Text(saved.dishName ?? (record.dishReference.isEmpty ? String(localized: "Untitled dish") : record.dishReference))
-                                            Text(LocalizedStringKey(record.modelPath != nil ? "Your 3D dish is ready" : saved.title))
+                                            Text(LocalizedStringKey(record.modelPath != nil ? "Your 3D dish is ready" : record.imageCount == 0 && record.sourceVideoPath == nil ? "Not scanned yet" : saved.title))
                                                 .font(.caption.weight(.semibold)).foregroundStyle(record.modelPath != nil ? Color.green : Color.secondary)
                                             Text(record.createdAt, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right").font(.caption)
                                     }.padding(14).background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-                                }.buttonStyle(.plain)
+                                }.buttonStyle(.plain).disabled(model.busy || transfer.busy)
                             }
                         }
                     }
@@ -175,6 +175,15 @@ struct CaptureScreen: View {
                 Text(Double(transfer.completed) / Double(transfer.total), format: .percent.precision(.fractionLength(0)))
                     .font(.headline.monospacedDigit())
             }
+            if !transfer.status.isEmpty {
+                Text(LocalizedStringKey(transfer.status)).font(.callout)
+                    .accessibilityIdentifier("scan-receipt-detail")
+            }
+            if model.imageCount > 0 && model.savedModel == nil && transfer.snapshot != nil {
+                Button(transfer.delivery.uploadedAt != nil || transfer.snapshot?.scan.state == "finalized" ? "Check my 3D model" : "Send and create my 3D dish", systemImage: "icloud.and.arrow.up") {
+                    sendIfPaired()
+                }.buttonStyle(.borderedProminent).disabled(model.busy || transfer.busy)
+            }
             if let checked = transfer.delivery.checkedAt {
                 HStack { Text("Last server check"); Text(checked, format: .dateTime.hour().minute()) }
                     .font(.caption).foregroundStyle(.secondary)
@@ -216,11 +225,6 @@ struct CaptureScreen: View {
     private var connection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if transfer.snapshot != nil {
-                if model.imageCount > 0 && model.savedModel == nil {
-                    Button(transfer.delivery.uploadedAt != nil || transfer.snapshot?.scan.state == "finalized" ? "Check my 3D model" : "Send and create my 3D dish", systemImage: "icloud.and.arrow.up") {
-                        sendIfPaired()
-                    }.buttonStyle(.borderedProminent).disabled(model.busy || transfer.busy)
-                }
                 Text("Your PC receives the scan automatically. Keep DishPlay running there until the model is ready.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
@@ -231,9 +235,11 @@ struct CaptureScreen: View {
                 TextField("Private code from the dish page", text: $transfer.code)
                     .textFieldStyle(.roundedBorder).textInputAutocapitalization(.characters).autocorrectionDisabled()
                 Button("Link this dish") {
+                    let enteredCode = transfer.code
                     let record = model.record ?? model.prepareAutomatic()
                     guard let record else { return }
                     transfer.select(record)
+                    transfer.code = enteredCode
                     transfer.pair(record, onPaired: { id in model.markRemote(id) })
                 }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
             }

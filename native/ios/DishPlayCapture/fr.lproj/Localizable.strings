@@ -269,3 +269,5 @@
 "Spatial tracking is unavailable on this device. Use Video only under Other capture methods; your PC can still reconstruct the saved views." = "Le suivi spatial est indisponible sur cet appareil. Choisissez Vidéo seule dans Autres méthodes de capture ; votre PC pourra reconstruire les vues enregistrées.";
 "Saved video segments" = "Séquences vidéo enregistrées";
 "Video %lld" = "Vidéo %lld";
+
+"Not scanned yet" = "Pas encore scanné";
