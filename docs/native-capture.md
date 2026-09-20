@@ -2,7 +2,7 @@
 
 This checkout includes browser capture, an iOS SwiftUI/RealityKit app and an Android Kotlin/ARCore app. Sources and cloud build workflows are provided; a successful compiler result does not establish physical capture quality.
 
-- [iOS implementation and build](native-ios.md): simple video recording and import, bounded photo extraction, preserved originals, advanced ARKit guidance, private website pairing, PC reconstruction and verified USDZ downloads.
+- [iOS implementation and build](native-ios.md): guided ARKit capture with progressive preview, video recording and import, bounded view selection, preserved originals, private website pairing, PC reconstruction and verified USDZ downloads.
 - [Android implementation and build](native-android.md): runtime ARCore/camera checks, actual tracked points and anchored bounds, preserved image/pose/intrinsics records, export and ordinary camera fallback. Sparse tracking points are not a dense reconstruction.
 - Web `/capture`: real HTTPS camera and photo import, IndexedDB originals, resumable checksummed upload, immutable finalization and optional worker status. No invented native poses. Video sampling is not implemented.
 

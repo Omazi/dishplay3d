@@ -1,6 +1,6 @@
 # Local reconstruction worker
 
-> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the current app uses simple video capture, automatic photo preparation and queue submission, and private result downloads; ARKit capture remains an advanced option. Physical food reconstruction acceptance is still required.
+> **Updated automatic scan / PC workflow:** see [automatic-scan.md](automatic-scan.md). The earlier implementation notes below describe the original opt-in/manual workflow; the current app uses guided ARKit capture with a provisional progressive preview, a video alternative, automatic queue submission and private result downloads. Physical food fidelity and scale acceptance are still required.
 
 ## Current evidence
 
