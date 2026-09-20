@@ -2,7 +2,7 @@ import Foundation
 
 // Coverage describes accepted camera observations, never reconstructed surface quality.
 struct ScanCoverage {
-    static let sectors = 18
+    static let sectors = 12
     private(set) var elevations = [Double?](repeating: nil, count: sectors)
     private(set) var accepted = 0
     private(set) var lastAngle: Double?
@@ -18,6 +18,21 @@ struct ScanCoverage {
     var complete: Bool { covered == Self.sectors && upperViews >= 4 && accepted >= 12 }
     var progress: Double { min(1, 0.85 * Double(covered) / Double(Self.sectors) + 0.15 * Double(min(upperViews, 4)) / 4) }
     var missing: Int? { elevations.firstIndex(where: { $0 == nil }) }
+
+    func nextNeeded(from angle: Double, direction: Int = 1) -> Int? {
+        let start = Self.sector(angle)
+        for offset in 0..<Self.sectors {
+            let slot = (start + offset * direction + Self.sectors * 2) % Self.sectors
+            if elevations[slot] == nil { return slot }
+        }
+        if upperViews < 4 {
+            for offset in 0..<Self.sectors {
+                let slot = (start + offset * direction + Self.sectors * 2) % Self.sectors
+                if (elevations[slot] ?? 0) < 0.65 { return slot }
+            }
+        }
+        return nil
+    }
 
     func needs(angle: Double, elevation: Double, time: Double) -> Bool {
         guard accepted < 24, time - lastTime >= 0.45 else { return false }
