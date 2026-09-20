@@ -75,7 +75,11 @@ private final class VideoRecordingEngine: NSObject, AVCaptureFileOutputRecording
     }
     func record(rotation: CGFloat) {
         queue.async { [self] in
-            guard configured, !closed, !finishing, session.isRunning, !output.isRecording else { return }
+            guard !closed, !finishing, !output.isRecording else { return }
+            guard configured, session.isRunning else {
+                event(.problem("The camera could not start. Close it and try again, or import a video."))
+                return
+            }
             if let connection = output.connection(with: .video), connection.isVideoRotationAngleSupported(rotation) {
                 connection.videoRotationAngle = rotation
             }
@@ -121,7 +125,7 @@ private final class VideoRecorder: ObservableObject {
     @Published var problem = ""
     @Published var denied = false
     private var closed = false
-    private lazy var engine = VideoRecordingEngine { [weak self] event in
+    private lazy var engine: VideoRecordingEngine = VideoRecordingEngine { [weak self] event in
         Task { @MainActor in
             guard let self else { return }
             switch event {
