@@ -120,7 +120,7 @@ final class CaptureModel: ObservableObject {
                 phase = .review
                 acceptVideo(imported.url, completed: completed)
             } catch {
-                videoFailed(error)
+                videoFailed(error, updateRecord: false)
                 completed(false)
             }
         }
@@ -149,9 +149,9 @@ final class CaptureModel: ObservableObject {
         let destination = CaptureFiles.images(current)
         Task {
             do {
-                _ = try await Task.detached(priority: .utility) { [weak self] in
+                _ = try await Task.detached(priority: .utility) { [self] in
                     try await VideoFrameExtractor.extract(from: source, to: destination) { fraction in
-                        await MainActor.run { self?.videoProgress = fraction }
+                        await self.updateVideoProgress(fraction)
                     }
                 }.value
                 videoProgress = nil
@@ -164,10 +164,11 @@ final class CaptureModel: ObservableObject {
             }
         }
     }
-    private func videoFailed(_ error: Error) {
+    private func updateVideoProgress(_ fraction: Double) { videoProgress = fraction }
+    private func videoFailed(_ error: Error, updateRecord: Bool = true) {
         phase = .failed; videoProgress = nil
         message = (error as? VideoPreparationError)?.message ?? VideoPreparationError.saveFailed.message
-        if var current = record { current.error = message; record = current; persist(state: "video-failed") }
+        if updateRecord, var current = record { current.error = message; record = current; persist(state: "video-failed") }
     }
 
     func start(native: Bool) {

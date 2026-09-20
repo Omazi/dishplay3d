@@ -75,7 +75,11 @@ private final class VideoRecordingEngine: NSObject, AVCaptureFileOutputRecording
     }
     func record(rotation: CGFloat) {
         queue.async { [self] in
-            guard configured, !closed, !finishing, session.isRunning, !output.isRecording else { return }
+            guard !closed, !finishing, !output.isRecording else { return }
+            guard configured, session.isRunning else {
+                event(.problem("The camera could not start. Close it and try again, or import a video."))
+                return
+            }
             if let connection = output.connection(with: .video), connection.isVideoRotationAngleSupported(rotation) {
                 connection.videoRotationAngle = rotation
             }
@@ -121,7 +125,7 @@ private final class VideoRecorder: ObservableObject {
     @Published var problem = ""
     @Published var denied = false
     private var closed = false
-    private lazy var engine = VideoRecordingEngine { [weak self] event in
+    private lazy var engine: VideoRecordingEngine = VideoRecordingEngine { [weak self] event in
         Task { @MainActor in
             guard let self else { return }
             switch event {
@@ -235,19 +239,23 @@ struct VideoCaptureScreen: View {
                             Label("Finish slightly higher to see the top, then press Stop.", systemImage: "arrow.up.right")
                         }.font(.callout)
                     }
-                    if recorder.phase == .ready || recorder.phase == .recording {
-                        Button {
-                            if recorder.phase == .recording { recorder.stop() } else { recorder.record() }
-                        } label: {
-                            Label(recorder.phase == .recording ? "Stop and use video" : "Record", systemImage: recorder.phase == .recording ? "stop.fill" : "record.circle")
-                                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
-                        }.buttonStyle(.borderedProminent).tint(.red)
-                    }
                     Text("Video only, without sound. Recording stops after 60 seconds. Keep the phone in the same orientation.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(20).frame(maxWidth: 650).frame(maxWidth: .infinity)
             }
-        }.background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
+        }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if recorder.phase == .ready || recorder.phase == .recording {
+                    Button {
+                        if recorder.phase == .recording { recorder.stop() } else { recorder.record() }
+                    } label: {
+                        Label(recorder.phase == .recording ? "Stop and use video" : "Record", systemImage: recorder.phase == .recording ? "stop.fill" : "record.circle")
+                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                    }.buttonStyle(.borderedProminent).tint(.red)
+                        .padding(20).frame(maxWidth: 650).frame(maxWidth: .infinity).background(.black)
+                }
+            }
+            .background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
             .task { await recorder.start() }
             .onDisappear { recorder.shutdown() }
             .onChange(of: recorder.savedURL) { _, url in
