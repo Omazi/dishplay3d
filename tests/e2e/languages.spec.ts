@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
+// Model a separate client so language-test retries do not consume the signup
+// quota used by the independent tenant-isolation scenarios. The limiter stays active.
+test.use({ extraHTTPHeaders: { 'X-Forwarded-For': '192.0.2.42' } });
+
 test('French and English pages render on the server and switch without losing the route', async ({
   page,
   request,
@@ -67,7 +71,7 @@ test('English restaurant workflow keeps user content and publishes to the same s
   await expect(editor).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('Dish saved.');
   await expect(page.getByText('1 dish', { exact: true })).toBeVisible();
-  await expect(page.getByText('€18.50', { exact: true })).toBeVisible();
+  await expect(page.locator('.catalogue-list').getByText('€18.50', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Publish menu', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Your menu is published.');
   const workspace = await (await page.request.get('/api/restaurant')).json();
