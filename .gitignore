@@ -21,3 +21,10 @@ artifacts/
 .vercel
 .env*
 !.env.example
+
+# Apple signing material stays out of source control.
+*.p8
+*.p12
+*.mobileprovision
+native/ios/build/
+native/ios/*.xcodeproj/

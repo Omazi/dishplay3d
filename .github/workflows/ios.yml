@@ -3,51 +3,46 @@ name: iOS unsigned build
 on:
   push:
     branches: [main]
-    paths: ['native/ios/**', '.github/workflows/ios.yml']
+    paths: ['native/ios/**', 'scripts/apple/**', '.github/workflows/ios.yml']
   pull_request:
-    paths: ['native/ios/**', '.github/workflows/ios.yml']
+    paths: ['native/ios/**', 'scripts/apple/**', '.github/workflows/ios.yml']
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-${{ github.ref }}
+  group: ios-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   compile:
     runs-on: macos-15
     timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Test signing profile guards
+        run: python3 scripts/apple/test_signing.py
       - name: Download pinned project generator
-        run: |
-          curl --fail --location --retry 3 \
-            https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip \
-            --output "$RUNNER_TEMP/xcodegen.zip"
-          echo "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
-          ditto -x -k "$RUNNER_TEMP/xcodegen.zip" "$RUNNER_TEMP/xcodegen"
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          binaries = [p for p in (Path(os.environ['RUNNER_TEMP']) / 'xcodegen').rglob('xcodegen') if p.is_file() and os.access(p, os.X_OK)]
-          if len(binaries) != 1:
-              raise SystemExit('Expected exactly one XcodeGen executable in the verified archive')
-          with open(os.environ['GITHUB_PATH'], 'a') as stream:
-              stream.write(str(binaries[0].parent) + '\n')
-          PY
-      - name: Generate project and compile the iOS device target
+        run: bash scripts/apple/xcodegen.sh
+      - name: Generate project and archive the iOS release target
         working-directory: native/ios
         run: |
           xcodebuild -version
           xcodegen --version
           xcodegen generate --spec project.yml
           xcodebuild -project DishPlayCapture.xcodeproj -scheme DishPlayCapture \
-            -configuration Debug -destination 'generic/platform=iOS' \
-            -derivedDataPath build -jobs 1 CODE_SIGNING_ALLOWED=NO build
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData -archivePath build/DishPlayCapture.xcarchive \
+            -jobs 1 CODE_SIGNING_ALLOWED=NO archive
+      - name: Validate the packaged release resources
+        run: python3 scripts/apple/validate-bundle.py native/ios/build/DishPlayCapture.xcarchive/Products/Applications/DishPlayCapture.app
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ios-unsigned-build
-          path: native/ios/build/Build/Products/Debug-iphoneos/DishPlayCapture.app
+          path: native/ios/build/DishPlayCapture.xcarchive/Products/Applications/DishPlayCapture.app
+          if-no-files-found: error
           retention-days: 7
