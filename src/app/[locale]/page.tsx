@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Footer, Header } from '@/components/brand';
 import { ProductStory, RevealMotion } from '@/components/product-story';
+import { ModelShowcase } from '@/components/model-showcase';
 import QRCode from 'qrcode';
 import '../premium.css';
 
@@ -116,6 +117,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
             )}
           </p>
         </section>
+        <ModelShowcase />
         <ProductStory qr={qr} />
         <section className="premium-capture-section">
           <div className="container premium-capture-layout">

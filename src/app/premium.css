@@ -1,4 +1,4 @@
-/* Presentation stays lightweight: real photos, CSS transforms, no 3D bundle. */
+/* Initial presentation uses photos and CSS. The 3D engine loads on request. */
 .premium-site {
   background: #fafaf8;
   color: #202320;
@@ -971,5 +971,248 @@
   .reveal-ready {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* A real model, opened deliberately so the initial page stays light. */
+.model-showcase {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  align-items: center;
+  gap: clamp(32px, 5vw, 80px);
+  padding-bottom: 140px;
+  scroll-margin-top: 110px;
+}
+.model-copy h2 {
+  font: 600 clamp(36px, 4.1vw, 62px)/1.06 var(--heading);
+  letter-spacing: -0.055em;
+  margin-block: 20px 24px;
+}
+.model-copy h2 span {
+  color: #78856c;
+}
+.model-copy > p:not(.eyebrow) {
+  max-width: 390px;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.7;
+}
+.model-features {
+  display: grid;
+  gap: 14px;
+  margin-block: 28px;
+}
+.model-features span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.model-features svg {
+  color: #6b7c56;
+}
+.model-card {
+  min-width: 0;
+}
+.model-stage {
+  position: relative;
+  height: clamp(380px, 43vw, 550px);
+  border-radius: 28px;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 50% 42%, #f3f5eb, #e8ecdf 70%, #e0e5d7);
+}
+.model-badge {
+  position: absolute;
+  top: 24px;
+  left: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+.model-badge .tiny-dot {
+  background: #718356;
+}
+.model-poster,
+.model-canvas {
+  position: absolute;
+  inset: 50px 0 58px;
+  width: 100%;
+  height: calc(100% - 108px);
+}
+.model-poster {
+  object-fit: contain;
+  padding: 0 22px;
+}
+.model-poster[hidden],
+.model-canvas[hidden] {
+  display: none;
+}
+.model-canvas model-viewer {
+  width: 100%;
+  height: 100%;
+  --poster-color: transparent;
+  --progress-bar-color: transparent;
+}
+.model-stage:not([data-status='ready']) .model-canvas {
+  visibility: hidden;
+}
+.model-launch {
+  position: absolute;
+  bottom: 24px;
+  left: 18px;
+  right: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.model-launch .button {
+  box-shadow: 0 8px 28px #1f34202a;
+}
+.model-launch > p,
+.model-loading {
+  padding: 12px 18px;
+  background: #fafaf8f5;
+  border-radius: 16px;
+  max-width: 360px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.model-loading {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.model-loading progress {
+  accent-color: var(--blue);
+  height: 5px;
+  width: 170px;
+}
+.model-loading .text-button {
+  min-height: 36px;
+  font-size: 12px;
+}
+.model-gesture {
+  position: absolute;
+  bottom: 22px;
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  color: #59634f;
+  pointer-events: none;
+}
+.model-controls {
+  padding-top: 16px;
+}
+.model-views {
+  display: flex;
+  gap: 5px;
+  padding: 4px;
+  background: #eaece5;
+  border-radius: 30px;
+}
+.model-views button {
+  flex: 1;
+  min-height: 42px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+  color: #59634f;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.model-views button[aria-pressed='true'] {
+  background: white;
+  color: #202320;
+  box-shadow: 0 2px 8px #2023200d;
+}
+.model-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+}
+.model-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: #526147;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.model-credit {
+  margin-top: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+}
+.model-credit a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 900px) {
+  .model-showcase {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    max-width: 680px;
+    padding-bottom: 90px;
+  }
+  .model-copy {
+    text-align: center;
+  }
+  .model-copy > p:not(.eyebrow) {
+    margin-inline: auto;
+  }
+  .model-features {
+    justify-content: center;
+    text-align: left;
+  }
+  .model-copy > .text-button {
+    justify-content: center;
+  }
+  .model-stage {
+    height: 430px;
+  }
+}
+@media (max-width: 480px) {
+  .model-stage {
+    height: 370px;
+    border-radius: 22px;
+  }
+  .model-badge {
+    left: 20px;
+    top: 20px;
+    font-size: 8px;
+  }
+  .model-copy h2 {
+    font-size: 38px;
+  }
+  .model-copy > p:not(.eyebrow) {
+    font-size: 15px;
+  }
+  .model-views button {
+    padding-inline: 5px;
+    font-size: 10px;
+  }
+  .model-actions {
+    gap: 8px;
+  }
+  .model-actions button {
+    font-size: 10px;
+    gap: 4px;
   }
 }
