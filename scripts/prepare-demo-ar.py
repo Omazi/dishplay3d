@@ -8,6 +8,7 @@ from mathutils import Vector, Matrix
 
 source, output = map(Path, sys.argv[sys.argv.index('--') + 1:])
 output.mkdir(parents=True, exist_ok=True)
+(output / 'ar-validation.json').unlink(missing_ok=True)
 report = []
 assert bpy.app.version == (4, 5, 13)
 
@@ -58,6 +59,36 @@ for name, width in [('burger', 0.16), ('pasta', 0.26), ('salad', 0.24)]:
     encoded += b' ' * (-len(encoded)%4)
     remainder = original[20+json_length:]
     glb.write_bytes(struct.pack('<4sII',b'glTF',2,20+len(encoded)+len(remainder)) + struct.pack('<I4s',len(encoded),b'JSON') + encoded + remainder)
+    # gltfpack quantizes UVs and restores them through KHR_texture_transform.
+    # Bake those transforms into per-face UV loops for USD, whose export otherwise
+    # loses the Mapping node (valid textures then sample only a corner of the atlas).
+    transforms = {}
+    for material in bpy.data.materials:
+        if not material.use_nodes: continue
+        mappings = [n for n in material.node_tree.nodes if n.type=='MAPPING']
+        if not mappings: continue
+        values = [(tuple(n.inputs['Location'].default_value),tuple(n.inputs['Scale'].default_value)) for n in mappings]
+        assert all(value==values[0] for value in values), 'Different texture transforms need separate UV sets'
+        assert all(tuple(n.inputs['Rotation'].default_value)==(0,0,0) for n in mappings)
+        transforms[material.name]=values[0]
+    for obj in bpy.context.scene.objects:
+        if obj.type!='MESH': continue
+        uv = obj.data.uv_layers.active.data
+        for face in obj.data.polygons:
+            material = obj.material_slots[face.material_index].material
+            if material.name not in transforms: continue
+            location, scale = transforms[material.name]
+            for i in face.loop_indices:
+                old = uv[i].uv.copy()
+                uv[i].uv = (old.x*scale[0]+location[0],old.y*scale[1]+location[1])
+    for material in bpy.data.materials:
+        if not material.use_nodes: continue
+        for node in list(material.node_tree.nodes):
+            if node.type!='MAPPING': continue
+            source_socket = node.inputs['Vector'].links[0].from_socket
+            for link in list(node.outputs['Vector'].links):
+                material.node_tree.links.new(source_socket,link.to_socket)
+            material.node_tree.nodes.remove(node)
     # USD Preview Surface does not translate Blender's unlit emission graph.
     # Retain each material's original image/UVs using a matte surface for Quick Look.
     for material in bpy.data.materials:
@@ -82,6 +113,10 @@ for name, width in [('burger', 0.16), ('pasta', 0.26), ('salad', 0.24)]:
         if fmt=='glb': bpy.ops.import_scene.gltf(filepath=str(asset))
         else: bpy.ops.wm.usd_import(filepath=str(asset))
         item[fmt]=inspect()
+        if fmt=='usdz':
+            uvs = [loop.uv.x for obj in bpy.context.scene.objects if obj.type=='MESH' for loop in obj.data.uv_layers.active.data]
+            assert max(uvs) > 0.5, 'USD UVs must include the decoded texture transform'
+            item[fmt]['uv_transform_baked'] = True
         dimensions=item[fmt]['dimensions_m']
         assert abs(max(dimensions[:2])-width) < 0.002, (name,fmt,dimensions)
         assert abs(item[fmt]['minimum_m'][2]) < 0.002
