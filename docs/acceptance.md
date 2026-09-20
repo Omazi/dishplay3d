@@ -51,4 +51,16 @@ Native dish pairing/upload, iOS ARKit spatial fallback, web video sampling, auto
 
 ## Cloud account activation
 
-The public site is deployed. Restaurant accounts require a durable `DATABASE_URL`; Neon provisioning was pending the account owner's browser acceptance of provider terms at this checkpoint. The live site deliberately reports a setup error instead of storing accounts in ephemeral hosting files. Local account/catalogue/publication checks use isolated persistent PostgreSQL-compatible databases.
+After the account owner accepted the provider terms, Neon `dishplay3d-db` was provisioned on the explicit `free_v3` plan in `iad1` and linked only to Vercel production. The existing verified application was redeployed with the database variables. Restaurant registration is active at [the live signup page](https://dishplay3d.vercel.app/signup).
+
+Live verification on 2026-09-19 America/New_York (2026-09-20 03:46 UTC), source `fa7e227`, production commit `b733e425`:
+
+- Browser signup, secure HttpOnly/SameSite session, logout and subsequent login passed against real PostgreSQL.
+- Browser category, dish and photo creation, preview, publication and SVG QR download passed.
+- Unpublished menus/photos stayed private; a second restaurant could neither read the private photo nor edit the first restaurant's dish.
+- Stale edits returned 409. A draft price change left the published snapshot untouched until republication, preserved the menu URL and created no reconstruction job.
+- The published mobile menu loaded without authentication, showed the updated price and had no page errors or horizontal overflow.
+- Both temporary test accounts and their restaurant data were removed in a scoped database transaction; cleanup verified that neither account remained.
+- One local browser session ran under the memory guard, with **1,316 MiB sampled aggregate task RSS**. No local server, mobile SDK or reconstruction engine ran alongside it.
+
+Local and CI account/catalogue/publication checks continue to use isolated databases. The production site has no fallback to ephemeral hosting files.
