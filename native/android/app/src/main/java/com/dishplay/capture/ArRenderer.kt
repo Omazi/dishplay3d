@@ -162,7 +162,7 @@ class ArRenderer(
         } catch (error: Exception) {
             val hadCapture = captureRequested
             captureRequested = false
-            report("Caméra AR indisponible : ${error.localizedMessage ?: error.javaClass.simpleName}. Le mode photo simple reste disponible.", true)
+            report("Caméra AR indisponible : ${error.localizedMessage ?: error.javaClass.simpleName}. Le mode photo simple reste disponible.")
             if (hadCapture) onCaptureError("Capture interrompue : ${error.localizedMessage}. Les originaux précédents sont conservés.")
         }
     }

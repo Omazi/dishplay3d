@@ -136,8 +136,10 @@ class MainActivity : Activity() {
         newButton = button("Nouvelle série") {
             if (busy.get()) return@button
             wantAr = false; pauseAr()
-            store.newSession(); surface.queueEvent { renderer.resetAnchor() }
-            showMessage("Nouvelle série créée. Les précédentes restent accessibles via Mes séries.")
+            try {
+                store.newSession(); surface.queueEvent { renderer.resetAnchor() }
+                showMessage("Nouvelle série créée. Les précédentes restent accessibles via Mes séries.")
+            } catch (error: Exception) { showMessage(error.localizedMessage ?: "La nouvelle série n’a pas pu être créée. Les précédentes sont conservées.") }
             refreshSummary(); updateControls()
         }
         historyButton = button("Mes séries") { chooseSession() }
@@ -225,7 +227,7 @@ class MainActivity : Activity() {
             showMessage("Cadrez la table et déplacez doucement le téléphone. Touchez la table pour placer le volume autour du plat.")
             updateControls()
         } catch (error: Exception) {
-            wantAr = false; pauseAr()
+            wantAr = false; installRequested = false; pauseAr()
             showMessage("Le guidage AR n’a pas démarré : ${error.localizedMessage ?: error.javaClass.simpleName}. Utilisez Photo simple ou réessayez.")
         }
     }
