@@ -524,5 +524,6 @@
   "Non. Préparez vos modifications puis publiez-les : le lien du restaurant et le QR restent identiques.": "No. Prepare your changes, then publish: your restaurant link and QR code stay the same.",
   "À contrôler": "Check image",
   "En attente de la caméra": "Waiting for camera",
-  "Caméra ouverte. Déclenchez une photo ou activez la prise assistée.": "Camera open. Take a photo or enable assisted capture."
+  "Caméra ouverte. Déclenchez une photo ou activez la prise assistée.": "Camera open. Take a photo or enable assisted capture.",
+  "Photos dans ce passage : {0}": "Photos in this pass: {0}"
 }

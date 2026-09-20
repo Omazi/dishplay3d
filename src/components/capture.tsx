@@ -805,7 +805,7 @@ export function Capture() {
               <div className="camera-next-pass">
                 <div>
                   <strong>{t(capturePasses[pass].short)}</strong>
-                  <span>{t('{0} photos dans ce passage', [passPhotos])}</span>
+                  <span>{t('Photos dans ce passage : {0}', [passPhotos])}</span>
                 </div>
                 <button
                   className="inline-link"
