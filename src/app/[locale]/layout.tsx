@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { LanguageProvider } from '@/components/language';
 import { createTranslator, isLocale } from '@/lib/i18n';
 import '../globals.css';
+import '../capture-guide.css';
 
 export function generateStaticParams() {
   return [{ locale: 'fr' }, { locale: 'en' }];

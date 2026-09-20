@@ -1,4 +1,5 @@
 import { validateImageBytes } from '@/lib/image-validation';
+import type { ImageQuality } from '@/lib/capture-quality';
 
 export interface CaptureFrame {
   id: string;
@@ -7,6 +8,7 @@ export interface CaptureFrame {
   type: string;
   size: number;
   createdAt: string;
+  capture?: { source: 'camera' | 'import'; pass?: number; quality?: ImageQuality };
 }
 
 function database(): Promise<IDBDatabase> {
@@ -49,6 +51,7 @@ export async function storeFrame(
   sessionId: string,
   blob: Blob,
   name: string,
+  capture?: CaptureFrame['capture'],
 ): Promise<CaptureFrame> {
   const meta: CaptureFrame = {
     id: crypto.randomUUID(),
@@ -57,6 +60,7 @@ export async function storeFrame(
     type: blob.type,
     size: blob.size,
     createdAt: new Date().toISOString(),
+    ...(capture ? { capture } : {}),
   };
   const db = await database();
   return new Promise((resolve, reject) => {

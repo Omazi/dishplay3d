@@ -20,7 +20,7 @@ test('French and English pages render on the server and switch without losing th
   await page.getByRole('link', { name: 'English', exact: true }).click();
   await expect(page).toHaveURL(/\/en$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('We eat with our eyes, too.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Taste.From a new angle.');
   await page.getByRole('link', { name: 'Demo menu', exact: true }).first().click();
   await expect(page).toHaveURL(/\/en\/menu\/demo$/);
   await expect(
@@ -108,13 +108,16 @@ test('capture translates errors and tips while preserving imported originals acr
   await expect(page.locator('.notice-error[role="alert"]')).toContainText(
     'Camera access was denied.',
   );
-  await expect(page.getByRole('heading', { name: 'Set the scene.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Next tip', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Move around the dish.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'First circle, fairly low.' })).toBeVisible();
+  await page.getByRole('button', { name: '02 The details 45°' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Second circle, a little higher.' }),
+  ).toBeVisible();
   await page.getByLabel('Import photos', { exact: true }).setInputFiles('public/images/burger.jpg');
   await expect(page.getByRole('status')).toContainText('1 photo added.');
   await page.getByRole('link', { name: 'Français', exact: true }).click();
   await expect(page).toHaveURL(/\/capture\?source=language-test#main$/);
   await expect(page.getByRole('heading', { name: 'Gardez le bon angle.' })).toBeVisible();
   await expect(page.getByRole('img', { name: 'burger.jpg', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Un deuxième tour, plus haut.' })).toBeVisible();
 });
