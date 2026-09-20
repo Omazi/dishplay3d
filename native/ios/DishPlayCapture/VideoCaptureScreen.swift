@@ -239,19 +239,23 @@ struct VideoCaptureScreen: View {
                             Label("Finish slightly higher to see the top, then press Stop.", systemImage: "arrow.up.right")
                         }.font(.callout)
                     }
-                    if recorder.phase == .ready || recorder.phase == .recording {
-                        Button {
-                            if recorder.phase == .recording { recorder.stop() } else { recorder.record() }
-                        } label: {
-                            Label(recorder.phase == .recording ? "Stop and use video" : "Record", systemImage: recorder.phase == .recording ? "stop.fill" : "record.circle")
-                                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
-                        }.buttonStyle(.borderedProminent).tint(.red)
-                    }
                     Text("Video only, without sound. Recording stops after 60 seconds. Keep the phone in the same orientation.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(20).frame(maxWidth: 650).frame(maxWidth: .infinity)
             }
-        }.background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
+        }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if recorder.phase == .ready || recorder.phase == .recording {
+                    Button {
+                        if recorder.phase == .recording { recorder.stop() } else { recorder.record() }
+                    } label: {
+                        Label(recorder.phase == .recording ? "Stop and use video" : "Record", systemImage: recorder.phase == .recording ? "stop.fill" : "record.circle")
+                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                    }.buttonStyle(.borderedProminent).tint(.red)
+                        .padding(20).frame(maxWidth: 650).frame(maxWidth: .infinity).background(.black)
+                }
+            }
+            .background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
             .task { await recorder.start() }
             .onDisappear { recorder.shutdown() }
             .onChange(of: recorder.savedURL) { _, url in
