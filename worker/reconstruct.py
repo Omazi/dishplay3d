@@ -137,13 +137,17 @@ def plan_commands(output: Path, settings: dict) -> list[dict]:
               "--resolution-level", "1", "--max-resolution", "1600", "--min-resolution", "320", *common, *cpu),
         stage("mesh", "ReconstructMesh", "-i", output / "dense.mvs", "-p", output / "dense.ply",
               "-o", output / "mesh.mvs", *common, *cpu),
-        stage("refinement", "RefineMesh", "-i", output / "mesh.mvs", "-o", output / "refined.mvs",
+        # OpenMVS's default interface archive keeps cameras in dense.mvs and
+        # exports geometry separately. Mesh stages do not create mesh.mvs.
+        stage("refinement", "RefineMesh", "-i", output / "dense.mvs", "-m", output / "mesh.ply",
+              "-o", output / "refined.mvs",
               "--resolution-level", "1", *common, *cpu),
-        stage("texture", "TextureMesh", "-i", output / "refined.mvs", "-o", output / "textured.mvs",
-              "--export-type", "obj", "--max-texture-size", "2048", *common, *cpu),
+        stage("texture", "TextureMesh", "-i", output / "dense.mvs", "-m", output / "refined.ply",
+              "-o", output / "textured.mvs",
+              "--export-type", "glb", "--max-texture-size", "2048", *common, *cpu),
         stage("exports", "blender", "--background", "--factory-startup", "--threads", "1",
               "--python-exit-code", "1", "--python", HERE / "export_blender.py", "--",
-              output / "textured.obj", output / "model.glb", output / "model.usdz",
+              output / "textured.glb", output / "model.glb", output / "model.usdz",
               settings["scale_m_per_unit"] or 1),
     ]
 

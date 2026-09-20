@@ -2,11 +2,13 @@
 
 DishPlay reste un site web pour les clients et l’espace restaurant. L’app iPhone est son compagnon de capture. La distribution TestFlight utilise un runner Mac GitHub ; aucun SDK Apple n’est installé sur le laptop Linux de 8 Go.
 
-## Première version disponible
+## Version disponible
 
-Le 20 septembre 2026, **0.1.0 (build 1.1)** a passé [le workflow de signature et d’envoi](https://github.com/Omazi/dishplay3d/actions/runs/35523589363), depuis le commit `91baec4`, avec Xcode 26.3 et le SDK iOS 26.2. L’API Apple confirme un transfert `COMPLETE`, un build `VALID` et l’état `READY_FOR_BETA_TESTING`, sans erreur ni avertissement de traitement.
+Le 20 septembre 2026, **0.2.0 (build 3.1)** a passé [le workflow de signature et d’envoi](https://github.com/Omazi/dishplay3d/actions/runs/35532454106), depuis le commit `61948e6`, avec Xcode 26.3 et le SDK iOS 26.2. L’API Apple confirme un build `VALID` et l’état `IN_BETA_TESTING`.
 
-La fiche [DishPlay Capture dans TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios) contient le groupe interne **DishPlay - Tests iPhone**, auquel ce build est associé. Les consignes de test sont disponibles en français et en anglais. Le groupe est initialement vide : le titulaire doit y ajouter son propre compte pour recevoir l’invitation et installer l’app. Aucun testeur externe ni lien public de bêta n’a été ajouté.
+Le build est associé au groupe interne **DishPlay - Tests iPhone** dans [TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios). Les consignes sont disponibles en français et en anglais. Les notifications automatiques sont désactivées ; aucun nouveau testeur ni lien public n’a été ajouté. Les testeurs déjà inscrits peuvent ouvrir TestFlight et mettre à jour DishPlay Capture.
+
+Cette version utilise ARKit pour la capture automatique, indépendamment du support d’Object Capture. Elle mesure la couverture autour du plat, montre des points observés provisoires et envoie les photos pour reconstruction sur le PC. Voir [le parcours et ses limites](automatic-scan.md).
 
 ## Prérequis du compte
 
@@ -64,12 +66,12 @@ Seuls l’IPA et les symboles de débogage sont conservés en artefact privé pe
 
 ## Sur l’iPhone
 
-Pour la première version, le traitement Apple est terminé et le build est déjà associé au groupe interne :
+Le traitement Apple est terminé et le build est associé au groupe interne. Si tu as déjà installé l’app, ouvre TestFlight et touche **Mettre à jour**. Pour une première installation :
 
 1. Installer [TestFlight](https://apps.apple.com/app/testflight/id899247664) sur l’iPhone.
 2. Ouvrir [DishPlay Capture → TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios), puis **Tests internes → DishPlay - Tests iPhone**.
 3. Dans **Testeurs**, cliquer sur **+ / Inviter des testeurs**, sélectionner son propre compte App Store Connect et l’ajouter.
-4. Ouvrir l’invitation sur l’iPhone, l’accepter dans TestFlight et installer **DishPlay Capture 0.1.0 (1.1)**. [Procédure Apple](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers).
+4. Ouvrir l’invitation sur l’iPhone, l’accepter dans TestFlight et installer **DishPlay Capture 0.2.0 (3.1)**. [Procédure Apple](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers).
 
 Pour les prochains envois, vérifier la fin du traitement Apple, compléter les informations éventuellement demandées et ajouter le nouveau build au groupe interne. Le workflow signe et envoie l’app ; il ne gère pas l’affectation des builds aux groupes.
 
@@ -77,9 +79,9 @@ Le succès de `altool --upload-app` signifie que le transfert a réussi. Il ne g
 
 ## Limites et vérifications restantes
 
-L’archive Release, les ressources embarquées, la signature, l’export IPA, la validation Apple, l’envoi et le traitement TestFlight sont vérifiés pour le build 1.1. L’installation par le titulaire et les essais physiques restent à effectuer. Un artefact non signé ne s’installe pas directement sur iPhone.
+L’archive Release, les ressources embarquées, la signature, l’export IPA, la validation Apple, l’envoi et le traitement TestFlight sont vérifiés pour le build 3.1. Les essais physiques de cette nouvelle capture restent à effectuer. Un artefact non signé ne s’installe pas directement sur iPhone.
 
-Après installation : permissions caméra, vrai volume/nuage de points, trois passages, sauvegarde, association au plat, transfert interrompu puis repris, vérification des photos, reconstruction USDZ et fidélité du modèle. Ces essais sur appareil réel ne sont pas remplacés par la compilation cloud.
+Après installation : permissions caméra, détection du plat sur la table, points observés, tour progressif et couverture, pause/reprise, sauvegarde, association au plat, transfert interrompu puis repris, attente du PC, reconstruction USDZ et fidélité du modèle. Ces essais sur appareil réel ne sont pas remplacés par la compilation cloud.
 
 ## Références officielles
 

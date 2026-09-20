@@ -60,8 +60,8 @@ Disk polling is a soft aggregate limit and can overshoot between checks. POSIX a
 1. Validate paths, signatures, size/count and distinct hashes; freeze an input/settings/engine identity scoped by restaurant.
 2. Confirm installed engine versions and hash binaries; resize working copies with Pillow.
 3. Extract SIFT features and match views on CPU; estimate cameras with COLMAP; undistort the registered reconstruction.
-4. Import into OpenMVS; densify, reconstruct mesh, refine, texture, and retain the textured OBJ/master intermediates.
-5. Import the actual textured OBJ into Blender; export embedded GLB and USDZ; reimport both and check mesh faces, UVs and readable image materials.
+4. Import into OpenMVS; densify, reconstruct mesh, refine, texture, and retain the textured GLB, atlas and master intermediates.
+5. Import the actual textured GLB into Blender and map its observed atlas to a USD-compatible matte material; export embedded GLB and USDZ; reimport both and check mesh faces, UVs and readable image materials.
 6. Validate GLB framing, mesh/material/embedded texture references and USDZ packaging; record file hashes, sizes, real completed stages, elapsed time and child peak RSS.
 
 A successful command ends at `ready_for_review`, never `published`. Failure preserves the inputs and all working files, with the failing stage/log named in `manifest.json`. Use a new output directory for another attempt; automatic checkpoint resume is not implemented. There is no generated point cloud, invented pose, simulated progress percentage, synthetic mesh, or fallback object.
