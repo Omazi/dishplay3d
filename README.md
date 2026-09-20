@@ -49,9 +49,9 @@ See [acceptance and evidence](docs/acceptance.md) for outcomes and limitations. 
 
 The `Verify and deploy` workflow runs on pull requests and `main`. It checks types, tests, dependency vulnerabilities, production build and browser workflows. Only a successful `main` run deploys to Vercel. Pull requests never receive deployment secrets. Stale pull-request runs are cancelled; production runs are serialized to avoid overlapping deployments.
 
-The Vercel project is connected to `Omazi/dishplay3d`, with `production` as its production branch. After verification, Actions advances that branch to the exact tested commit using its built-in repository token. Vercel builds it, and Actions waits for `/api/health` to report the same commit before checking the public pages. No additional Vercel token is required.
+The Vercel project is connected to `Omazi/dishplay3d`, with `production` as its production branch. After verification, Actions creates a deployment commit containing the tested application source and `public/deployment.json`, excluding `.github` workflow files. This avoids requiring workflow-write permissions from the built-in repository token. Vercel builds that commit; Actions checks both its live `/api/health` commit and the recorded tested source commit before checking public pages. No additional Vercel token is required.
 
-Keep `production` managed by the workflow. It only permits fast-forward updates; retrying an older commit cannot overwrite a newer release. Main/PR pushes do not deploy directly. To use another Vercel project, connect its Git repository, select `production` as the production branch and update the workflow's deployment URL.
+Keep `production` managed by the workflow. Deployment commits advance by fast-forward, and the release script rejects source commits older than the last deployed source. Main/PR pushes do not deploy directly. To use another Vercel project, connect its Git repository, select `production` as the production branch and update the workflow's deployment URL.
 
 Production environment:
 
@@ -71,7 +71,8 @@ Copy `.env.example` for local overrides; do not commit populated environment fil
 - [Architecture decisions and official references](docs/decisions.md)
 - [Operations and backup](docs/operations.md)
 - [Reconstruction CLI and licenses](docs/reconstruction.md)
-- [Native capture requirements](docs/native-capture.md)
+- [Native capture apps and acceptance](docs/native-capture.md)
+- [Durable reconstruction queue](docs/worker-queue.md)
 - [Illustrative asset sources](docs/assets.md)
 
 No paid 3D API, model inference key or GPU service is used. Hosting/storage providers have their own quotas and account terms; no paid plan is selected automatically.

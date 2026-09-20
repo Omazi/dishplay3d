@@ -4,7 +4,7 @@ Source: `native/ios`. Deployment target: iOS/iPadOS 17.0 or later. This minimal 
 
 ## Build and install
 
-The Linux development laptop has no Xcode or Apple SDK. **The app has not been compiled locally, signed, installed or tested on a physical device.** The `iOS unsigned build` GitHub workflow generates the project and compiles the device target on a hosted Mac with one build job. Its unsigned artifact is evidence of compilation only and cannot be installed directly on an iPhone. Inspect the workflow result before claiming a successful build.
+The Linux development laptop has no Xcode or Apple SDK. **The app has not been compiled locally, signed, installed or tested on a physical device.** The `iOS unsigned build` GitHub workflow generates the project and compiles the device target on a hosted Mac with one build job. Its unsigned artifact is evidence of compilation only and cannot be installed directly on an iPhone. The [unsigned build passed](https://github.com/Omazi/dishplay3d/actions/runs/35035015993) on Xcode 16.4 / iOS 18.5 SDK for commit `c2aadc6`. Signing and physical-device capture remain unverified.
 
 On a Mac with a current stable Xcode and [XcodeGen 2.46.0+](https://github.com/yonaskolb/XcodeGen/releases/tag/2.46.0):
 
@@ -46,8 +46,8 @@ Use one supported Object Capture device and an unsupported iPhone if available. 
 ## API references
 
 - [ObjectCaptureSession](https://developer.apple.com/documentation/realitykit/objectcapturesession), including its support check and asynchronous state updates.
-- [startDetecting()](https://developer.apple.com/documentation/realitykit/objectcapturesession/startdetecting()) and [finish()](https://developer.apple.com/documentation/realitykit/objectcapturesession/finish()) state preconditions.
+- [startDetecting()](<https://developer.apple.com/documentation/realitykit/objectcapturesession/startdetecting()>) and [finish()](<https://developer.apple.com/documentation/realitykit/objectcapturesession/finish()>) state preconditions.
 - [ObjectCaptureView](https://developer.apple.com/documentation/realitykit/objectcaptureview) and [ObjectCapturePointCloudView](https://developer.apple.com/documentation/realitykit/objectcapturepointcloudview).
 - [Meet Object Capture for iOS](https://developer.apple.com/videos/play/wwdc2023/10191/) explains the capture lifecycle, non-flipping passes and reduced-detail on-device reconstruction.
-- [PhotogrammetrySession](https://developer.apple.com/documentation/realitykit/photogrammetrysession) and [modelFile request](https://developer.apple.com/documentation/realitykit/photogrammetrysession/request/modelfile(url:detail:geometry:)).
-- [File coordination for uploading](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/foruploading) creates a ZIP snapshot of a directory; [document export as a copy](https://developer.apple.com/documentation/uikit/uidocumentpickerviewcontroller/init(forexporting:ascopy:)) preserves the original.
+- [PhotogrammetrySession](https://developer.apple.com/documentation/realitykit/photogrammetrysession) and [modelFile request](<https://developer.apple.com/documentation/realitykit/photogrammetrysession/request/modelfile(url:detail:geometry:)>).
+- [File coordination for uploading](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/foruploading) creates a ZIP snapshot of a directory; [document export as a copy](<https://developer.apple.com/documentation/uikit/uidocumentpickerviewcontroller/init(forexporting:ascopy:)>) preserves the original.

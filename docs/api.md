@@ -1,6 +1,6 @@
 # Implemented HTTP API
 
-This document describes the application currently implemented in `src/app/api`. The machine-readable contract is [openapi.json](./openapi.json). Native capture, an HTTP worker bridge, password reset, invitations and billing are not implemented.
+This document describes the application currently implemented in `src/app/api`. The machine-readable contract is [openapi.json](./openapi.json). Reconstruction has an explicitly enabled external PostgreSQL worker, documented in [worker-queue.md](./worker-queue.md). Password reset, invitations and billing are not implemented.
 
 ## Access, requests and errors
 
@@ -202,13 +202,21 @@ Finalization is idempotent and moves `capturing → finalized`. Further frame up
 
 The JSON download contains a manifest and authenticated image URLs, not the image bytes or an offline archive. Export the image responses as well to obtain a complete offline capture.
 
-## Reconstruction status
+## Reconstruction requests and status
 
-| Method and path            | Access        | Current behavior                                                        |
-| -------------------------- | ------------- | ----------------------------------------------------------------------- |
-| `GET /api/reconstruction`  | Authenticated | `200 {jobs:[]}` from the restaurant's persisted job records, newest 100 |
-| `POST /api/reconstruction` | Authenticated | Always `503 WORKER_UNAVAILABLE`; does not enqueue a job                 |
+| Method and path                   | Access                              | Current behavior                                                                                                                             |
+| --------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/reconstruction`         | Authenticated                       | `200 {jobs,enabled,workerAvailable}`, newest 100 owned records                                                                               |
+| `POST /api/reconstruction`        | Authenticated, `{scanId,settings?}` | `202 {id,state,deduplicated}` only when explicitly enabled with PostgreSQL and a fresh compatible worker; otherwise `503 WORKER_UNAVAILABLE` |
+| `GET /api/reconstruction/{id}`    | Authenticated owner                 | `200 {job}`                                                                                                                                  |
+| `DELETE /api/reconstruction/{id}` | Authenticated owner                 | `200 {job,originalsPreserved:true}`; cancels queued/running work and fences its worker                                                       |
 
-Returned job records, when present in the database, contain `id`, `scanId`, `engine`, `state`, `attempts`, `errorCode`, `createdAt` and `updatedAt`. The schema reserves states `queued`, `running`, `succeeded`, `failed`, `cancelled` and lease fields for a future worker bridge. No connected queue consumer, worker HTTP authentication, fencing implementation or progress events are exposed by this pilot. The standalone local worker is documented separately in [reconstruction.md](./reconstruction.md).
+Returned jobs contain `id`, `scanId`, `engine`, `state`, `attempts`, `maxAttempts`, `errorCode`, `stage`, `createdAt`, `updatedAt` and `review`. States are `queued`, `running`, `ready_for_review`, `failed` and `cancelled`; historical `succeeded` records remain readable. The stage comes from actual supervisor/engine state, never fabricated percentages. The review summary omits local filesystem paths. Completed outputs require human review and do not automatically replace a dish model or become public.
 
-The unavailable reconstruction action preserves originals and any current model. A menu read, rotation, QR read, price edit or publication never invokes reconstruction.
+`ENABLE_RECONSTRUCTION=true` and `DATABASE_URL` are required in the web deployment, plus a compatible worker heartbeat less than 45 seconds old. The request must reference an owned finalized scan, unchanged manifest, and 3–24 JPEG/PNG frames by default; settings can explicitly request up to 40 when a compatible worker advertises capacity. No input subset is selected silently. Requests deduplicate by restaurant, immutable input hash, pinned engine identity and normalized settings. There are at most three pending jobs per restaurant. Repeating a failed or cancelled identical request returns that existing terminal job, rather than spending more compute.
+
+Optional settings are `maxImages` (3–40, default 24), `longEdge` (320–1600, default 1600), `memoryMiB` (512–2048, default 1536), `diskMiB` (256–4096, default 2048), `stageSeconds` (30–1800, default 900), `scaleMetersPerUnit` and `scaleReference` (null by default, supplied together), and `openMvsCudaBuild` (false by default; the engine remains in explicit CPU mode). Unknown settings are rejected. A measured scale must be finite, positive and at most 1000; its reference is at most 240 characters. Supplying a scale is not a claim that physical scale has been verified.
+
+The external Node worker uses a globally reserved capacity slot, heartbeat renewal, generation/token fencing and at most two starts. Cancellation immediately fences database writes but reserves capacity until the worker confirms its process stopped, or the old lease plus cleanup grace expires. Actual completed files remain private and enter `ready_for_review`. The worker does not expose a public worker HTTP endpoint, allocate paid compute or execute inside Vercel. See [worker-queue.md](./worker-queue.md) for setup, resource bounds, cleanup and validation limits.
+
+The unavailable reconstruction action preserves originals and any current model. A menu read, rotation, QR read, price edit or publication never invokes reconstruction. Queue tests do not establish real reconstruction quality or physical-device compatibility; those acceptance checks remain required.

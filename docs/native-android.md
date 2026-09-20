@@ -50,7 +50,7 @@ There is no native login, single-use pairing code, native upload, or native reco
 
 ## Archive contract
 
-`manifest.json` contains session metadata and the list of accepted frame records. The archive also includes `session.json`, individual `*.frame.json` sidecars, images, and NV21 originals where present. Partial originals from an interrupted write are retained and included when exporting a series with accepted frames; do not treat unindexed files as validated frames.
+`manifest.json` contains session metadata and the list of accepted frame records. The archive also includes `session.json`, individual `*.frame.json` sidecars, images, and NV21 originals where present. Partial originals from an interrupted write are retained and exportable even when no frame completed validation; do not treat unindexed files as validated frames.
 
 ARCore frame records contain:
 

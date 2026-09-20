@@ -854,7 +854,7 @@ export function Dashboard() {
                     <form
                       onSubmit={saveSettings}
                       className="form-stack"
-                      key={workspace.restaurant.version}
+                      key={workspace.restaurant.id}
                     >
                       <label>
                         Nom du restaurant

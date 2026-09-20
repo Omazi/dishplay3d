@@ -20,7 +20,7 @@ The supplied documents are product requirements and acceptance criteria. Stateme
 - The illustrative menu is clearly marked; its photographs are not scans of a customer's food.
 - Browser capture stores actual images. It does not draw fake spatial cubes, invented poses or random point clouds.
 - GLB/USDZ viewing consumes existing reviewed files from an operator-controlled origin. Importing a URL does not validate the model's provenance or dimensions.
-- Native ARKit/ARCore capture, Apple Object Capture, automatic background reconstruction and physical iPhone/Android acceptance remain distinct unfinished requirements.
+- iOS Object Capture and Android ARCore source apps have separate cloud compile checks. The durable CPU reconstruction queue is opt-in and requires installed engines. Actual food reconstruction, native pairing/upload and physical iPhone/Android acceptance remain unverified or unfinished as recorded in the native guides.
 
 ## Data tradeoffs
 
@@ -32,7 +32,7 @@ The first authentication adapter uses Node scrypt password hashes and opaque dat
 
 New private GitHub repository: `Omazi/dishplay3d`. Vercel project: `azomar/dishplay3d`. The Sites connector was used to inspect the existing project, while the explicit Vercel deployment request determines hosting. Sites building/hosting skill files were not available in this environment; no Sites project was replaced or published.
 
-GitHub Actions verifies types, meaningful tests, dependency audit, build and browser workflows before deploying the exact checked-out commit. Vercel's automatic Git deployments are disabled to prevent bypassing these checks. CI credentials belong only in GitHub Actions secrets; runtime database credentials belong in Vercel environment variables.
+GitHub Actions verifies types, meaningful tests, dependency audit, build and browser workflows before deploying the exact checked-out commit. Only the `production` branch automatically deploys on Vercel. After successful checks, Actions copies the tested application tree into a deployment commit, excluding `.github` and adding a public source-commit record. It waits for both the deployed commit and the tested source record. The separate deployment history avoids granting CI permission to change workflow files. The existing Vercel GitHub integration avoids a separate CI Vercel token. Runtime database credentials belong in Vercel environment variables.
 
 ## Primary references checked
 

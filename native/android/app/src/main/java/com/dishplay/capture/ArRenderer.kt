@@ -55,7 +55,13 @@ class ArRenderer(
     fun tap(x: Float, y: Float) { if (!anchorLocked) pendingTap = x to y }
 
     /** Call on the GL thread. Images from distinct segments must be registered separately. */
-    fun interruptTracking() { segmentId = UUID.randomUUID().toString(); wasTracking = false; captureRequested = false }
+    fun interruptTracking() {
+        segmentId = UUID.randomUUID().toString(); wasTracking = false
+        if (captureRequested) {
+            captureRequested = false
+            onCaptureError("Capture interrompue pendant la reprise du suivi. Réessayez lorsque le volume est ancré ; les originaux précédents restent conservés.")
+        }
+    }
 
     fun resetAnchor() {
         anchor?.detach(); anchor = null; anchorLocked = false; pendingTap = null
@@ -99,6 +105,7 @@ class ArRenderer(
             drawBackground(frame)
             if (frame.camera.trackingState != TrackingState.TRACKING) {
                 val cancelledCapture = captureRequested
+                captureRequested = false
                 if (wasTracking) interruptTracking()
                 report("Suivi suspendu : ${frame.camera.trackingFailureReason}. Revenez lentement vers la zone photographiée.")
                 if (cancelledCapture) { captureRequested = false; onCaptureError("Suivi indisponible. Aucune photo calibrée enregistrée ; vos prises précédentes restent conservées.") }

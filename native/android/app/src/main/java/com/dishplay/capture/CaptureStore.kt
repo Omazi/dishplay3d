@@ -64,6 +64,10 @@ class CaptureStore(private val context: Context) {
 
     @Synchronized fun count(): Int = directory.listFiles()?.count { it.name.endsWith(".frame.json") } ?: 0
 
+    @Synchronized fun hasOriginals(): Boolean = directory.listFiles()?.any {
+        it.isFile && it.length() > 0 && (it.name.endsWith(".jpg") || it.name.endsWith(".nv21"))
+    } ?: false
+
     @Synchronized fun ensureSpace(extraBytes: Long = 0) {
         check(count() < 150) { "150 prises atteintes. Créez une nouvelle série ; les originaux sont conservés." }
         val used = directory.listFiles()?.sumOf { it.length() } ?: 0L
@@ -117,7 +121,7 @@ class CaptureStore(private val context: Context) {
     }
 
     @Synchronized fun exportArchive(): File {
-        check(count() > 0) { "Ajoutez une photo avant l’export." }
+        check(hasOriginals()) { "Ajoutez une photo avant l’export." }
         val files = directory.listFiles()?.filter { it.isFile && !it.name.endsWith(".tmp") }
             ?.sortedBy { it.name } ?: emptyList()
         val manifest = JSONObject().put("session", JSONObject(File(directory, "session.json").readText()))

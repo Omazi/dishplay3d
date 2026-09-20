@@ -3,7 +3,7 @@
   "info": {
     "title": "DishPlay pilot API",
     "version": "0.1.0",
-    "description": "Contract for implemented Next.js route handlers. All mutations require a matching Origin header. This pilot provides catalogue, private photos, atomic publication and durable photo capture. Reconstruction POST is explicitly unavailable; no connected worker or native capture API is promised. See api.md for detailed limits and retention semantics."
+    "description": "Implemented DishPlay route handlers. Mutations require matching Origin. Provides catalogue, private photos, atomic publication, durable capture and an opt-in external PostgreSQL reconstruction queue. No worker/engines run inside Vercel. Reconstruction defaults off and rejects requests without a fresh compatible worker; actual outputs remain private pending human review."
   },
   "servers": [
     {
@@ -1281,18 +1281,24 @@
                       "items": {
                         "$ref": "#/components/schemas/Job"
                       }
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "workerAvailable": {
+                      "type": "boolean"
                     }
                   },
-                  "required": ["jobs"]
+                  "required": ["jobs", "enabled", "workerAvailable"]
                 }
               }
             }
           }
         },
-        "description": "Newest 100 records for the authenticated restaurant. No connected worker consumer exists, so the normal pilot response is an empty list. No fabricated progress is returned."
+        "description": "Newest 100 owned persisted records plus deployment enablement and fresh worker readiness. A job stage is actual supervisor/engine state. No fabricated progress or private paths are returned."
       },
       "post": {
-        "summary": "Report that reconstruction is not connected",
+        "summary": "Request an opt-in reconstruction of finalized inputs",
         "operationId": "post_api_reconstruction",
         "responses": {
           "default": {
@@ -1306,7 +1312,80 @@
             }
           },
           "503": {
-            "description": "Worker bridge unavailable; error code WORKER_UNAVAILABLE",
+            "description": "Disabled deployment, absent PostgreSQL, or no fresh compatible worker; WORKER_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Queued or existing identical job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconstructionAccepted"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires ENABLE_RECONSTRUCTION=true, PostgreSQL DATABASE_URL, a compatible worker heartbeat younger than 45 seconds, owned finalized JPEG/PNG inputs within the exact frame budget, and an unchanged input manifest. Deduplicates input+engine+settings within the restaurant. Up to three pending jobs per restaurant. No engine is started by the web process. Existing models remain unchanged; completed artifacts need human review.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconstructionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reconstruction/{id}": {
+      "get": {
+        "summary": "Read an owned reconstruction job",
+        "operationId": "get_api_reconstruction_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "$ref": "#/components/schemas/Job"
+                    }
+                  },
+                  "required": ["job"]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response; inaccessible jobs return 404.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1315,13 +1394,59 @@
               }
             }
           }
-        },
-        "description": "Always returns 503 WORKER_UNAVAILABLE after authentication. Does not parse a job request, enqueue work, change the current model or remove photos.",
+        }
+      },
+      "delete": {
+        "summary": "Cancel queued or running reconstruction",
+        "operationId": "delete_api_reconstruction_id",
         "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
           {
             "$ref": "#/components/parameters/Origin"
           }
-        ]
+        ],
+        "description": "Fences the current attempt immediately and preserves originals/models. Physical capacity stays reserved until process-stop acknowledgement or lease expiry plus grace. Repeated cancellation is idempotent. Other terminal jobs return409 JOB_TERMINAL.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "$ref": "#/components/schemas/Job"
+                    },
+                    "originalsPreserved": {
+                      "const": true
+                    }
+                  },
+                  "required": ["job", "originalsPreserved"]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response; inaccessible jobs return 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -1844,7 +1969,7 @@
           },
           "state": {
             "type": "string",
-            "enum": ["queued", "running", "succeeded", "failed", "cancelled"]
+            "enum": ["queued", "running", "ready_for_review", "succeeded", "failed", "cancelled"]
           },
           "attempts": {
             "type": "integer",
@@ -1860,6 +1985,18 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2
+          },
+          "stage": {
+            "type": ["string", "null"]
+          },
+          "review": {
+            "type": ["object", "null"],
+            "description": "Sanitized private-review artifact summary; local paths are never returned."
           }
         },
         "required": [
@@ -1870,8 +2007,94 @@
           "attempts",
           "errorCode",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "maxAttempts",
+          "stage",
+          "review"
         ]
+      },
+      "ReconstructionSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxImages": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 40,
+            "default": 24
+          },
+          "longEdge": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 1600,
+            "default": 1600
+          },
+          "memoryMiB": {
+            "type": "integer",
+            "minimum": 512,
+            "maximum": 2048,
+            "default": 1536
+          },
+          "diskMiB": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 4096,
+            "default": 2048
+          },
+          "stageSeconds": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 1800,
+            "default": 900
+          },
+          "scaleMetersPerUnit": {
+            "type": ["number", "null"],
+            "exclusiveMinimum": 0,
+            "maximum": 1000,
+            "default": null
+          },
+          "scaleReference": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 240,
+            "default": null
+          },
+          "openMvsCudaBuild": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "description": "Unknown keys are rejected. Scale value/reference must be supplied together. Worker capabilities must support every requested budget; GPU remains disabled."
+      },
+      "ReconstructionRequest": {
+        "type": "object",
+        "properties": {
+          "scanId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ReconstructionSettings"
+          }
+        },
+        "required": ["scanId"]
+      },
+      "ReconstructionAccepted": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "ready_for_review", "succeeded", "failed", "cancelled"]
+          },
+          "deduplicated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "state", "deduplicated"]
       }
     }
   }

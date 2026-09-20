@@ -10,7 +10,18 @@ test('restaurant forms create a photo dish, preview, publish and export a stable
   await page.getByLabel('Adresse e-mail').fill(`ui-${randomUUID()}@example.test`);
   await page.getByLabel('Mot de passe').fill(`DishPlay-${randomUUID()}`);
   await page.getByRole('button', { name: 'Créer mon espace' }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  // A fresh embedded PostgreSQL database must initialize on the first local signup.
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Mon restaurant', exact: true }).click();
+  const restaurantName = page.getByLabel('Nom du restaurant', { exact: true });
+  await restaurantName.fill('Cuisine de test — modifiée');
+  await page.getByLabel('Nouvelle catégorie', { exact: true }).fill('Plats');
+  await page.getByRole('button', { name: 'Ajouter la catégorie', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Catégorie ajoutée');
+  await expect(restaurantName).toHaveValue('Cuisine de test — modifiée');
+  await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('informations du restaurant');
+  await page.getByRole('button', { name: /Ma carte/ }).click();
   await page.getByRole('button', { name: 'Ajouter un plat', exact: true }).click();
   const editor = page.locator('.editor-dialog');
   await editor.getByLabel('Nom du plat', { exact: true }).fill('Assiette de test');

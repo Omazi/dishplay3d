@@ -3,5 +3,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
-  "git": { "deploymentEnabled": { "*": false, "production": true } }
+  "git": { "deploymentEnabled": { "**": false, "production": true } }
 }
