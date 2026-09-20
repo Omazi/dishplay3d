@@ -24,6 +24,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Verify automatic scan coverage
+        run: |
+          swiftc native/ios/DishPlayCapture/ScanCoverage.swift native/ios/Tests/main.swift -o /tmp/dishplay-scan-tests
+          /tmp/dishplay-scan-tests
       - name: Test signing profile guards
         run: python3 scripts/apple/test_signing.py
       - name: Download pinned project generator

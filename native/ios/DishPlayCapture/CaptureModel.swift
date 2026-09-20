@@ -4,6 +4,9 @@ import Foundation
 import RealityKit
 import SwiftUI
 import UIKit
+import PhotosUI
+import ImageIO
+import UniformTypeIdentifiers
 
 enum CapturePhase: String {
     case idle, preparing, ready, detecting, capturing, finishing, review, processing, failed
@@ -44,6 +47,56 @@ final class CaptureModel: ObservableObject {
         guard let record, let path = record.modelPath else { return nil }
         let url = CaptureFiles.root(record).appendingPathComponent(path)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func prepareAutomatic(mode: String = "arkit-guided") -> CaptureRecord? {
+        guard !busy else { return nil }
+        if let record, CaptureFiles.photos(record).isEmpty { return record }
+        do {
+            let fresh = CaptureRecord(id: UUID(), createdAt: Date(), dishReference: String(dishReference.prefix(120)),
+                mode: mode, state: "ready", device: UIDevice.current.model, systemVersion: UIDevice.current.systemVersion)
+            try CaptureFiles.create(fresh)
+            record = fresh; imageCount = 0; phase = .review; sdkProgress = nil
+            message = "Your dish is ready to scan. Good views are saved automatically."
+            library = CaptureFiles.library()
+            return fresh
+        } catch { fail(error); return nil }
+    }
+    func refreshAutomatic() {
+        guard let record else { return }
+        imageCount = CaptureFiles.photos(record).count
+        phase = .review
+        persist(state: imageCount > 0 ? "captured" : "ready")
+        message = imageCount > 0 ? "Scan saved. Continue to send it and create your 3D model." : "Your dish is ready to scan. Good views are saved automatically."
+    }
+    func importPhotos(_ items: [PhotosPickerItem], completed: @escaping () -> Void) {
+        guard !busy, !items.isEmpty, let record = prepareAutomatic(mode: "photo-import") else { return }
+        phase = .preparing
+        message = "Preparing selected photos…"
+        Task {
+            do {
+                for item in items {
+                    guard let data = try await item.loadTransferable(type: Data.self), data.count <= 25 * 1024 * 1024 else {
+                        throw CaptureProblem("One selected photo could not be read. Saved originals remain available.")
+                    }
+                    let destination = CaptureFiles.images(record).appendingPathComponent(UUID().uuidString + ".jpg")
+                    try await Task.detached(priority: .utility) {
+                        try autoreleasepool {
+                            guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+                                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                      kCGImageSourceThumbnailMaxPixelSize: 1920, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary),
+                                  let encoder = CGImageDestinationCreateWithURL(destination as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+                                throw CaptureProblem("One selected photo could not be read. Saved originals remain available.")
+                            }
+                            CGImageDestinationAddImage(encoder, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+                            guard CGImageDestinationFinalize(encoder) else { throw CaptureProblem("Could not save a JPEG copy.") }
+                        }
+                    }.value
+                }
+                refreshAutomatic()
+                completed()
+            } catch { refreshAutomatic(); fail(error) }
+        }
     }
 
     func start(native: Bool) {
@@ -324,6 +377,14 @@ final class CaptureModel: ObservableObject {
     func exportModel() {
         guard let url = savedModel, !busy else { return }
         exportFile = ExportFile(url: url)
+    }
+    func receiveModel(_ url: URL) {
+        guard var current = record else { return }
+        let prefix = CaptureFiles.root(current).path + "/"
+        guard url.path.hasPrefix(prefix) else { return }
+        current.modelPath = String(url.path.dropFirst(prefix.count))
+        record = current
+        persist(state: "model-ready-for-review")
     }
     func markRemote(_ scanId: String?) {
         guard var current = record else { return }
