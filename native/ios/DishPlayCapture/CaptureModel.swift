@@ -35,6 +35,7 @@ final class CaptureModel: ObservableObject {
     @Published var exportFile: ExportFile?
     @Published var previewURL: URL?
     @Published var cameraDenied = false
+    @Published var videoProgress: Double?
 
     let nativeSupported = ObjectCaptureSession.isSupported
     let reconstructionSupported = PhotogrammetrySession.isSupported
@@ -48,10 +49,15 @@ final class CaptureModel: ObservableObject {
         let url = CaptureFiles.root(record).appendingPathComponent(path)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
+    var savedVideo: URL? {
+        guard let record, let path = record.sourceVideoPath else { return nil }
+        let url = CaptureFiles.root(record).appendingPathComponent(path)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 
     func prepareAutomatic(mode: String = "arkit-guided") -> CaptureRecord? {
         guard !busy else { return nil }
-        if var current = record, CaptureFiles.photos(current).isEmpty {
+        if var current = record, current.sourceVideoPath == nil, CaptureFiles.photos(current).isEmpty {
             current.mode = mode
             record = current
             persist(state: current.state)
@@ -102,6 +108,66 @@ final class CaptureModel: ObservableObject {
                 completed()
             } catch { refreshAutomatic(); fail(error) }
         }
+    }
+
+    func importVideo(_ item: PhotosPickerItem, completed: @escaping (Bool) -> Void) {
+        guard !busy else { return }
+        phase = .preparing; videoProgress = nil
+        message = "Opening selected video…"
+        Task {
+            do {
+                guard let imported = try await item.loadTransferable(type: ImportedVideo.self) else { throw VideoPreparationError.unreadable }
+                phase = .review
+                acceptVideo(imported.url, completed: completed)
+            } catch {
+                videoFailed(error)
+                completed(false)
+            }
+        }
+    }
+    func acceptVideo(_ url: URL, completed: @escaping (Bool) -> Void) {
+        guard !busy, var current = prepareAutomatic(mode: "video") else { completed(false); return }
+        do {
+            try VideoFrameExtractor.validateSize(url)
+            let filename = "original." + (url.pathExtension.isEmpty ? "mov" : url.pathExtension)
+            let destination = CaptureFiles.root(current).appendingPathComponent(filename)
+            // Both recording and PhotosPicker provide an app-owned file, not the user's library original.
+            try FileManager.default.moveItem(at: url, to: destination)
+            current.sourceVideoPath = filename
+            current.state = "video-saved"
+            record = current
+            try CaptureFiles.save(current)
+            library = CaptureFiles.library()
+            prepareSavedVideo(completed: completed)
+        } catch { videoFailed(error); completed(false) }
+    }
+    func prepareSavedVideo(completed: @escaping (Bool) -> Void) {
+        guard !busy, let current = record, let source = savedVideo, imageCount == 0 else { completed(false); return }
+        phase = .preparing; videoProgress = 0
+        message = "Preparing photos from your video…"
+        persist(state: "preparing-video")
+        let destination = CaptureFiles.images(current)
+        Task {
+            do {
+                _ = try await Task.detached(priority: .utility) { [weak self] in
+                    try await VideoFrameExtractor.extract(from: source, to: destination) { fraction in
+                        await MainActor.run { self?.videoProgress = fraction }
+                    }
+                }.value
+                videoProgress = nil
+                refreshAutomatic()
+                message = "Video prepared. Your original stays on this iPhone; only the selected photos are sent."
+                completed(true)
+            } catch {
+                videoFailed(error)
+                completed(false)
+            }
+        }
+    }
+    private func videoFailed(_ error: Error) {
+        phase = .failed; videoProgress = nil
+        message = (error as? VideoPreparationError)?.message ?? VideoPreparationError.saveFailed.message
+        if var current = record { current.error = message; record = current; persist(state: "video-failed") }
     }
 
     func start(native: Bool) {

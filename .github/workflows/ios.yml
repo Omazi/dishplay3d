@@ -28,6 +28,12 @@ jobs:
         run: |
           swiftc native/ios/DishPlayCapture/ScanCoverage.swift native/ios/Tests/main.swift -o /tmp/dishplay-scan-tests
           /tmp/dishplay-scan-tests
+      - name: Verify real video frame extraction
+        run: |
+          swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
+            native/ios/DishPlayCapture/VideoFrameExtractor.swift native/ios/Tests/VideoExtractionTests.swift \
+            -o /tmp/dishplay-video-tests
+          /tmp/dishplay-video-tests
       - name: Test signing profile guards
         run: python3 scripts/apple/test_signing.py
       - name: Download pinned project generator

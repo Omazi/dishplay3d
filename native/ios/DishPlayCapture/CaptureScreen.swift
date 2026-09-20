@@ -7,6 +7,8 @@ struct CaptureScreen: View {
     @ObservedObject var model: CaptureModel
     @StateObject private var transfer = CaptureTransfer()
     @State private var scan: GuidedScan?
+    @State private var showVideoCamera = false
+    @State private var selectedVideo: PhotosPickerItem?
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var advanced = false
     @State private var showForget = false
@@ -18,7 +20,7 @@ struct CaptureScreen: View {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Your dish. In a new dimension.").font(.largeTitle.bold())
-                        Text("One guided scan. Automatic capture. Your 3D model, calculated on your PC.")
+                        Text("Film around your dish. We prepare the photos. Your PC builds the 3D model.")
                             .font(.body).foregroundStyle(.secondary)
                     }
                     TextField("Dish reference (optional, saved locally)", text: $model.dishReference)
@@ -28,20 +30,35 @@ struct CaptureScreen: View {
                         Text(snapshot.restaurantName).font(.subheadline).foregroundStyle(.secondary)
                     }
                     Button {
-                        guard let record = model.prepareAutomatic() else { return }
-                        let next = GuidedScan(record: record)
-                        next.onSaved = { model.refreshAutomatic() }
-                        scan = next
+                        showVideoCamera = true
                     } label: {
-                        Label("Scan your dish", systemImage: "viewfinder")
+                        Label("Film your dish", systemImage: "video.fill")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
                     }.buttonStyle(.borderedProminent).disabled(model.busy || transfer.busy)
+                    Text("Press Record, walk slowly around the plate, then press Stop. Aim for 20–40 seconds in good light.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    PhotosPicker(selection: $selectedVideo, matching: .videos) {
+                        Label("Use an existing video", systemImage: "film")
+                            .frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
                     PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 24, matching: .images) {
                         Label("Use existing photos", systemImage: "photo.on.rectangle")
                             .frame(maxWidth: .infinity)
                     }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
-                    if model.phase == .preparing { ProgressView("Preparing selected photos…") }
+                    if model.phase == .preparing {
+                        ProgressView(value: model.videoProgress) { Text(LocalizedStringKey(model.message)) }
+                        Text("Keep the app open while the photos are prepared.").font(.caption).foregroundStyle(.secondary)
+                    }
                     if model.phase == .failed { Text(LocalizedStringKey(model.message)).foregroundStyle(.red) }
+                    if let video = model.savedVideo {
+                        Button("Watch saved video", systemImage: "play.circle") { model.previewURL = video }
+                            .disabled(model.busy || transfer.busy)
+                        if model.imageCount == 0 {
+                            Button("Retry preparing this video", systemImage: "arrow.clockwise") {
+                                model.prepareSavedVideo { success in if success { sendIfPaired() } }
+                            }.disabled(model.busy || transfer.busy)
+                        }
+                    }
                     if model.imageCount > 0 {
                         Label("Your scan is saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                         if let url = model.savedModel {
@@ -99,11 +116,28 @@ struct CaptureScreen: View {
                             }.padding(.top).disabled(transfer.busy)
                         }
                     }
-                    Text("The live preview shows observations. The final model is reconstructed from your photos and should be checked before publication.")
+                    DisclosureGroup("Advanced spatial scan") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("This mode detects the table and shows observed points. If detection gets stuck, use Film your dish.")
+                                .font(.callout).foregroundStyle(.secondary)
+                            Button("Start spatial scan", systemImage: "viewfinder") {
+                                guard let record = model.prepareAutomatic() else { return }
+                                let next = GuidedScan(record: record)
+                                next.onSaved = { model.refreshAutomatic() }
+                                scan = next
+                            }.buttonStyle(.bordered).disabled(model.busy || transfer.busy)
+                        }.padding(.top)
+                    }
+                    Text("Your original video stays on this iPhone. Selected photos are sent to your linked dish. Check the reconstructed model before publishing it.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }.padding(22).frame(maxWidth: 650).frame(maxWidth: .infinity)
             }
             .navigationTitle("DishPlay Capture").navigationBarTitleDisplayMode(.inline)
+            .fullScreenCover(isPresented: $showVideoCamera) {
+                VideoCaptureScreen { url in
+                    model.acceptVideo(url) { success in if success { sendIfPaired() } }
+                }
+            }
             .fullScreenCover(item: $scan) { active in
                 GuidedScanScreen(scan: active, onContinue: {
                     model.refreshAutomatic()
@@ -117,6 +151,13 @@ struct CaptureScreen: View {
             .onChange(of: selectedPhotos) { _, items in
                 guard !items.isEmpty else { return }
                 model.importPhotos(items) { selectedPhotos = []; sendIfPaired() }
+            }
+            .onChange(of: selectedVideo) { _, item in
+                guard let item else { return }
+                model.importVideo(item) { success in
+                    selectedVideo = nil
+                    if success { sendIfPaired() }
+                }
             }
             .onChange(of: scenePhase) { _, value in
                 if value != .active { transfer.pause(); model.pauseForInterruption() }

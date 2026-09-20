@@ -1,14 +1,20 @@
 # Automatic dish scan and reconstruction on the owner's PC
 
-## Current flow
+## Video capture (0.3)
 
-DishPlay Capture 0.2 uses ARKit world tracking, independently of Object Capture support. Tap **Scan your dish**. Vision segments the central foreground instance; repeated stable raycasts against a detected horizontal table plane locate a provisional capture volume. This is foreground detection, not a trained food classifier. Keep the dish still and in the frame.
+The primary iPhone action is **Film your dish**. It opens a normal rear camera; recording never waits for foreground recognition, a horizontal plane, LiDAR or Object Capture support. Press **Record**, move slowly around a stationary, well-lit dish for roughly 20–40 seconds, finish from a slightly higher view, and press **Stop and use video**. Keep the entire plate visible and the phone in the same orientation. The timer is elapsed recording time, not measured coverage. Recording stops at 60 seconds or 180 MiB, and has no microphone/audio input.
 
-The camera samples at most one analysis every 350 ms, with one retained ARFrame and one serial image analysis. Image sharpness, brightness, clipped pixels, camera motion, target visibility and new angular coverage gate saved keyframes. No shutter sequence or target photo count is shown. A rising orbit is suggested. Accepted observations fill 18 angular sectors; at least four elevated views are required. Coverage is calculated from accepted camera poses, never elapsed time. The internal cap is 24 views. Completion is automatic only when all required sectors pass. Actual duration and reconstruction success depend on the scene; 8–20 seconds is a UX goal, not an established result.
+The app saves the original movie in its capture folder, then extracts at most 24 upright JPEGs (1600 px maximum edge), sequentially on the phone. It examines two nearby samples per time slot, favors sharper views and rejects very dark, clipped, blurred or near-identical images. A minimum of eight usable, different images is required. These image checks cannot certify a complete orbit, food fidelity or successful photogrammetry. A static video is not a usable multi-view capture.
 
-The lower panel shows actual ARKit feature points inside the provisional volume; supported scene depth adds measured points. It is labelled **Observed points · provisional**. It is not a textured mesh, silhouette volume or final reconstruction. Standard ARKit devices can produce sparse previews. LiDAR improves point density. A separate coarse mesh / splat pipeline is not implemented. Review permits rotation/zoom and filling missing areas in the same live AR session. After app termination, start a new scan rather than merging incompatible world coordinate systems. Pause/background/relocalization preserve saved images.
+**Use an existing video** imports a file through the system picker without loading the entire movie into memory. Input is limited to 5–90 seconds and 250 MiB. Photo import remains available. The original video stays on the phone; only the selected JPEGs enter the existing transfer pipeline. A failed conversion exposes no partial photo set for upload. **Watch saved video** and **Retry preparing this video** allow review and recovery without filming again. Old capture records remain readable.
 
-Link a dish using its private website code. Continue from scan review to upload; or select existing photos. JPEG copies are sent one at a time and deduplicated. The last successful upload finalizes the capture and automatically requests reconstruction. A finalized capture can be reopened to check the result. The website also sends and finalizes a complete imported photo set automatically for a linked dish.
+After linking a dish with its private website code, successful preparation starts photo upload automatically. Photos are sent one at a time and deduplicated. Finalizing requests reconstruction on the owner's PC, and the app downloads the verified USDZ when ready. If no dish is linked, the capture remains local and the app prompts for the code. Backgrounding stops recording and preserves a successfully finished movie; keep the app open during extraction and transfer. A saved video can be reprocessed if the OS terminates preparation.
+
+## Advanced spatial scan
+
+The previous ARKit/Vision flow remains under **Advanced spatial scan**. It requires foreground segmentation and stable raycasts against a horizontal table before accepting views. If that detection gets stuck, return to the primary video mode. It is foreground detection, not a trained food classifier.
+
+The camera samples at most once every 350 ms, with one retained ARFrame and one serial analysis. Sharpness, brightness, clipped pixels, motion, target visibility and new angular coverage gate saved keyframes. Accepted observations fill 18 angular sectors, with at least four elevated views and a cap of 24 photos. Coverage comes from accepted camera poses, never elapsed time. The observed point preview is provisional, not a finished textured model. A physical-device test is needed to assess tracking and food fidelity.
 
 ## PC computation
 
@@ -29,7 +35,7 @@ The service waits for memory cap + 1 GiB of free RAM before claiming a job. The 
 
 ## Evidence and acceptance
 
-The unsigned Xcode build and pure Swift coverage checks pass on hosted macOS. Database tests exercise offline admission/deduplication, tenant isolation, cancelled/stale leases, and private artifact delivery. These checks do not establish physical camera tracking, speed, surface quality, metric scale or food fidelity. A real iPhone scan and reconstruction remain required acceptance checks. No production scan was available during initial integration.
+Hosted macOS CI checks the unsigned Xcode archive and spatial coverage logic. The video suite encodes and decodes actual MOV files, checking orientation, bounded photo selection, stationary/dark/short rejection, preservation of the source and protection against overwriting saved images. Database tests exercise offline admission/deduplication, tenant isolation, cancelled/stale leases, and private artifact delivery. These checks do not establish physical camera tracking, speed, surface quality, metric scale or food fidelity. A real iPhone scan and reconstruction remain required acceptance checks. No production scan was available during initial integration.
 
 Apple references: [ARFrame raw feature points](https://developer.apple.com/documentation/arkit/arframe/rawfeaturepoints), [scene depth](https://developer.apple.com/documentation/arkit/arframe/scenedepth), [foreground instance masks](https://developer.apple.com/documentation/vision/vngenerateforegroundinstancemaskrequest). These APIs do not promise that raw feature points describe a complete object surface.
 
