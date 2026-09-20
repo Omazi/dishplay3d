@@ -14,6 +14,13 @@ struct NativeSnapshot: Codable {
     var hashes: [String]
 }
 
+struct ReconstructionSnapshot: Decodable {
+    struct Job: Decodable { let id: String; let state: String; let stage: String?; let errorCode: String? }
+    let job: Job?
+    let enabled: Bool
+    let workerAvailable: Bool
+}
+
 private struct CaptureCredential: Codable {
     let code: String
     let secret: String
@@ -109,7 +116,44 @@ private enum NativeAPI {
     }
     static func finalize(_ secret: String) async throws {
         _ = try checked(await session.data(for: request("finalize", method: "POST", secret: secret)))
+    }    static func reconstruction(_ secret: String, start: Bool = false) async throws -> ReconstructionSnapshot {
+        if start { _ = try checked(await session.data(for: request("reconstruction", method: "POST", secret: secret))) }
+        return try JSONDecoder().decode(ReconstructionSnapshot.self, from: checked(await session.data(for: request("reconstruction", secret: secret))))
     }
+    static func download(_ job: String, secret: String, record: CaptureRecord) async throws -> URL {
+        guard UUID(uuidString: job) != nil else { throw CaptureProblem("Invalid model reference.") }
+        let folder = CaptureFiles.root(record).appendingPathComponent("Outputs/Remote-" + job, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let pending = folder.appendingPathComponent(UUID().uuidString + ".partial")
+        FileManager.default.createFile(atPath: pending.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: pending)
+        defer { try? handle.close(); try? FileManager.default.removeItem(at: pending) }
+        var hash = SHA256(), total = 0, expectedBytes = 0, expectedHash = "", parts = 1
+        var index = 0
+        while index < parts {
+            try Task.checkCancellation()
+            let response = try await session.data(for: request("reconstruction/" + job + "/usdz?part=\(index)", secret: secret))
+            let bytes = try checked(response)
+            guard let http = response.1 as? HTTPURLResponse,
+                  let count = Int(http.value(forHTTPHeaderField: "X-Artifact-Parts") ?? ""), (1...128).contains(count),
+                  let size = Int(http.value(forHTTPHeaderField: "X-Artifact-Bytes") ?? ""), size > 0, size <= 128 * 1024 * 1024,
+                  let checksum = http.value(forHTTPHeaderField: "X-Artifact-SHA256"), bytes.count <= 1024 * 1024 else {
+                throw CaptureProblem("The model download could not be verified.")
+            }
+            if index == 0 { parts = count; expectedBytes = size; expectedHash = checksum }
+            guard parts == count, expectedBytes == size, expectedHash == checksum else { throw CaptureProblem("The model changed during download. Please retry.") }
+            try handle.write(contentsOf: bytes)
+            hash.update(data: bytes); total += bytes.count; index += 1
+        }
+        guard total == expectedBytes, hash.finalize().map({ String(format: "%02x", $0) }).joined() == expectedHash else {
+            throw CaptureProblem("The model download could not be verified.")
+        }
+        try handle.close()
+        let output = folder.appendingPathComponent(UUID().uuidString + ".usdz")
+        try FileManager.default.moveItem(at: pending, to: output)
+        return output
+    }
+
 }
 
 private enum UploadCopy {
@@ -158,13 +202,16 @@ final class CaptureTransfer: ObservableObject {
     @Published var completed = 0
     @Published var total = 0
     @Published var readyToFinalize = false
+    @Published var remoteState = ""
+    @Published var modelURL: URL?
+    var onModel: ((URL) -> Void)?
     private var task: Task<Void, Never>?
     private var selected: UUID?
 
     func select(_ record: CaptureRecord?) {
         guard !busy, selected != record?.id else { return }
         selected = record?.id
-        snapshot = nil; completed = 0; total = 0; readyToFinalize = false; status = ""
+        snapshot = nil; modelURL = nil; remoteState = ""; completed = 0; total = 0; readyToFinalize = false; status = ""
         guard let record else { return }
         do {
             let credential = try CaptureKeychain.load(record.id)
@@ -208,7 +255,11 @@ final class CaptureTransfer: ObservableObject {
             self.snapshot = received
             credential.snapshot = received
             try CaptureKeychain.save(credential, id: record.id)
-            guard received.scan.state == "capturing" else { throw CaptureProblem("This series is already closed. Its received photos remain on the website.") }
+            if received.scan.state == "finalized" {
+                try await self.track(credential, record: record)
+                return
+            }
+            guard received.scan.state == "capturing" else { throw CaptureProblem("This series was cancelled. Your photos remain saved.") }
             let files = CaptureFiles.photos(record)
             guard !files.isEmpty, files.count <= 150 else { throw CaptureProblem("A transfer requires between 1 and 150 saved photos.") }
             self.total = files.count; self.completed = 0
@@ -228,7 +279,14 @@ final class CaptureTransfer: ObservableObject {
             try CaptureKeychain.save(credential, id: record.id)
             self.snapshot = received
             self.readyToFinalize = received.scan.state == "capturing" && received.hashes.count >= 3
-            self.status = "Transfer verified. Originals remain on this iPhone. Finalize when you have finished adding views."
+            guard self.readyToFinalize else { throw CaptureProblem("More overlapping views are needed. Your photos remain saved.") }
+            try await NativeAPI.finalize(credential.secret)
+            received = try await NativeAPI.snapshot(credential.secret)
+            credential.snapshot = received
+            try CaptureKeychain.save(credential, id: record.id)
+            self.snapshot = received
+            self.readyToFinalize = false
+            try await self.track(credential, record: record)
         }
     }
     func finalize(_ record: CaptureRecord) {
@@ -242,6 +300,36 @@ final class CaptureTransfer: ObservableObject {
             self.snapshot = received
             self.readyToFinalize = false
             self.status = "Series finalized on the website. Review the photos there; a model still needs reconstruction and review."
+        }
+    }
+    private func track(_ credential: CaptureCredential, record: CaptureRecord) async throws {
+        var state = try await NativeAPI.reconstruction(credential.secret, start: true)
+        while true {
+            try Task.checkCancellation()
+            guard let job = state.job else {
+                remoteState = "unavailable"
+                status = state.enabled ? "The scan is saved, but reconstruction could not start. Check the capture on DishPlay." : "Photos are saved. Connect the DishPlay service on your PC to enable reconstruction."
+                return
+            }
+            remoteState = job.state
+            switch job.state {
+            case "ready_for_review":
+                status = "Your 3D model is ready. Downloading…"
+                let url = try await NativeAPI.download(job.id, secret: credential.secret, record: record)
+                self.modelURL = url
+                onModel?(url)
+                status = "Your 3D model is ready. Rotate it and check the result."
+                return
+            case "failed", "cancelled":
+                status = "Reconstruction stopped. Your photos are saved. Check the result on DishPlay before trying again."
+                return
+            case "queued":
+                status = state.workerAvailable ? "Your scan is waiting for its turn on your PC." : "Waiting for your PC. Keep it on, connected, with DishPlay running and enough free memory."
+            default:
+                status = "Your PC is reconstructing the dish. You can check the result here or on DishPlay."
+            }
+            try await Task.sleep(for: .seconds(10))
+            state = try await NativeAPI.reconstruction(credential.secret)
         }
     }
     func forget(_ record: CaptureRecord) {
