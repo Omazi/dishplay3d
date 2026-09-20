@@ -33,5 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
     && python3 -m pip install --no-cache-dir Pillow==12.3.0 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /usr/local/ /usr/local/
 COPY --from=build /opt/blender /opt/blender
-RUN ldconfig && colmap -h >/dev/null && blender --background --version && DensifyPointCloud --help >/dev/null
+RUN ldconfig && colmap -h >/dev/null && blender --background --version \
+    && (DensifyPointCloud --help >/tmp/openmvs-help 2>&1 || test $? -eq 1) \
+    && grep -q 'OpenMVS.*2.3.0' /tmp/openmvs-help && rm /tmp/openmvs-help
 ENTRYPOINT ["python3"]
