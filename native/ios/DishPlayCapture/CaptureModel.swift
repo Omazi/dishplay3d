@@ -70,7 +70,8 @@ final class CaptureModel: ObservableObject {
         // An aborted guided attempt can already contain a movie. Reuse its empty
         // photo series and association; the recorder writes a new, unique segment.
         // Ordinary video import still creates a separate record to preserve original.mov.
-        if var current = record, CaptureFiles.photos(current).isEmpty,
+        if var current = record, CaptureFiles.photos(current).isEmpty, current.modelPath == nil,
+           CaptureDelivery.read(from: CaptureFiles.root(current)).uploadedAt == nil,
            current.sourceVideoPath == nil || (mode == "arkit-guided" && current.mode == "arkit-guided") {
             current.mode = mode
             record = current
