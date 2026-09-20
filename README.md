@@ -4,6 +4,8 @@ Restaurant photo menus, guided photo capture, published menu snapshots and perma
 
 **This is a web pilot.** Native Object Capture/ARCore apps and reconstruction of a real dish have not been validated. Browser capture records real images; it does not fabricate tracking, points or 3D results. The separate reconstruction CLI requires external engines and explicit execution.
 
+**Live:** [dishplay3d.vercel.app](https://dishplay3d.vercel.app) · [Create a restaurant account](https://dishplay3d.vercel.app/signup). Production accounts and menus use the connected Neon PostgreSQL database on its free plan. The live account, photo, publication and QR workflows passed verification; see [the acceptance record](docs/acceptance.md#cloud-account-activation).
+
 ## Run locally (8 GB laptop)
 
 ```bash

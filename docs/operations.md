@@ -8,6 +8,8 @@ Local data lives in `.data/dishplay` (or `PGLITE_DATA_DIR`). Stop the local serv
 
 Production uses PostgreSQL through `DATABASE_URL`. Keep its credentials in the hosting secret store. Use the provider's backups and a periodic encrypted `pg_dump` using a direct database connection. Restore into a separate database, run the app against it, and verify account access, private media, draft editing and a published menu before cutover. A backup has not been validated until a restore succeeds. No production restore was executed during this delivery.
 
+The deployed `azomar/dishplay3d` project is connected to the `dishplay3d-db` Neon resource, provisioned with the explicit `free_v3` plan in `iad1`. Its generated variables are scoped to **production**. Local development and CI continue to use isolated embedded databases. Do not pull production credentials into local app environment files or use production data for browser tests. Any temporary credential export used for operations must be kept outside Git, access-restricted and removed afterward.
+
 ## Retention and limits
 
 For this pilot, original captures remain in the browser until explicitly removed or evicted by the browser. Export a ZIP before clearing browser storage. Local persistence is not a backup. Private uploaded images remain in the database; there is no automatic deletion job. Operators must establish a retention schedule and export policy before a live restaurant rollout.
