@@ -45,6 +45,9 @@ test('camera denial recovers to stable import; originals persist and export unch
   const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']));
   expect(manifest.poses).toBeNull();
   expect(manifest.frames).toHaveLength(1);
+  expect(manifest.frames[0].capture.source).toBe('import');
+  expect(manifest.frames[0].capture.pass).toBeUndefined();
+  expect(manifest.frames[0].capture.quality.version).toBe(1);
 });
 
 test('linked capture uploads all photos, finalizes and restores its immutable state', async ({

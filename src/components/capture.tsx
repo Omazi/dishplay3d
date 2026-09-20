@@ -16,9 +16,12 @@ import {
   Info,
   LoaderCircle,
   Pause,
-  RotateCcw,
   ShieldCheck,
   Trash2,
+  Sun,
+  ScanLine,
+  Hand,
+  CircleAlert,
 } from 'lucide-react';
 import { Brand } from './brand';
 import { api } from './api-client';
@@ -33,6 +36,14 @@ import {
 } from './capture-store';
 import { validateImageBytes } from '@/lib/image-validation';
 import { ReconstructionPanel } from './reconstruction-panel';
+import { CaptureCoach } from './capture-coach';
+import { useCaptureFeedback } from './capture-feedback';
+import {
+  capturePasses,
+  inspectPixels,
+  qualityMessages,
+  type ImageQuality,
+} from '@/lib/capture-quality';
 
 const CAPTURE_LIMIT = 100 * 1024 * 1024;
 const guides = [
@@ -107,6 +118,12 @@ function FrameThumbnail({
         <Trash2 size={14} />
       </button>
       <span>{frame.name}</span>
+      {frame.capture?.quality?.warnings.length ? (
+        <small className="thumbnail-warning">
+          <CircleAlert size={13} />
+          {t('À contrôler')}
+        </small>
+      ) : null}
     </div>
   );
 }
@@ -117,7 +134,6 @@ export function Capture() {
   const dishId = search.get('dish') || '';
   const [sessionId, setSessionId] = useState('');
   const [frames, setFrames] = useState<CaptureFrame[]>([]);
-  const [step, setStep] = useState(0);
   const [live, setLive] = useState(false);
   const [opening, setOpening] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -129,11 +145,68 @@ export function Capture() {
   const [synchronized, setSynchronized] = useState(false);
   const [history, setHistory] = useState<{ id: string; createdAt: string }[]>([]);
   const [deleteId, setDeleteId] = useState('');
+  const [pass, setPass] = useState(0);
+  const [completed, setCompleted] = useState([false, false, false]);
+  const [assisted, setAssisted] = useState(false);
+  const [galleryPage, setGalleryPage] = useState(0);
+  const operation = useRef(false);
+  const lastShot = useRef(0);
   const camera = useRef<HTMLVideoElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const mounted = useRef(true);
   const cameraOpening = useRef(false);
+  const { feedback, markCaptured } = useCaptureFeedback(camera, live);
+  const takePhotoLatest = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    takePhotoLatest.current = takePhoto;
+  });
+  useEffect(() => {
+    if (
+      assisted &&
+      live &&
+      !busy &&
+      !finalized &&
+      feedback?.ready &&
+      Date.now() - lastShot.current > 2200
+    )
+      void takePhotoLatest.current();
+  }, [assisted, live, busy, finalized, feedback]);
+  useEffect(() => {
+    setPass(0);
+    setCompleted([false, false, false]);
+    setGalleryPage(0);
+    if (!sessionId) return;
+    try {
+      const plan = JSON.parse(localStorage.getItem(`dishplay-guide:${sessionId}`) || 'null');
+      if (
+        plan &&
+        Number.isInteger(plan.pass) &&
+        plan.pass >= 0 &&
+        plan.pass < 3 &&
+        Array.isArray(plan.completed) &&
+        plan.completed.length === 3
+      ) {
+        setPass(plan.pass);
+        setCompleted(plan.completed.map((v: unknown) => v === true));
+      }
+    } catch {
+      /* Guidance is optional; originals are stored separately. */
+    }
+  }, [sessionId]);
+  function updatePlan(nextPass: number, nextCompleted: boolean[]) {
+    setPass(nextPass);
+    setCompleted(nextCompleted);
+    setAssisted(false);
+    try {
+      localStorage.setItem(
+        `dishplay-guide:${sessionId}`,
+        JSON.stringify({ pass: nextPass, completed: nextCompleted }),
+      );
+    } catch {
+      /* Keep this session usable. */
+    }
+  }
   const bytes = frames.reduce((sum, frame) => sum + frame.size, 0);
   useEffect(() => {
     mounted.current = true;
@@ -231,6 +304,7 @@ export function Capture() {
     }
   }
   function stopCamera() {
+    setAssisted(false);
     stream.current?.getTracks().forEach((track) => track.stop());
     stream.current = null;
     if (camera.current) camera.current.srcObject = null;
@@ -280,7 +354,7 @@ export function Capture() {
         return;
       }
       setLive(true);
-      setStatus(t('Caméra ouverte. Les photos sont prises uniquement avec le bouton de capture.'));
+      setStatus(t('Caméra ouverte. Déclenchez une photo ou activez la prise assistée.'));
     } catch (err) {
       stopCamera();
       const code = err instanceof DOMException ? err.name : '';
@@ -300,8 +374,13 @@ export function Capture() {
       if (mounted.current) setOpening(false);
     }
   }
-  async function addFiles(files: FileList | File[]) {
+  async function addFiles(
+    files: FileList | File[],
+    captured?: { pass: number; quality?: ImageQuality; gray?: Uint8Array },
+  ) {
     if (!sessionId || finalized) return;
+    if (operation.current && !captured) return;
+    operation.current = true;
     setBusy(true);
     setError('');
     setSynchronized(false);
@@ -327,7 +406,32 @@ export function Capture() {
               'Limite de cette série atteinte : 150 photos ou 100 Mo. Exportez vos originaux avant de préparer une autre série.',
             ),
           );
-        await storeFrame(sessionId, file, file.name);
+        let quality = captured?.quality;
+        if (!captured) {
+          // Decode one small thumbnail at a time. Failure of advisory analysis
+          // must never discard a valid original.
+          try {
+            const bitmap = await createImageBitmap(file, { resizeWidth: 160, resizeHeight: 120 });
+            const canvas = document.createElement('canvas');
+            canvas.width = 160;
+            canvas.height = 120;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(bitmap, 0, 0);
+              quality = inspectPixels(ctx.getImageData(0, 0, 160, 120).data, 160, 120).quality;
+            }
+            bitmap.close();
+            canvas.width = 0;
+            canvas.height = 0;
+          } catch {
+            /* Original import remains available. */
+          }
+        }
+        await storeFrame(sessionId, file, file.name, {
+          source: captured ? 'camera' : 'import',
+          ...(captured ? { pass: captured.pass } : {}),
+          ...(quality ? { quality } : {}),
+        });
         count++;
         total += file.size;
         added++;
@@ -340,6 +444,8 @@ export function Capture() {
         );
       }
       if (navigator.storage?.persist) void navigator.storage.persist().catch(() => {});
+      if (captured) markCaptured(captured.gray);
+      setGalleryPage(0);
       setStatus(
         t('{0} photo{1} ajoutée{2}. Les originaux sont conservés dans ce navigateur.', [
           added,
@@ -348,34 +454,57 @@ export function Capture() {
         ]),
       );
     } catch (err) {
+      setAssisted(false);
       setError(err instanceof Error ? err.message : t('L’import a échoué.'));
     } finally {
       setFrames(await listFrames(sessionId).catch(() => frames));
       setBusy(false);
+      operation.current = false;
     }
   }
   async function takePhoto() {
-    if (!camera.current?.videoWidth || busy) return;
-    const video = camera.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d')!.drawImage(video, 0, 0);
+    if (!camera.current?.videoWidth || busy || operation.current || finalized) return;
+    operation.current = true;
+    lastShot.current = Date.now();
     setBusy(true);
-    canvas.toBlob(
-      (blob) => {
-        canvas.width = 0;
-        canvas.height = 0;
-        if (!blob) {
-          setError(t('La prise n’a pas pu être enregistrée. Réessayez.'));
-          setBusy(false);
-          return;
-        }
-        void addFiles([new File([blob], `prise-${Date.now()}.jpg`, { type: 'image/jpeg' })]);
-      },
-      'image/jpeg',
-      0.95,
-    );
+    const canvas = document.createElement('canvas');
+    const sample = document.createElement('canvas');
+    try {
+      const video = camera.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error(t('La prise n’a pas pu être enregistrée. Réessayez.'));
+      context.drawImage(video, 0, 0);
+      sample.width = 160;
+      sample.height = 120;
+      const small = sample.getContext('2d');
+      small?.drawImage(canvas, 0, 0, 160, 120);
+      const analysis = small
+        ? inspectPixels(small.getImageData(0, 0, 160, 120).data, 160, 120)
+        : null;
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.95),
+      );
+      if (!blob) throw new Error(t('La prise n’a pas pu être enregistrée. Réessayez.'));
+      await addFiles([new File([blob], `prise-${Date.now()}.jpg`, { type: 'image/jpeg' })], {
+        pass,
+        quality: analysis?.quality,
+        gray: analysis?.gray,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : t('La prise n’a pas pu être enregistrée. Réessayez.'),
+      );
+      setAssisted(false);
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+      sample.width = 0;
+      sample.height = 0;
+      operation.current = false;
+      setBusy(false);
+    }
   }
   async function exportOriginals() {
     setBusy(true);
@@ -547,7 +676,7 @@ export function Capture() {
           <div>
             <p className="eyebrow">{t('L’ATELIER DE CAPTURE')}</p>
             <h1>{t('Gardez le bon angle.')}</h1>
-            <p>{t('Une série de photos, pour préparer la suite.')}</p>
+            <p>{t('Tournez autour du plat. On vous guide, une vue à la fois.')}</p>
           </div>
           <span className="capture-mode">
             <Camera size={16} /> {t('Photos guidées · Navigateur')}{' '}
@@ -580,6 +709,14 @@ export function Capture() {
             {t('Nouvelle série')}{' '}
           </button>
         </div>
+        <CaptureCoach
+          pass={pass}
+          completed={completed}
+          frames={frames}
+          disabled={busy || opening || finalized}
+          live={live}
+          onChange={updatePlan}
+        />
         <div className="capture-grid">
           <div>
             <div className="camera-stage">
@@ -623,6 +760,20 @@ export function Capture() {
                   <span className="live-label">
                     <span className="tiny-dot" /> {t('CAMÉRA ACTIVE')}{' '}
                   </span>
+                  <span className="live-pass">
+                    {t('PASSAGE {0} / 3', [pass + 1])} · {capturePasses[pass].angle}
+                  </span>
+                  <p className="live-coaching" aria-live="polite">
+                    {feedback?.quality.warnings.length
+                      ? t(qualityMessages[feedback.quality.warnings[0]])
+                      : feedback?.moving
+                        ? t('Arrêtez-vous un instant.')
+                        : feedback?.similar
+                          ? t('Avancez d’un petit pas autour du plat.')
+                          : feedback
+                            ? t('Image stable. Vous pouvez prendre la photo.')
+                            : t('Analyse de l’image…')}
+                  </p>
                   <div className="camera-controls">
                     <button
                       className="icon-button"
@@ -646,6 +797,70 @@ export function Capture() {
                 </>
               )}
             </div>
+            <div className="photo-feedback" aria-label={t('Contrôle de l’image')}>
+              <div>
+                <Sun size={18} />
+                <span>
+                  {t('Lumière')}
+                  <strong>
+                    {!feedback
+                      ? t('En attente de la caméra')
+                      : feedback.quality.warnings.includes('dark')
+                        ? t('Trop sombre')
+                        : feedback.quality.warnings.includes('bright')
+                          ? t('Trop forte')
+                          : t('Correcte')}
+                  </strong>
+                </span>
+              </div>
+              <div>
+                <Hand size={18} />
+                <span>
+                  {t('Stabilité')}
+                  <strong>
+                    {!feedback
+                      ? t('En attente de la caméra')
+                      : feedback.moving
+                        ? t('Faites une pause')
+                        : t('Image stable')}
+                  </strong>
+                </span>
+              </div>
+              <div>
+                <ScanLine size={18} />
+                <span>
+                  {t('Détails')}
+                  <strong>
+                    {!feedback
+                      ? t('En attente de la caméra')
+                      : feedback.quality.warnings.includes('detail')
+                        ? t('À contrôler')
+                        : t('Détectés')}
+                  </strong>
+                </span>
+              </div>
+            </div>
+            <div className="assisted-control">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={assisted}
+                  disabled={!live || finalized || busy}
+                  onChange={(e) => setAssisted(e.target.checked)}
+                />
+                {t('Prise assistée')}
+              </label>
+              <p>
+                {t(
+                  'Une photo après une courte pause, si l’image a changé et si les contrôles passent. Gardez le plat centré. Vous pouvez toujours déclencher vous-même.',
+                )}
+              </p>
+            </div>
+            <p className="feedback-note">
+              {t(
+                'Indications estimées sur l’image : elles ne vérifient ni le cadrage, ni les angles couverts, ni la réussite du futur modèle 3D.',
+              )}
+            </p>
             <div className="capture-import">
               <div>
                 <ShieldCheck size={19} />
@@ -657,6 +872,7 @@ export function Capture() {
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
+                disabled={busy || finalized || !sessionId}
                 aria-label={t('Importer les photos')}
                 onChange={(event) => {
                   if (event.target.files?.length) void addFiles(event.target.files);
@@ -695,27 +911,66 @@ export function Capture() {
             {frames.length ? (
               <>
                 <div className="capture-gallery">
-                  {frames.slice(-4).map((frame) => (
-                    <FrameThumbnail
-                      key={frame.id}
-                      frame={frame}
-                      disabled={busy || finalized || Boolean(remoteId)}
-                      onDelete={() => setDeleteId(frame.id)}
-                    />
-                  ))}
+                  {[...frames]
+                    .reverse()
+                    .slice(galleryPage * 4, galleryPage * 4 + 4)
+                    .map((frame) => (
+                      <FrameThumbnail
+                        key={frame.id}
+                        frame={frame}
+                        disabled={busy || finalized || Boolean(remoteId)}
+                        onDelete={() => setDeleteId(frame.id)}
+                      />
+                    ))}
                 </div>
                 {frames.length > 4 && (
-                  <p className="field-hint">
-                    {' '}
-                    {t('Les 4 dernières prises sont affichées. Les')} {frames.length}{' '}
-                    {t('originaux sont inclus dans l’export.')}{' '}
-                  </p>
+                  <div className="gallery-pagination">
+                    <button
+                      className="text-button"
+                      disabled={galleryPage === 0}
+                      onClick={() => setGalleryPage((p) => p - 1)}
+                    >
+                      {t('Précédent')}
+                    </button>
+                    <span>
+                      {galleryPage + 1} / {Math.ceil(frames.length / 4)}
+                    </span>
+                    <button
+                      className="text-button"
+                      disabled={(galleryPage + 1) * 4 >= frames.length}
+                      onClick={() => setGalleryPage((p) => p + 1)}
+                    >
+                      {t('Suivant')}
+                    </button>
+                  </div>
                 )}
               </>
             ) : (
               <div className="capture-empty">
                 <ImagePlus size={23} />
                 <p>{t('Vos premières prises apparaîtront ici.')}</p>
+              </div>
+            )}
+            {frames.some((f) => f.capture?.quality?.warnings.length) && (
+              <div className="quality-review">
+                <h3>{t('À revoir avant le transfert')}</h3>
+                <p>
+                  {t(
+                    'Ces indices invitent à vérifier les photos. Les originaux sont conservés, même lorsqu’un contrôle signale un problème.',
+                  )}
+                </p>
+                <ul>
+                  {frames
+                    .filter((f) => f.capture?.quality?.warnings.length)
+                    .map((f) => (
+                      <li key={f.id}>
+                        <strong>{f.name}</strong>
+                        <span>
+                          {f.capture!.quality!.warnings.map((w) => t(qualityMessages[w])).join(' ')}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
               </div>
             )}
             {deleteId && (
@@ -729,6 +984,7 @@ export function Capture() {
                       try {
                         await removeFrame(deleteId);
                         setFrames(await listFrames(sessionId));
+                        setGalleryPage(0);
                         setSynchronized(false);
                         setDeleteId('');
                       } catch {
@@ -748,31 +1004,15 @@ export function Capture() {
             )}
           </div>
           <aside className="capture-guide">
-            <div className="guide-progress" aria-label={t('Étapes du guide')}>
-              {guides.map((guide, index) => (
-                <button
-                  key={guide.title}
-                  onClick={() => setStep(index)}
-                  aria-label={t('Conseil {0} : {1}', [index + 1, t(guide.title)])}
-                  aria-current={step === index ? 'step' : undefined}
-                >
-                  {String(index + 1).padStart(2, '0')}
-                </button>
+            <details className="preparation-tips">
+              <summary>{t('Avant de commencer')}</summary>
+              {guides.map((guide) => (
+                <div key={guide.title}>
+                  <h3>{t(guide.title)}</h3>
+                  <p>{t(guide.text)}</p>
+                </div>
               ))}
-            </div>
-            <p className="eyebrow">
-              {t('CONSEIL')} {step + 1} / 3
-            </p>
-            <h2>{t(guides[step].title)}</h2>
-            <p>{t(guides[step].text)}</p>
-            <div className="guide-tip">
-              <Info size={18} />
-              <p>{t(guides[step].detail)}</p>
-            </div>
-            <button className="inline-link" onClick={() => setStep((step + 1) % 3)}>
-              {step === 2 ? t('Revoir les conseils') : t('Conseil suivant')}
-              {step === 2 ? <RotateCcw size={16} /> : <ArrowRight size={16} />}
-            </button>
+            </details>
             <div className="capture-separator" />
             <h3>{t('Votre série, bien gardée.')}</h3>
             <p className="field-hint">
