@@ -265,7 +265,7 @@ function DishEditor({
                 defaultValue={(source.priceCents / 100)
                   .toFixed(2)
                   .replace('.', locale === 'en' ? '.' : ',')}
-                placeholder="18,50"
+                placeholder={t('18,50')}
               />
             </label>
             <label>
@@ -332,7 +332,7 @@ function DishEditor({
                 name="modelGlbUrl"
                 type="url"
                 defaultValue={source.modelGlbUrl || ''}
-                placeholder="https://vos-medias.fr/plat.glb"
+                placeholder={t('https://vos-medias.fr/plat.glb')}
               />
             </label>
             <label>
@@ -342,7 +342,7 @@ function DishEditor({
                 name="modelUsdzUrl"
                 type="url"
                 defaultValue={source.modelUsdzUrl || ''}
-                placeholder="https://vos-medias.fr/plat.usdz"
+                placeholder={t('https://vos-medias.fr/plat.usdz')}
               />
             </label>
             {dish && (

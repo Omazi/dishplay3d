@@ -389,5 +389,9 @@
   "Pâtes, tomates et herbes fraîches. Les descriptions et allergènes de cette carte sont illustratifs.": "Pasta, tomatoes and fresh herbs. Descriptions and allergens on this menu are illustrative.",
   "La salade du marché": "Market salad",
   "Légumes de saison, feuilles tendres et vinaigrette maison. Une photo pour donner envie de découvrir.": "Seasonal vegetables, tender leaves and house dressing. A photograph to inspire discovery.",
-  "Moutarde": "Mustard"
+  "Moutarde": "Mustard",
+  "vous@restaurant.fr": "you@restaurant.com",
+  "18,50": "18.50",
+  "https://vos-medias.fr/plat.glb": "https://media.your-restaurant.example/dish.glb",
+  "https://vos-medias.fr/plat.usdz": "https://media.your-restaurant.example/dish.usdz"
 }

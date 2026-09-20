@@ -68,7 +68,7 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="vous@restaurant.fr"
+                placeholder={t('vous@restaurant.fr')}
               />
             </label>
             <label>
