@@ -12,14 +12,26 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:3000',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: {
-      ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-        ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
-        : {}),
-      args: ['--enable-unsafe-swiftshader'],
-    },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+            ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+            : {}),
+          args: ['--enable-unsafe-swiftshader'],
+        },
+      },
+    },
+    {
+      name: 'webkit-mobile',
+      testMatch: 'mobile-presentation.spec.ts',
+      use: { ...devices['iPhone 13'] },
+    },
+  ],
   webServer: {
     command: 'npm start',
     url: 'http://127.0.0.1:3000/api/menus/demo',

@@ -136,7 +136,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
                 <ArrowUpRight size={18} />
               </Link>
             </div>
-            <div className="premium-capture-steps" data-reveal>
+            <div className="premium-capture-steps">
               {[
                 [
                   '01',
@@ -154,7 +154,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
                   'Capturez les côtés, les reliefs, puis le dessus. Revoyez les prises signalées avant de transférer votre série.',
                 ],
               ].map(([number, title, description]) => (
-                <article key={number}>
+                <article key={number} data-reveal>
                   <span>{number}</span>
                   <div>
                     <h3>{t(title)}</h3>
