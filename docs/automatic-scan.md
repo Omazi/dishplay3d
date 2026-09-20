@@ -1,6 +1,10 @@
 # Automatic dish scan and reconstruction on the owner's PC
 
-## Guided scan (0.4)
+## Current capture changes
+
+Version 0.6 adds an editable box, explicit recording start, saved-view feedback and selection-limited reconstruction images. See [the current flow and validation limits](ios-editable-volume.md). The implementation notes below describe the original 0.4 baseline.
+
+## Guided scan (0.4 baseline)
 
 **Scan your dish** opens a camera above a provisional 3D preview (side by side in landscape). Keep a stationary, well-lit plate in view and follow the orange arc. Accepted views turn mint; gray sectors remain unobserved. Raise the phone gently during the second half of the orbit. Coverage, directional hints and completion use saved ARKit camera observations, not elapsed time. No repeated shutter action, photo quota or photo counter is shown.
 

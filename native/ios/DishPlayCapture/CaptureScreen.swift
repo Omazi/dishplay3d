@@ -112,7 +112,7 @@ struct CaptureScreen: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }.padding(.top).buttonStyle(.bordered).disabled(model.busy || transfer.busy)
                     }
-                    Text("Version 0.5 · Live capture and scan history").font(.caption2).foregroundStyle(.secondary)
+                    Text("Version 0.6 · Adjustable box and live capture").font(.caption2).foregroundStyle(.secondary)
                     Text("The live preview is provisional. Your saved views are sent to the linked dish; your PC calculates the final 3D model. Check its shape and scale before publishing.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }.padding(22).frame(maxWidth: 650).frame(maxWidth: .infinity)

@@ -45,11 +45,19 @@ jobs:
           /tmp/dishplay-video-tests
       - name: Verify progressive silhouette geometry
         run: |
-          swiftc -O -parse-as-library native/ios/DishPlayCapture/ScanPreview.swift native/ios/Tests/ScanPreviewTests.swift \
+          swiftc -O -parse-as-library native/ios/DishPlayCapture/ScanVolume.swift native/ios/DishPlayCapture/ScanPreview.swift native/ios/Tests/ScanPreviewTests.swift \
             -o /tmp/dishplay-preview-tests
           /tmp/dishplay-preview-tests
+      - name: Verify editable capture volume
+        run: |
+          swiftc -O -parse-as-library native/ios/DishPlayCapture/ScanVolume.swift native/ios/DishPlayCapture/ScanPreview.swift native/ios/Tests/ScanVolumeTests.swift -o /tmp/dishplay-volume-tests
+          /tmp/dishplay-volume-tests
       - name: Test signing profile guards
         run: python3 scripts/apple/test_signing.py
+      - name: Verify selected image isolation and orientation
+        run: |
+          swiftc -parse-as-library native/ios/DishPlayCapture/ScanImageMask.swift native/ios/Tests/ScanImageMaskTests.swift -o /tmp/dishplay-image-mask-tests
+          /tmp/dishplay-image-mask-tests
       - name: Download pinned project generator
         run: bash scripts/apple/xcodegen.sh
       - name: Generate project and archive the iOS release target
