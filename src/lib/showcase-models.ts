@@ -4,6 +4,7 @@ export const showcaseModels = [
     id: 'burger',
     name: 'Le burger',
     src: '/models/burger-illustration.glb',
+    usdz: '/models/burger-illustration.usdz',
     poster: '/images/burger-model.webp',
     author: 'darklord3d / erebus3d',
     source:
@@ -14,6 +15,7 @@ export const showcaseModels = [
     id: 'pasta',
     name: 'Les pâtes',
     src: '/models/pasta-illustration.glb',
+    usdz: '/models/pasta-illustration.usdz',
     poster: '/images/pasta-model.webp',
     author: 'ne0ns / Ervinas',
     source: 'https://sketchfab.com/3d-models/pasta-bec7601a89f14d0bbe7eb40b48d14b26',
@@ -23,6 +25,7 @@ export const showcaseModels = [
     id: 'salad',
     name: 'La salade',
     src: '/models/salad-illustration.glb',
+    usdz: '/models/salad-illustration.usdz',
     poster: '/images/salad-model.webp',
     author: 'churaed',
     source: 'https://sketchfab.com/3d-models/salad-5254132bd1b24be7a2dc888aba5e51a3',

@@ -4,6 +4,7 @@ import type { ModelViewerElement } from '@google/model-viewer';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { useI18n } from './language';
 import type { ShowcaseModel } from '@/lib/showcase-models';
+import { ModelActions } from './model-actions';
 
 export function DishModel({ model }: { model: ShowcaseModel }) {
   const { t } = useI18n();
@@ -93,7 +94,13 @@ export function DishModel({ model }: { model: ShowcaseModel }) {
         const attributes = {
           src: `${model.src}${attempt ? `?retry=${attempt}` : ''}`,
           alt: t('Modèle illustratif à 360° : {0}', [t(model.name)]),
-          'camera-controls': '',
+          ar: '',
+          'ios-src': model.usdz,
+          'ar-modes': 'webxr scene-viewer quick-look',
+          'ar-scale': 'auto',
+          'disable-zoom': '',
+          'disable-pan': '',
+          'disable-tap': '',
           'touch-action': 'pan-y',
           'camera-orbit': model.orbit,
           'min-camera-orbit': 'auto 10deg 65%',
@@ -107,6 +114,11 @@ export function DishModel({ model }: { model: ShowcaseModel }) {
           reveal: 'auto',
         };
         for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+        // The accessible AR action lives outside the gesture surface.
+        const nativeButton = document.createElement('span');
+        nativeButton.slot = 'ar-button';
+        element.append(nativeButton);
+        element.style.pointerEvents = 'none';
         container.append(element);
       })
       .catch(fail);
@@ -156,8 +168,8 @@ export function DishModel({ model }: { model: ShowcaseModel }) {
             </button>
           </div>
         )}
-        {status === 'ready' && (
-          <p className="dish-model-hint">{t('Glissez pour tourner · Pincez pour zoomer')}</p>
+        {status === 'ready' && viewer.current && (
+          <ModelActions viewer={viewer.current} onInteract={() => rotate(false)} />
         )}
       </div>
       {status === 'ready' && (
@@ -184,6 +196,8 @@ export function DishModel({ model }: { model: ShowcaseModel }) {
         </div>
       )}
       <p className="dish-model-credit">
+        {t('Illustration · taille indicative en AR')}
+        <br />
         <a href={model.source} target="_blank" rel="noreferrer">
           {model.author}
         </a>{' '}

@@ -8,6 +8,10 @@ const config: NextConfig = {
   async headers() {
     return [
       {
+        source: '/models/:asset.usdz',
+        headers: [{ key: 'Content-Type', value: 'model/vnd.usdz+zip' }],
+      },
+      {
         source: '/(.*)',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
