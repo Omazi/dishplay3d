@@ -314,6 +314,12 @@ function DishEditor({
               {t('Disponible à la carte')}{' '}
             </label>
           </div>
+          {dish && (
+            <Link className="inline-link" href={`/capture?dish=${encodeURIComponent(dish.id)}`}>
+              {' '}
+              {t('Préparer de nouvelles photos')} <Camera size={16} />
+            </Link>
+          )}
           <details className="model-fields">
             <summary>
               {' '}
@@ -345,12 +351,6 @@ function DishEditor({
                 placeholder={t('https://vos-medias.fr/plat.usdz')}
               />
             </label>
-            {dish && (
-              <Link className="inline-link" href={`/capture?dish=${encodeURIComponent(dish.id)}`}>
-                {' '}
-                {t('Préparer de nouvelles photos')} <Camera size={16} />
-              </Link>
-            )}
           </details>
           {error && (
             <p role="alert" className="notice notice-error">

@@ -33,11 +33,15 @@ For installation, select your own development team in Signing & Capabilities, ch
 
 ## Account and worker boundary
 
-The optional dish reference is a local label. It is not a server-issued pairing code and does not authenticate or upload anything. Export to Files and use the restaurant web upload workflow manually. One-time authenticated native pairing and resumable native uploads remain outstanding.
+The optional dish reference remains a local label. The separate **Pair with website** section now claims a private, single-use code created for a saved dish in the restaurant website. Capture first, then generate the ten-minute code. Confirm the returned restaurant and dish before sending. The native capability only permits that capture’s status, image upload and finalization; it cannot access the restaurant account or publish its menu.
+
+Credentials and pending claim retries live in the device-only Keychain, never in Documents or exported ZIPs. Uploads use one orientation-corrected JPEG working copy at a time (1920 px long edge, at most 3 MiB), cached in Application Support by original SHA-256. Originals, HEIC/depth/checkpoints and the local USDZ are retained unchanged. The server returns received hashes; resuming skips identical bytes. Backgrounding pauses transfer; reopen the saved series and resume. See [the pairing protocol and operator flow](native-pairing.md).
+
+Capture guidance now uses three non-flipping passes. The SDK’s `userCompletedScanPass` event pauses at each completed pass; the next button resets the native dial for the new height. Suggested 30°/45°/65–80° angles are coaching, not measured coverage. Manual early finishing remains possible. Native UI guidance is available in French and English.
 
 Object Capture can save HEIC images and associated depth/checkpoint data. The standalone Python worker currently accepts JPEG/PNG; retain the original native folder, and create an explicitly converted JPEG working set before using that worker. On compatible devices, local Apple reconstruction uses the original images directly. Do not rename HEIC files to `.jpg`.
 
-The fallback path does not implement an ARKit anchored volume. This is a real photo-capture fallback, not native AR parity. Photo-library/video import, cross-device upload, reconstruction checkpoints across app termination, native ARKit fallback, image-quality scoring, automatic crop/scale calibration, public publishing, and automated physical-camera tests remain outstanding.
+The fallback path does not implement an ARKit anchored volume. This is a real photo-capture fallback, not native AR parity. Photo-library/video import, automatic USDZ/GLB upload, reconstruction checkpoints across app termination, native ARKit fallback, image-quality scoring, automatic crop/scale calibration, public publishing, and automated physical-camera tests remain outstanding.
 
 ## Physical acceptance required
 

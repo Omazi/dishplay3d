@@ -9,7 +9,7 @@ This checkout includes browser capture, an iOS SwiftUI/RealityKit app and an And
 ## Remaining integration and physical evidence
 
 1. Sign/install the iOS app with an Apple development account; install the CI-generated Android APK on a compatible device.
-2. Pair native captures to restaurant dishes with a short-lived single-use code and authenticated resumable upload. Current native export is manual; public menu QR codes contain no account credentials.
+2. Exercise the implemented iPhone [single-use pairing and resumable upload](native-pairing.md) on the signed physical app. The Android client has not yet adopted this protocol. Public menu QR codes contain no account credentials.
 3. Verify pose conventions, image orientation, intrinsics and tracking segment boundaries by reprojection before using native poses in reconstruction. The CPU worker currently calibrates from images.
 4. Exercise interruption, permission denial, finalization, original export and recovery on actual phones.
 5. Capture a real dish, reconstruct it, inspect textured GLB/USDZ and metric scale, then publish and scan the same QR on both platforms.

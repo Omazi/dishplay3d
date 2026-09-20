@@ -12,6 +12,7 @@ struct CaptureRecord: Codable, Identifiable {
     var imageCount: Int = 0
     var error: String?
     var modelPath: String?
+    var remoteScanId: String?
     var metricScaleVerified = false
     var physicallyReviewed = false
 }
@@ -70,7 +71,7 @@ enum CaptureFiles {
                     "sha256": hash.finalize().map { String(format: "%02x", $0) }.joined()]
         }
         let manifest: [String: Any] = ["schema": 1, "captureId": record.id.uuidString,
-            "dishReference": record.dishReference, "pairedWithServer": false,
+            "dishReference": record.dishReference, "pairedWithServer": record.remoteScanId != nil,
             "mode": record.mode, "frames": entries, "metricScaleVerified": false]
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
             .write(to: root(record).appendingPathComponent("manifest.json"), options: .atomic)

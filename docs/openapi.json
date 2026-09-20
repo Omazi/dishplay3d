@@ -3,7 +3,7 @@
   "info": {
     "title": "DishPlay pilot API",
     "version": "0.1.0",
-    "description": "Implemented DishPlay route handlers. Mutations require matching Origin. Provides catalogue, private photos, atomic publication, durable capture and an opt-in external PostgreSQL reconstruction queue. No worker/engines run inside Vercel. Reconstruction defaults off and rejects requests without a fresh compatible worker; actual outputs remain private pending human review."
+    "description": "Implemented DishPlay route handlers. Browser mutations require matching Origin. Native capture endpoints accept missing Origin and use a single-use pairing code or a scoped capture Bearer capability; foreign origins remain rejected. Provides catalogue, private photos, atomic publication, durable capture and an opt-in external PostgreSQL reconstruction queue. No worker/engines run inside Vercel. Reconstruction defaults off and rejects requests without a fresh compatible worker; actual outputs remain private pending human review."
   },
   "servers": [
     {
@@ -73,7 +73,11 @@
                     "maxLength": 120
                   }
                 },
-                "required": ["email", "password", "restaurantName"]
+                "required": [
+                  "email",
+                  "password",
+                  "restaurantName"
+                ]
               }
             }
           }
@@ -131,7 +135,10 @@
                     "maxLength": 128
                   }
                 },
-                "required": ["email", "password"]
+                "required": [
+                  "email",
+                  "password"
+                ]
               }
             }
           }
@@ -254,7 +261,9 @@
                       "$ref": "#/components/schemas/Restaurant"
                     }
                   },
-                  "required": ["restaurant"]
+                  "required": [
+                    "restaurant"
+                  ]
                 }
               }
             }
@@ -289,10 +298,16 @@
                   },
                   "currency": {
                     "type": "string",
-                    "enum": ["EUR", "USD", "CAD"]
+                    "enum": [
+                      "EUR",
+                      "USD",
+                      "CAD"
+                    ]
                   }
                 },
-                "required": ["version"]
+                "required": [
+                  "version"
+                ]
               }
             }
           }
@@ -325,7 +340,9 @@
                       "$ref": "#/components/schemas/Category"
                     }
                   },
-                  "required": ["category"]
+                  "required": [
+                    "category"
+                  ]
                 }
               }
             }
@@ -354,7 +371,9 @@
                     "maximum": 100000
                   }
                 },
-                "required": ["name"]
+                "required": [
+                  "name"
+                ]
               }
             }
           }
@@ -387,7 +406,9 @@
                       "$ref": "#/components/schemas/Category"
                     }
                   },
-                  "required": ["category"]
+                  "required": [
+                    "category"
+                  ]
                 }
               }
             }
@@ -506,7 +527,9 @@
                       }
                     }
                   },
-                  "required": ["dishes"]
+                  "required": [
+                    "dishes"
+                  ]
                 }
               }
             }
@@ -538,7 +561,9 @@
                       "$ref": "#/components/schemas/Dish"
                     }
                   },
-                  "required": ["dish"]
+                  "required": [
+                    "dish"
+                  ]
                 }
               }
             }
@@ -588,7 +613,9 @@
                       "$ref": "#/components/schemas/Dish"
                     }
                   },
-                  "required": ["dish"]
+                  "required": [
+                    "dish"
+                  ]
                 }
               }
             }
@@ -677,7 +704,9 @@
                     "maximum": 2147483646
                   }
                 },
-                "required": ["version"]
+                "required": [
+                  "version"
+                ]
               }
             }
           }
@@ -729,7 +758,9 @@
                     "maximum": 2147483646
                   }
                 },
-                "required": ["version"]
+                "required": [
+                  "version"
+                ]
               }
             }
           }
@@ -932,7 +963,9 @@
                       }
                     }
                   },
-                  "required": ["scans"]
+                  "required": [
+                    "scans"
+                  ]
                 }
               }
             }
@@ -978,7 +1011,9 @@
                       "$ref": "#/components/schemas/Scan"
                     }
                   },
-                  "required": ["scan"]
+                  "required": [
+                    "scan"
+                  ]
                 }
               }
             }
@@ -1004,7 +1039,9 @@
                     "maxLength": 64
                   }
                 },
-                "required": ["dishId"]
+                "required": [
+                  "dishId"
+                ]
               }
             }
           }
@@ -1089,7 +1126,10 @@
                       "const": true
                     }
                   },
-                  "required": ["ok", "originalsPreserved"]
+                  "required": [
+                    "ok",
+                    "originalsPreserved"
+                  ]
                 }
               }
             }
@@ -1229,7 +1269,9 @@
                       "$ref": "#/components/schemas/Scan"
                     }
                   },
-                  "required": ["scan"]
+                  "required": [
+                    "scan"
+                  ]
                 }
               }
             }
@@ -1289,7 +1331,11 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["jobs", "enabled", "workerAvailable"]
+                  "required": [
+                    "jobs",
+                    "enabled",
+                    "workerAvailable"
+                  ]
                 }
               }
             }
@@ -1379,7 +1425,9 @@
                       "$ref": "#/components/schemas/Job"
                     }
                   },
-                  "required": ["job"]
+                  "required": [
+                    "job"
+                  ]
                 }
               }
             }
@@ -1431,13 +1479,412 @@
                       "const": true
                     }
                   },
-                  "required": ["job", "originalsPreserved"]
+                  "required": [
+                    "job",
+                    "originalsPreserved"
+                  ]
                 }
               }
             }
           },
           "default": {
             "description": "Error response; inaccessible jobs return 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/capture-links": {
+      "post": {
+        "summary": "Create a private single-use dish capture code",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dishId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "dishId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureLinkCode"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List own dish associations without credentials",
+        "parameters": [
+          {
+            "name": "dishId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "scanId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "state": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "frameCount": {
+                            "type": "integer"
+                          },
+                          "codeExpiresAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "tokenExpiresAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "claimedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "revokedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/capture-links/{id}": {
+      "delete": {
+        "summary": "Revoke a capture capability while preserving received photos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/native/pair": {
+      "post": {
+        "summary": "Claim or retry a native association",
+        "security": [],
+        "description": "Missing Origin allowed; foreign Origin rejected. 20 attempts/IP/15 minutes. Same code and same persisted deviceSecret retry idempotently. No account cookie is accepted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "deviceSecret": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "code",
+                  "deviceSecret"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NativeCaptureSnapshot"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/native/session": {
+      "get": {
+        "summary": "Read the single associated capture",
+        "security": [
+          {
+            "nativeCapability": []
+          }
+        ],
+        "description": "Missing Origin allowed; foreign Origin rejected. Session cookies cannot authorize this endpoint.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NativeCaptureSnapshot"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/native/frames": {
+      "post": {
+        "summary": "Upload one checksummed image copy",
+        "security": [
+          {
+            "nativeCapability": []
+          }
+        ],
+        "description": "Missing Origin allowed; foreign Origin rejected. Session cookies cannot authorize this endpoint.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "duplicate": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "duplicate": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Content-SHA256",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/native/finalize": {
+      "post": {
+        "summary": "Finalize associated inputs without reconstructing or publishing",
+        "security": [
+          {
+            "nativeCapability": []
+          }
+        ],
+        "description": "Missing Origin allowed; foreign Origin rejected. Session cookies cannot authorize this endpoint.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scan": {
+                      "$ref": "#/components/schemas/Scan"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error; see docs/native-pairing.md",
             "content": {
               "application/json": {
                 "schema": {
@@ -1457,6 +1904,11 @@
         "in": "cookie",
         "name": "dishplay_session",
         "description": "Seven-day server-side session; HttpOnly, SameSite=Lax, Secure on Vercel/production except explicitly configured local production."
+      },
+      "nativeCapability": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "64 lowercase hex characters generated on the native device, bound to one capture at pairing, seven-day lifetime."
       }
     },
     "parameters": {
@@ -1482,7 +1934,10 @@
             "type": "string"
           }
         },
-        "required": ["error", "code"]
+        "required": [
+          "error",
+          "code"
+        ]
       },
       "Ok": {
         "type": "object",
@@ -1491,7 +1946,9 @@
             "const": true
           }
         },
-        "required": ["ok"]
+        "required": [
+          "ok"
+        ]
       },
       "Identity": {
         "type": "object",
@@ -1510,7 +1967,10 @@
                 "format": "email"
               }
             },
-            "required": ["id", "email"]
+            "required": [
+              "id",
+              "email"
+            ]
           },
           "restaurantId": {
             "type": "string",
@@ -1519,7 +1979,10 @@
             "maxLength": 64
           }
         },
-        "required": ["user", "restaurantId"]
+        "required": [
+          "user",
+          "restaurantId"
+        ]
       },
       "Restaurant": {
         "type": "object",
@@ -1544,7 +2007,11 @@
           },
           "currency": {
             "type": "string",
-            "enum": ["EUR", "USD", "CAD"]
+            "enum": [
+              "EUR",
+              "USD",
+              "CAD"
+            ]
           },
           "version": {
             "type": "integer",
@@ -1552,7 +2019,14 @@
             "maximum": 2147483646
           }
         },
-        "required": ["id", "name", "slug", "tagline", "currency", "version"]
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "tagline",
+          "currency",
+          "version"
+        ]
       },
       "Category": {
         "type": "object",
@@ -1574,7 +2048,11 @@
             "maximum": 100000
           }
         },
-        "required": ["id", "name", "sortOrder"]
+        "required": [
+          "id",
+          "name",
+          "sortOrder"
+        ]
       },
       "Dish": {
         "type": "object",
@@ -1586,7 +2064,10 @@
             "maxLength": 64
           },
           "categoryId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string",
@@ -1612,15 +2093,24 @@
             "maxItems": 30
           },
           "imageId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "modelGlbUrl": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri",
             "description": "Null or an HTTPS .glb/.usdz URL on MEDIA_PUBLIC_ORIGIN, without query, fragment or credentials. USDZ requires GLB."
           },
           "modelUsdzUrl": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri",
             "description": "Null or an HTTPS .glb/.usdz URL on MEDIA_PUBLIC_ORIGIN, without query, fragment or credentials. USDZ requires GLB."
           },
@@ -1657,7 +2147,10 @@
         "type": "object",
         "properties": {
           "categoryId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string",
@@ -1683,15 +2176,24 @@
             "maxItems": 30
           },
           "imageId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "modelGlbUrl": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri",
             "description": "Null or an HTTPS .glb/.usdz URL on MEDIA_PUBLIC_ORIGIN, without query, fragment or credentials. USDZ requires GLB."
           },
           "modelUsdzUrl": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri",
             "description": "Null or an HTTPS .glb/.usdz URL on MEDIA_PUBLIC_ORIGIN, without query, fragment or credentials. USDZ requires GLB."
           },
@@ -1704,7 +2206,9 @@
             "type": "boolean"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
       },
       "DishPatch": {
         "type": "object",
@@ -1715,7 +2219,10 @@
             "maximum": 2147483646
           },
           "categoryId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string",
@@ -1741,15 +2248,24 @@
             "maxItems": 30
           },
           "imageId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "modelGlbUrl": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri",
             "description": "Null or an HTTPS .glb/.usdz URL on MEDIA_PUBLIC_ORIGIN, without query, fragment or credentials. USDZ requires GLB."
           },
           "modelUsdzUrl": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri",
             "description": "Null or an HTTPS .glb/.usdz URL on MEDIA_PUBLIC_ORIGIN, without query, fragment or credentials. USDZ requires GLB."
           },
@@ -1762,7 +2278,9 @@
             "type": "boolean"
           }
         },
-        "required": ["version"]
+        "required": [
+          "version"
+        ]
       },
       "PublicMenu": {
         "type": "object",
@@ -1783,14 +2301,22 @@
             }
           },
           "publishedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "isDemo": {
             "type": "boolean"
           }
         },
-        "required": ["restaurant", "categories", "dishes", "publishedAt"]
+        "required": [
+          "restaurant",
+          "categories",
+          "dishes",
+          "publishedAt"
+        ]
       },
       "Publication": {
         "type": "object",
@@ -1812,7 +2338,12 @@
             "maximum": 2147483646
           }
         },
-        "required": ["slug", "url", "publishedAt", "version"]
+        "required": [
+          "slug",
+          "url",
+          "publishedAt",
+          "version"
+        ]
       },
       "Media": {
         "type": "object",
@@ -1831,7 +2362,11 @@
             "type": "string"
           }
         },
-        "required": ["id", "sha256", "url"]
+        "required": [
+          "id",
+          "sha256",
+          "url"
+        ]
       },
       "Scan": {
         "type": "object",
@@ -1850,7 +2385,11 @@
           },
           "state": {
             "type": "string",
-            "enum": ["capturing", "finalized", "cancelled"]
+            "enum": [
+              "capturing",
+              "finalized",
+              "cancelled"
+            ]
           },
           "frameCount": {
             "type": "integer",
@@ -1862,11 +2401,21 @@
             "format": "date-time"
           },
           "manifestHash": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^[a-f0-9]{64}$"
           }
         },
-        "required": ["id", "dishId", "state", "frameCount", "createdAt", "manifestHash"]
+        "required": [
+          "id",
+          "dishId",
+          "state",
+          "frameCount",
+          "createdAt",
+          "manifestHash"
+        ]
       },
       "FrameUpload": {
         "type": "object",
@@ -1891,7 +2440,12 @@
             "type": "string"
           }
         },
-        "required": ["id", "mediaId", "sha256", "url"]
+        "required": [
+          "id",
+          "mediaId",
+          "sha256",
+          "url"
+        ]
       },
       "Frame": {
         "type": "object",
@@ -1920,7 +2474,13 @@
             "properties": {}
           }
         },
-        "required": ["id", "mediaId", "sha256", "url", "metadata"]
+        "required": [
+          "id",
+          "mediaId",
+          "sha256",
+          "url",
+          "metadata"
+        ]
       },
       "FrameUploadResult": {
         "type": "object",
@@ -1932,7 +2492,10 @@
             "type": "boolean"
           }
         },
-        "required": ["frame", "duplicate"]
+        "required": [
+          "frame",
+          "duplicate"
+        ]
       },
       "ScanDetails": {
         "type": "object",
@@ -1947,7 +2510,10 @@
             }
           }
         },
-        "required": ["scan", "frames"]
+        "required": [
+          "scan",
+          "frames"
+        ]
       },
       "Job": {
         "type": "object",
@@ -1969,14 +2535,24 @@
           },
           "state": {
             "type": "string",
-            "enum": ["queued", "running", "ready_for_review", "succeeded", "failed", "cancelled"]
+            "enum": [
+              "queued",
+              "running",
+              "ready_for_review",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ]
           },
           "attempts": {
             "type": "integer",
             "minimum": 0
           },
           "errorCode": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "createdAt": {
             "type": "string",
@@ -1992,10 +2568,16 @@
             "maximum": 2
           },
           "stage": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "review": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "description": "Sanitized private-review artifact summary; local paths are never returned."
           }
         },
@@ -2048,13 +2630,19 @@
             "default": 900
           },
           "scaleMetersPerUnit": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "exclusiveMinimum": 0,
             "maximum": 1000,
             "default": null
           },
           "scaleReference": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "maxLength": 240,
             "default": null
@@ -2078,7 +2666,9 @@
             "$ref": "#/components/schemas/ReconstructionSettings"
           }
         },
-        "required": ["scanId"]
+        "required": [
+          "scanId"
+        ]
       },
       "ReconstructionAccepted": {
         "type": "object",
@@ -2088,13 +2678,89 @@
           },
           "state": {
             "type": "string",
-            "enum": ["queued", "running", "ready_for_review", "succeeded", "failed", "cancelled"]
+            "enum": [
+              "queued",
+              "running",
+              "ready_for_review",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ]
           },
           "deduplicated": {
             "type": "boolean"
           }
         },
-        "required": ["id", "state", "deduplicated"]
+        "required": [
+          "id",
+          "state",
+          "deduplicated"
+        ]
+      },
+      "NativeCaptureSnapshot": {
+        "type": "object",
+        "required": [
+          "scan",
+          "dishName",
+          "restaurantName",
+          "expiresAt",
+          "hashes",
+          "limits"
+        ],
+        "properties": {
+          "scan": {
+            "$ref": "#/components/schemas/Scan"
+          },
+          "dishName": {
+            "type": "string"
+          },
+          "restaurantName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hashes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "maxImageBytes": {
+                "type": "integer"
+              },
+              "maxFrames": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "CaptureLinkCode": {
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "expiresAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{4}(-[A-F0-9]{4}){3}$"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     }
   }
