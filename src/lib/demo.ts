@@ -1,3 +1,4 @@
+import { showcaseModels } from './showcase-models';
 import type { Dish, PublicMenu } from './contracts';
 import { createTranslator, type Locale } from './i18n';
 
@@ -26,7 +27,7 @@ export const demoMenu: PublicMenu = {
       priceCents: 1850,
       allergens: ['Gluten', 'Lait'],
       imageId: 'demo-burger',
-      modelGlbUrl: null,
+      modelGlbUrl: showcaseModels[0].src,
       modelUsdzUrl: null,
       version: 1,
       sortOrder: 0,
@@ -41,7 +42,7 @@ export const demoMenu: PublicMenu = {
       priceCents: 2200,
       allergens: ['Gluten'],
       imageId: 'demo-pasta',
-      modelGlbUrl: null,
+      modelGlbUrl: showcaseModels[1].src,
       modelUsdzUrl: null,
       version: 1,
       sortOrder: 1,
@@ -56,7 +57,7 @@ export const demoMenu: PublicMenu = {
       priceCents: 1450,
       allergens: ['Moutarde'],
       imageId: 'demo-salad',
-      modelGlbUrl: null,
+      modelGlbUrl: showcaseModels[2].src,
       modelUsdzUrl: null,
       version: 1,
       sortOrder: 2,

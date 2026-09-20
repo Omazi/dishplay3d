@@ -14,12 +14,12 @@ case "${1:-status}" in
       docker start "$TASK_NAME"
     else
       docker run -d --name "$TASK_NAME" --restart unless-stopped --init \
-        --cpus 1 --memory 2g --memory-swap 2g --pids-limit 256 \
+        --cpus 1 --memory 1536m --memory-swap 1536m --pids-limit 256 \
         --cap-drop ALL --security-opt no-new-privileges --read-only \
         --tmpfs /tmp:rw,noexec,nosuid,size=128m \
         --user "$(id -u):$(id -g)" --env-file .data/worker.env \
         -e NODE_OPTIONS=--max-old-space-size=256 -e WORKER_MAX_IMAGES=40 \
-        -e WORKER_MEMORY_MIB=1536 -e WORKER_DATA_DIR=/project/.data/worker \
+        -e WORKER_MEMORY_MIB=1024 -e WORKER_DATA_DIR=/project/.data/worker \
         -e WORKER_PYTHON=/usr/bin/python3 -e WORKER_JOB_SECONDS=3600 \
         -v "$(command -v node):/usr/bin/node:ro" \
         -v "$TASK_ROOT/node_modules:/project/node_modules:ro" \

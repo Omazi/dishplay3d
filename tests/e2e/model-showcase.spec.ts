@@ -134,3 +134,24 @@ test('without WebGL the original photo remains visible and the effect reports fa
   await expect(section.locator('.photo-source')).toBeVisible();
   await expect(section.locator('canvas')).toHaveCount(0);
 });
+
+test('demo menu exposes the illustrative burger in 3D with credit and no uncalibrated AR action', async ({
+  page,
+}) => {
+  await page.goto('/en/menu/demo');
+  await page.getByRole('button', { name: /Discover.*burger/i }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: '3D', exact: true }).click();
+  const viewer = dialog.locator('model-viewer');
+  await expect
+    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).loaded), {
+      timeout: modelTimeout,
+    })
+    .toBe(true);
+  await expect(
+    dialog.getByText('Illustrative 3D model of a similar dish, separate from the photo.'),
+  ).toBeVisible();
+  await expect(dialog.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
+  expect(await viewer.evaluate((el) => (el as ModelViewerElement).ar)).toBe(false);
+  await expect(dialog.getByRole('button', { name: /table/i })).toHaveCount(0);
+});

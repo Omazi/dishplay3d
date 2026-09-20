@@ -260,7 +260,7 @@ final class GuidedScan: NSObject, ObservableObject, ARSessionDelegate, Identifia
             let transform = frame.displayTransform(for: orientation, viewportSize: camera.bounds.size)
             let normalized = CGPoint(x: box.midX, y: box.midY).applying(transform)
             let pixel = CGPoint(x: normalized.x * camera.bounds.width, y: normalized.y * camera.bounds.height)
-            guard let query = camera.raycastQuery(from: pixel, allowing: .estimatedPlane, alignment: .horizontal),
+            guard let query = camera.raycastQuery(from: pixel, allowing: .existingPlaneInfinite, alignment: .horizontal),
                   let hit = camera.session.raycast(query).first else {
                 instruction = "Move gently so the camera can locate the table."; return
             }
@@ -478,6 +478,11 @@ struct GuidedScanScreen: View {
                     .disabled(scan.coverage.accepted < 3)
             }
         case .failed:
+            if AVCaptureDevice.authorizationStatus(for: .video) == .denied {
+                Button("Open camera permission settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }.buttonStyle(.borderedProminent)
+            }
             Button("Back to my dish") { dismiss() }.buttonStyle(.bordered)
         }
     }

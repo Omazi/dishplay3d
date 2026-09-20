@@ -45,7 +45,7 @@ const workerScript = path.join(project, 'worker/reconstruct.py');
 const capabilities: WorkerCapabilities = normalizeSettings({
   maxImages: Number(process.env.WORKER_MAX_IMAGES || 24),
   longEdge: Number(process.env.WORKER_LONG_EDGE || 1600),
-  memoryMiB: Number(process.env.WORKER_MEMORY_MIB || 1536),
+  memoryMiB: Number(process.env.WORKER_MEMORY_MIB || 1024),
   diskMiB: Number(process.env.WORKER_DISK_MIB || 2048),
   stageSeconds: Number(process.env.WORKER_STAGE_SECONDS || 900),
   openMvsCudaBuild: process.env.WORKER_OPENMVS_CUDA_BUILD === 'true',

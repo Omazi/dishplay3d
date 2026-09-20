@@ -656,5 +656,6 @@
   "Après l’envoi, votre PC calcule le modèle 3D. Vérifiez le résultat avant de le proposer sur votre carte. Vous pouvez aussi importer un modèle GLB/USDZ existant.": "After upload, your PC calculates the 3D model. Review the result before adding it to your menu. You can also import an existing GLB/USDZ model.",
   "Explorer le résultat en 3D": "Explore the result in 3D",
   "Résultat de votre reconstruction, à vérifier": "Your reconstruction result, awaiting review",
-  "L’aperçu n’a pas pu s’ouvrir. Le modèle reste téléchargeable.": "The preview could not open. You can still download the model."
+  "L’aperçu n’a pas pu s’ouvrir. Le modèle reste téléchargeable.": "The preview could not open. You can still download the model.",
+  "Modèle 3D illustratif d’un plat similaire, distinct de la photo.": "Illustrative 3D model of a similar dish, separate from the photo."
 }
