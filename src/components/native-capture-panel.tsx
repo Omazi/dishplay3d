@@ -92,7 +92,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <h2 id="native-capture-title">{t('Scannez votre plat. Voyez-le se construire.')}</h2>
           <p>
             {t(
-              'Dans l’app iPhone, appuyez sur Scanner le plat. Suivez l’arc orange en montant doucement le téléphone. Les vues sont enregistrées automatiquement et un aperçu provisoire se construit en bas de l’écran.',
+              'Dans l’app iPhone, appuyez sur Filmer et scanner mon plat. La vidéo s’enregistre pendant que les points observés et l’aperçu provisoire se construisent en bas de l’écran. Suivez l’arc orange en montant doucement le téléphone.',
             )}
           </p>
         </div>
@@ -102,7 +102,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('1. Associez ce plat')}</strong>
           <span>
             {t(
-              'Installez DishPlay Capture 0.4 dans TestFlight. Créez un code privé ici et saisissez-le dans l’app avant le scan. Le code est valable 10 minutes.',
+              'Installez DishPlay Capture 0.5 dans TestFlight. Créez un code privé ici, saisissez-le dans l’app et vérifiez le nom du plat. Le code est valable 10 minutes.',
             )}
           </span>
         </li>
@@ -110,7 +110,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('2. Suivez l’orbite')}</strong>
           <span>
             {t(
-              'Gardez l’assiette immobile et entièrement visible. Les zones vertes sont capturées. Si la détection bloque, touchez Centrer le scan ici. Le mode vidéo reste disponible dans Autres modes de capture.',
+              'Gardez l’assiette immobile et entièrement visible. Les zones vertes sont capturées. Si la détection bloque, touchez Centrer le scan ici. La vidéo et les vues utiles restent enregistrées sur l’iPhone.',
             )}
           </span>
         </li>
@@ -118,7 +118,7 @@ export function NativeCapturePanel({ dishId }: { dishId: string }) {
           <strong>{t('3. Retrouvez le résultat')}</strong>
           <span>
             {t(
-              'Vérifiez l’aperçu puis touchez Continuer. L’app envoie les vues au plat associé et votre PC calcule le modèle final. Laissez-le allumé, puis ouvrez le résultat 3D ou AR. Vérifiez la forme et l’échelle avant publication.',
+              'Vérifiez l’aperçu puis touchez Envoyer et créer mon plat 3D. L’app confirme l’envoi et affiche le calcul, le résultat ou l’erreur dans Mes scans. Laissez le PC allumé ; le résultat est récupéré à votre retour dans l’app. Ouvrez-le en 3D / AR et vérifiez sa forme et sa taille.',
             )}
           </span>
         </li>
