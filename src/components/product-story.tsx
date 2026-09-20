@@ -93,6 +93,7 @@ export function ProductStory({ qr }: { qr: string }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const activeChapter = useRef(0);
+  const manualControl = useRef(false);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   useEffect(() => {
     const track = trackRef.current;
@@ -109,10 +110,12 @@ export function ProductStory({ qr }: { qr: string }) {
       const position = top - track.getBoundingClientRect().top;
       const progress = Math.max(0, Math.min(1, position / distance));
       track.style.setProperty('--story-progress', String(progress));
+      if (position < 0 || position > distance) manualControl.current = false;
       // Reading a focused control must never replace its panel during keyboard navigation.
       if (
         position < 0 ||
         position > distance ||
+        manualControl.current ||
         (sticky.contains(document.activeElement) &&
           document.activeElement?.matches(':focus-visible'))
       )
@@ -126,6 +129,11 @@ export function ProductStory({ qr }: { qr: string }) {
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
     };
+    // A tap/click can scroll a focused control into view or trigger scroll anchoring.
+    // Only an intentional wheel/swipe resumes automatic chapters after interaction.
+    const resumeScrolling = () => {
+      manualControl.current = false;
+    };
     const measure = () => {
       top = parseFloat(getComputedStyle(sticky).top) || 0;
       // Small/landscape screens and enlarged text keep a naturally scrolling layout.
@@ -138,12 +146,16 @@ export function ProductStory({ qr }: { qr: string }) {
     const observer = new ResizeObserver(measure);
     observer.observe(sticky);
     window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('wheel', resumeScrolling, { passive: true });
+    window.addEventListener('touchmove', resumeScrolling, { passive: true });
     window.addEventListener('resize', measure);
     reducedMotion.addEventListener('change', measure);
     measure();
     return () => {
       observer.disconnect();
       window.removeEventListener('scroll', schedule);
+      window.removeEventListener('wheel', resumeScrolling);
+      window.removeEventListener('touchmove', resumeScrolling);
       window.removeEventListener('resize', measure);
       reducedMotion.removeEventListener('change', measure);
       cancelAnimationFrame(frame);
@@ -153,6 +165,7 @@ export function ProductStory({ qr }: { qr: string }) {
     };
   }, []);
   const selectChapter = (index: number) => {
+    manualControl.current = true;
     activeChapter.current = index;
     setChapter(index);
     const track = trackRef.current;
@@ -184,7 +197,16 @@ export function ProductStory({ qr }: { qr: string }) {
         <p>{t('Explorez chaque étape. Puis passez à votre propre carte.')}</p>
       </div>
       <div className="story-scroll-track" ref={trackRef}>
-        <div className="story-sticky" ref={stickyRef}>
+        <div
+          className="story-sticky"
+          ref={stickyRef}
+          onPointerDownCapture={() => {
+            manualControl.current = true;
+          }}
+          onKeyDownCapture={() => {
+            manualControl.current = true;
+          }}
+        >
           <div className="story-tabs" role="tablist" aria-label={t('Comment fonctionne DishPlay')}>
             {chapters.map((item, index) => (
               <button

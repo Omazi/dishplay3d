@@ -609,6 +609,9 @@
     rotate(calc((1 - var(--gallery-progress, 1)) * 4deg))
     scale(calc(0.9 + var(--gallery-progress, 1) * 0.1));
 }
+.story-scroll-track {
+  overflow-anchor: none;
+}
 .story-sticky {
   top: 112px;
 }
