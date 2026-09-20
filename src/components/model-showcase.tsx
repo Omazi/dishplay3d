@@ -17,6 +17,7 @@ export function ModelShowcase() {
   const mount = useRef<HTMLDivElement>(null);
   const viewer = useRef<ModelViewerElement | null>(null);
   const rotationWanted = useRef(false);
+  const retry = useRef(0);
   const syncRotation = useRef<() => void>(() => {});
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -31,6 +32,8 @@ export function ModelShowcase() {
   }
 
   function start() {
+    // model-viewer also caches failed loads. Give a retry a fresh cache key.
+    if (status === 'error') retry.current += 1;
     setStatus('loading');
     setProgress(0);
     setView(0);
@@ -117,7 +120,7 @@ export function ModelShowcase() {
           { signal },
         );
         const attributes = {
-          src: '/models/avocado-demo.glb',
+          src: `/models/avocado-demo.glb${retry.current ? `?retry=${retry.current}` : ''}`,
           alt: t('Avocat en 3D. Utilisez les flèches du clavier ou faites glisser pour tourner.'),
           'camera-controls': '',
           'touch-action': 'pan-y',
