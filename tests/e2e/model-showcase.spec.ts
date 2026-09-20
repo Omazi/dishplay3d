@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import type { ModelViewerElement } from '@google/model-viewer';
 
+// CI renders WebGL in software; allow shader compilation within the UI's 30s limit.
+const modelTimeout = 25_000;
+
 test('homepage loads real 3D only on demand and supports keyboard views with reduced motion', async ({
   page,
 }) => {
@@ -19,7 +22,9 @@ test('homepage loads real 3D only on demand and supports keyboard views with red
   expect(models).toEqual([]);
   expect(await page.evaluate(() => !!customElements.get('model-viewer'))).toBe(false);
   await section.getByRole('button', { name: 'Explore in 3D' }).click();
-  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready');
+  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready', {
+    timeout: modelTimeout,
+  });
   const viewer = section.locator('model-viewer');
   expect(await viewer.evaluate((element) => (element as ModelViewerElement).loaded)).toBe(true);
   expect(await viewer.evaluate((element) => (element as ModelViewerElement).autoRotate)).toBe(
@@ -56,7 +61,9 @@ test('rotation pauses off screen and dragging lets the visitor control the model
   await page.goto('/');
   const section = page.locator('#experience-3d');
   await section.getByRole('button', { name: 'Explorer en 3D' }).click();
-  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready');
+  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready', {
+    timeout: modelTimeout,
+  });
   const viewer = section.locator('model-viewer');
   await expect
     .poll(() => viewer.evaluate((element) => (element as ModelViewerElement).autoRotate))
@@ -99,5 +106,7 @@ test('failed model keeps the preview available and can be retried', async ({ pag
   await expect(section.locator('model-viewer')).toHaveCount(0);
   await page.unroute('**/models/avocado-demo.glb');
   await section.getByRole('button', { name: 'Retry 3D' }).click();
-  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready');
+  await expect(section.locator('.model-stage')).toHaveAttribute('data-status', 'ready', {
+    timeout: modelTimeout,
+  });
 });
