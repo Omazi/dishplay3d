@@ -335,7 +335,7 @@ export function PhotoShowcase() {
                 onPointerMove={(event) => {
                   if (
                     status !== 'ready' ||
-                    (event.pointerType === 'touch' && !event.buttons) ||
+                    event.pointerType === 'touch' ||
                     matchMedia('(prefers-reduced-motion: reduce)').matches
                   )
                     return;

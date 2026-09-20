@@ -3,16 +3,9 @@ import { useI18n, LanguageSwitcher } from '@/components/language';
 
 import { createElement, useEffect, useRef, useState } from 'react';
 import { LocalizedLink as Link } from '@/components/language';
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  Box,
-  Camera,
-  Check,
-  ImageIcon,
-  LoaderCircle,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Box, Check, ImageIcon, LoaderCircle, X } from 'lucide-react';
+import type { ModelViewerElement } from '@google/model-viewer';
+import { ModelActions } from './model-actions';
 import type { Dish, PublicMenu } from '@/lib/contracts';
 import { showcaseModels, type ShowcaseModel } from '@/lib/showcase-models';
 import { dishImageUrl, localizedDemoMenu } from '@/lib/demo';
@@ -23,6 +16,7 @@ function ModelView({ dish, illustration }: { dish: Dish; illustration?: Showcase
   const { t } = useI18n();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
+  const [loadedViewer, setLoadedViewer] = useState<ModelViewerElement | null>(null);
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let alive = true;
@@ -36,15 +30,21 @@ function ModelView({ dish, illustration }: { dish: Dish; illustration?: Showcase
     return () => {
       alive = false;
     };
-  }, []);
+  }, [t]);
   useEffect(() => {
-    const viewer = container.current?.querySelector('model-viewer');
+    const viewer = container.current?.querySelector<ModelViewerElement>('model-viewer');
     if (!viewer) return;
     const onError = () =>
       setError(t('Le modèle est indisponible. Revenez à la photo ou réessayez plus tard.'));
+    const onLoad = () => setLoadedViewer(viewer);
     viewer.addEventListener('error', onError);
-    return () => viewer.removeEventListener('error', onError);
-  }, [ready]);
+    viewer.addEventListener('load', onLoad);
+    if (viewer.loaded) onLoad();
+    return () => {
+      viewer.removeEventListener('error', onError);
+      viewer.removeEventListener('load', onLoad);
+    };
+  }, [ready, t]);
   if (error)
     return (
       <div className="viewer-message" role="alert">
@@ -65,26 +65,29 @@ function ModelView({ dish, illustration }: { dish: Dish; illustration?: Showcase
         'model-viewer',
         {
           src: dish.modelGlbUrl,
-          'ios-src': dish.modelUsdzUrl || undefined,
+          'ios-src': illustration?.usdz ?? dish.modelUsdzUrl ?? undefined,
           poster: illustration?.poster ?? dishImageUrl(dish) ?? undefined,
           'camera-orbit': illustration?.orbit,
           alt: t('Modèle 3D de {0}', [dish.name]),
-          'camera-controls': true,
+          'disable-zoom': true,
+          'disable-pan': true,
+          'disable-tap': true,
           'touch-action': 'pan-y',
-          ar: !illustration,
-          'ar-modes': dish.modelUsdzUrl ? 'webxr scene-viewer quick-look' : 'webxr scene-viewer',
-          'ar-scale': 'fixed',
+          ar: true,
+          'ar-modes': 'webxr scene-viewer quick-look',
+          'ar-scale': illustration ? 'auto' : 'fixed',
           'shadow-intensity': '1',
-          'interaction-prompt': 'auto',
-          style: { width: '100%', height: '100%', minHeight: '320px' },
+          'interaction-prompt': 'none',
+          style: { width: '100%', height: 'calc(100% - 110px)', pointerEvents: 'none' },
         },
-        !illustration && (
-          <button className="button button-blue ar-button" slot="ar-button">
-            <Camera size={17} /> {t('Voir sur ma table')}{' '}
-          </button>
-        ),
+        <span slot="ar-button" />,
       )}
-      <p className="viewer-hint">{t('Glissez pour tourner · Pincez pour zoomer')}</p>
+      {loadedViewer && <ModelActions viewer={loadedViewer} />}
+      {!loadedViewer && (
+        <p className="viewer-hint" role="status">
+          {t('Chargement de la 3D…')}
+        </p>
+      )}
     </div>
   );
 }
@@ -286,6 +289,8 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
               {mode === '3d' && illustration && (
                 <p className="field-hint">
                   {t('Modèle 3D illustratif d’un plat similaire, distinct de la photo.')}
+                  <br />
+                  {t('Illustration · taille indicative en AR')}
                   <br />
                   <a href={illustration.source} target="_blank" rel="noreferrer">
                     {illustration.author}

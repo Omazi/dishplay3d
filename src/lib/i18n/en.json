@@ -673,5 +673,11 @@
   "Installez DishPlay Capture 0.4 dans TestFlight. Créez un code privé ici et saisissez-le dans l’app avant le scan. Le code est valable 10 minutes.": "Install DishPlay Capture 0.4 in TestFlight. Create a private code here and enter it in the app before scanning. The code is valid for 10 minutes.",
   "2. Suivez l’orbite": "2. Follow the orbit",
   "Gardez l’assiette immobile et entièrement visible. Les zones vertes sont capturées. Si la détection bloque, touchez Centrer le scan ici. Le mode vidéo reste disponible dans Autres modes de capture.": "Keep the plate still and fully in view. Green areas are captured. If detection stalls, tap Center scan here. Video remains available under Other capture methods.",
-  "Vérifiez l’aperçu puis touchez Continuer. L’app envoie les vues au plat associé et votre PC calcule le modèle final. Laissez-le allumé, puis ouvrez le résultat 3D ou AR. Vérifiez la forme et l’échelle avant publication.": "Review the preview, then tap Continue. The app sends views to the linked dish and your PC builds the final model. Keep it on, then open the 3D or AR result. Check shape and scale before publishing."
+  "Vérifiez l’aperçu puis touchez Continuer. L’app envoie les vues au plat associé et votre PC calcule le modèle final. Laissez-le allumé, puis ouvrez le résultat 3D ou AR. Vérifiez la forme et l’échelle avant publication.": "Review the preview, then tap Continue. The app sends views to the linked dish and your PC builds the final model. Keep it on, then open the 3D or AR result. Check shape and scale before publishing.",
+  "Manipuler en 3D": "Control in 3D",
+  "Terminer": "Done",
+  "Faites défiler librement. Activez la 3D pour manipuler le plat.": "Scroll freely. Enable 3D controls to move the dish.",
+  "Pour voir ce plat sur votre table, ouvrez cette page dans Safari sur iPhone ou Chrome sur Android compatible.": "To see this dish on your table, open this page in Safari on iPhone or Chrome on a compatible Android phone.",
+  "L’AR n’a pas démarré. Réessayez dans Safari sur iPhone ou Chrome sur Android compatible.": "AR could not start. Try Safari on iPhone or Chrome on a compatible Android phone.",
+  "Illustration · taille indicative en AR": "Illustration · approximate AR size"
 }

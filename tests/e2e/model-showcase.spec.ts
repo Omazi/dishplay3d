@@ -49,6 +49,9 @@ test('three original photos have interactive relief; all three illustrative mode
     expect(await viewer.evaluate((el) => (el as ModelViewerElement).loaded)).toBe(true);
     expect(await viewer.evaluate((el) => (el as ModelViewerElement).autoRotate)).toBe(false);
     await expect(viewer).toHaveAttribute('src', `/models/${id}-illustration.glb`);
+    await expect(viewer).toHaveAttribute('ios-src', `/models/${id}-illustration.usdz`);
+    expect(await viewer.evaluate((el) => (el as ModelViewerElement).ar)).toBe(true);
+    await expect(section.getByRole('button', { name: 'View on my table' })).toBeVisible();
     await expect(section.getByText('ILLUSTRATIVE 3D MODEL', { exact: true })).toBeVisible();
     await expect(section.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
   }
@@ -82,11 +85,16 @@ test('rotation pauses off screen and dragging gives control to the visitor', asy
   await expect
     .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).autoRotate))
     .toBe(true);
+  await section.getByRole('button', { name: 'Manipuler en 3D' }).click();
+  const theta = await viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().theta);
   const box = (await viewer.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 10 });
   await page.mouse.up();
+  await expect
+    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().theta))
+    .not.toBe(theta);
   await expect(section.getByRole('button', { name: 'Lancer la rotation' })).toBeVisible();
   expect(await viewer.evaluate((el) => (el as ModelViewerElement).autoRotate)).toBe(false);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -135,23 +143,119 @@ test('without WebGL the original photo remains visible and the effect reports fa
   await expect(section.locator('canvas')).toHaveCount(0);
 });
 
-test('demo menu exposes the illustrative burger in 3D with credit and no uncalibrated AR action', async ({
+test('all three demo dishes expose scaled, textured AR files and delegate AR launch', async ({
   page,
+  request,
 }) => {
+  test.setTimeout(120_000);
   await page.goto('/en/menu/demo');
-  await page.getByRole('button', { name: /Discover.*burger/i }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: '3D', exact: true }).click();
-  const viewer = dialog.locator('model-viewer');
-  await expect
-    .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).loaded), {
+  for (const [name, id, width] of [
+    ['burger', 'burger', 0.16],
+    ['Pasta', 'pasta', 0.26],
+    ['salad', 'salad', 0.24],
+  ] as const) {
+    await page.getByRole('button', { name: new RegExp('Discover.*' + name, 'i') }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: '3D', exact: true }).click();
+    const viewer = dialog.locator('model-viewer');
+    await expect
+      .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).loaded), {
+        timeout: modelTimeout,
+      })
+      .toBe(true);
+    await expect(dialog.getByText('Illustration · approximate AR size')).toBeVisible();
+    await expect(dialog.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
+    const dimensions = await viewer.evaluate((el) => (el as ModelViewerElement).getDimensions());
+    expect(Math.max(dimensions.x, dimensions.z)).toBeCloseTo(width, 2);
+    await expect(viewer).toHaveAttribute('ios-src', `/models/${id}-illustration.usdz`);
+    const response = await request.get(`/models/${id}-illustration.usdz`);
+    expect(response.ok()).toBe(true);
+    expect(response.headers()['content-type']).toContain('model/vnd.usdz+zip');
+    expect((await response.body()).subarray(0, 4).toString('hex')).toBe('504b0304');
+    // Native camera/Quick Look needs a real phone. Verify the actual launcher boundary here.
+    await viewer.evaluate((el) => {
+      Object.defineProperty(el, 'canActivateAR', { configurable: true, value: true });
+      (el as ModelViewerElement).activateAR = async () => {
+        el.setAttribute('data-ar-requested', 'true');
+      };
+    });
+    await dialog.getByRole('button', { name: 'View on my table' }).click();
+    await expect(viewer).toHaveAttribute('data-ar-requested', 'true');
+    await dialog.getByRole('button', { name: 'Close dish' }).click();
+  }
+});
+
+test('page scrolling, deliberate model controls and unsupported AR remain usable on mobile', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    reducedMotion: 'reduce',
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto('/en');
+    const section = page.locator('#experience-3d');
+    await section.getByRole('button', { name: '360° view', exact: true }).click();
+    await expect(section.locator('.dish-model')).toHaveAttribute('data-status', 'ready', {
       timeout: modelTimeout,
-    })
-    .toBe(true);
-  await expect(
-    dialog.getByText('Illustrative 3D model of a similar dish, separate from the photo.'),
-  ).toBeVisible();
-  await expect(dialog.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
-  expect(await viewer.evaluate((el) => (el as ModelViewerElement).ar)).toBe(false);
-  await expect(dialog.getByRole('button', { name: /table/i })).toHaveCount(0);
+    });
+    const viewer = section.locator('model-viewer');
+    await viewer.scrollIntoViewIfNeeded();
+    const cdp = await context.newCDPSession(page);
+    async function swipe() {
+      const box = (await viewer.boundingBox())!;
+      const x = box.x + box.width / 2,
+        y = box.y + box.height * 0.75;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 1; i <= 6; i++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x, y: y - i * 18 }],
+        });
+        await page.waitForTimeout(20);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+    const theta = await viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().theta);
+    const scroll = await page.evaluate(() => scrollY);
+    await swipe();
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scroll + 30);
+    expect(
+      await viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().theta),
+    ).toBeCloseTo(theta, 3);
+    await section.getByRole('button', { name: 'Control in 3D' }).click();
+    await expect(section.locator('.model-interaction')).toHaveAttribute('data-active', 'true');
+    await viewer.scrollIntoViewIfNeeded();
+    const phi = await viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().phi);
+    const lockedScroll = await page.evaluate(() => scrollY);
+    await swipe();
+    await expect
+      .poll(() => viewer.evaluate((el) => (el as ModelViewerElement).getCameraOrbit().phi))
+      .not.toBe(phi);
+    expect(Math.abs((await page.evaluate(() => scrollY)) - lockedScroll)).toBeLessThan(5);
+    await section.getByRole('button', { name: 'Done', exact: true }).click();
+    expect(await viewer.evaluate((el) => (el as ModelViewerElement).cameraControls)).toBe(false);
+    const freedScroll = await page.evaluate(() => scrollY);
+    await swipe();
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(freedScroll + 30);
+    await viewer.evaluate((el) =>
+      Object.defineProperty(el, 'canActivateAR', { configurable: true, value: false }),
+    );
+    await section.getByRole('button', { name: 'View on my table' }).click();
+    await expect(section.getByRole('status')).toContainText('Safari on iPhone');
+    await viewer.evaluate((el) => {
+      Object.defineProperty(el, 'canActivateAR', { configurable: true, value: true });
+      (el as ModelViewerElement).activateAR = async () => {
+        throw new Error('AR unavailable');
+      };
+    });
+    await section.getByRole('button', { name: 'View on my table' }).click();
+    await expect(section.getByRole('status')).toContainText('AR could not start');
+    await page.screenshot({ path: 'test-results/mobile-ar-controls.png' });
+  } finally {
+    await context.close();
+  }
 });

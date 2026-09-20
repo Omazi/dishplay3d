@@ -602,9 +602,9 @@
 .dish-model-stage > img,
 .dish-model-canvas {
   position: absolute;
-  inset: 40px 0 50px;
+  inset: 40px 0 110px;
   width: 100%;
-  height: calc(100% - 90px);
+  height: calc(100% - 150px);
   object-fit: contain;
 }
 .dish-model-canvas model-viewer {

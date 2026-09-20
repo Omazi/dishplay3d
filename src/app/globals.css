@@ -3943,3 +3943,69 @@ dialog::backdrop {
     display: inline-flex;
   }
 }
+
+/* Page gestures stay native until the visitor explicitly takes control of 3D. */
+.model-interaction {
+  position: absolute;
+  inset: auto 14px 14px;
+  z-index: 2;
+  color: #263044;
+}
+.model-interaction-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+  margin: 0 0 10px;
+}
+.model-interaction-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.model-interaction-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 8px;
+  border: 1px solid #26304420;
+  border-radius: 24px;
+  background: #fff;
+  color: #263044;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  touch-action: manipulation;
+}
+.model-interaction-buttons button:last-child {
+  background: #245ce7;
+  border-color: #245ce7;
+  color: white;
+}
+.model-interaction-buttons button[aria-pressed='true'] {
+  background: #263044;
+  color: white;
+}
+.model-interaction-buttons svg {
+  flex: 0 0 16px;
+}
+.model-ar-message {
+  padding: 12px;
+  margin: 8px 0 0;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px #17213012;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.dish-dialog-visual:has(.model-container) {
+  height: 420px;
+}
+@media (max-width: 380px) {
+  .model-interaction-buttons button {
+    font-size: 11px;
+    gap: 5px;
+  }
+}
