@@ -1,7 +1,8 @@
 'use client';
+import { useI18n, LanguageSwitcher } from '@/components/language';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { LocalizedLink as Link } from '@/components/language';
 import { useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -61,6 +62,7 @@ function FrameThumbnail({
   onDelete: () => void;
   disabled: boolean;
 }) {
+  const { t } = useI18n();
   const [url, setUrl] = useState('');
   useEffect(() => {
     let alive = true;
@@ -99,7 +101,7 @@ function FrameThumbnail({
       <button
         className="icon-button"
         disabled={disabled}
-        aria-label={`Supprimer la prise ${frame.name}`}
+        aria-label={t('Supprimer la prise {0}', [frame.name])}
         onClick={onDelete}
       >
         <Trash2 size={14} />
@@ -110,6 +112,7 @@ function FrameThumbnail({
 }
 
 export function Capture() {
+  const { t, numberLocale } = useI18n();
   const search = useSearchParams();
   const dishId = search.get('dish') || '';
   const [sessionId, setSessionId] = useState('');
@@ -157,7 +160,9 @@ export function Capture() {
         .catch((err) => setError(err.message));
     } catch {
       setError(
-        'Le stockage local est bloqué. Ouvrez cette page dans Safari ou Chrome, hors navigation privée.',
+        t(
+          'Le stockage local est bloqué. Ouvrez cette page dans Safari ou Chrome, hors navigation privée.',
+        ),
       );
     }
     return () => {
@@ -176,7 +181,7 @@ export function Capture() {
         }
       })
       .catch((err) => {
-        if (alive) setError(`Impossible de vérifier la série distante. ${err.message}`);
+        if (alive) setError(t('Impossible de vérifier la série distante. {0}', [err.message]));
       });
     return () => {
       alive = false;
@@ -197,7 +202,7 @@ export function Capture() {
       setSynchronized(false);
       setDeleteId('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Cette série n’a pas pu être ouverte.');
+      setError(err instanceof Error ? err.message : t('Cette série n’a pas pu être ouverte.'));
     } finally {
       setBusy(false);
     }
@@ -213,11 +218,15 @@ export function Capture() {
       setHistory(updated);
       await selectSession(id);
       setStatus(
-        'Nouvelle série créée. Les prises précédentes restent accessibles dans la liste des séries.',
+        t(
+          'Nouvelle série créée. Les prises précédentes restent accessibles dans la liste des séries.',
+        ),
       );
     } catch {
       setError(
-        'Impossible de créer une série. Vérifiez les permissions de stockage de votre navigateur.',
+        t(
+          'Impossible de créer une série. Vérifiez les permissions de stockage de votre navigateur.',
+        ),
       );
     }
   }
@@ -239,7 +248,9 @@ export function Capture() {
     setError('');
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setError(
-        'La caméra demande une connexion HTTPS et un navigateur compatible. Ouvrez ce lien dans Safari ou Chrome. Vous pouvez aussi importer vos photos.',
+        t(
+          'La caméra demande une connexion HTTPS et un navigateur compatible. Ouvrez ce lien dans Safari ou Chrome. Vous pouvez aussi importer vos photos.',
+        ),
       );
       return;
     }
@@ -269,16 +280,20 @@ export function Capture() {
         return;
       }
       setLive(true);
-      setStatus('Caméra ouverte. Les photos sont prises uniquement avec le bouton de capture.');
+      setStatus(t('Caméra ouverte. Les photos sont prises uniquement avec le bouton de capture.'));
     } catch (err) {
       stopCamera();
       const code = err instanceof DOMException ? err.name : '';
       setError(
         code === 'NotAllowedError'
-          ? 'L’accès à la caméra a été refusé. Autorisez-le dans les réglages du navigateur puis réessayez, ou importez vos photos.'
+          ? t(
+              'L’accès à la caméra a été refusé. Autorisez-le dans les réglages du navigateur puis réessayez, ou importez vos photos.',
+            )
           : code === 'NotFoundError'
-            ? 'Aucune caméra disponible. Importez des photos depuis votre appareil.'
-            : 'La caméra n’a pas pu démarrer. Fermez les autres applications caméra puis réessayez, ou utilisez l’import.',
+            ? t('Aucune caméra disponible. Importez des photos depuis votre appareil.')
+            : t(
+                'La caméra n’a pas pu démarrer. Fermez les autres applications caméra puis réessayez, ou utilisez l’import.',
+              ),
       );
     } finally {
       cameraOpening.current = false;
@@ -297,31 +312,43 @@ export function Capture() {
       for (const file of Array.from(files)) {
         if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
           throw new Error(
-            'Seules les photos JPEG, PNG et WebP sont importées. Convertissez les HEIC ou vidéos avant import. Les photos précédentes sont conservées.',
+            t(
+              'Seules les photos JPEG, PNG et WebP sont importées. Convertissez les HEIC ou vidéos avant import. Les photos précédentes sont conservées.',
+            ),
           );
         if (file.size > 25 * 1024 * 1024)
           throw new Error(
-            'Cette photo dépasse 25 Mo. Exportez une copie plus légère avant import.',
+            t('Cette photo dépasse 25 Mo. Exportez une copie plus légère avant import.'),
           );
         validateImageBytes(new Uint8Array(await file.arrayBuffer()), file.type, 25 * 1024 * 1024);
         if (count >= 150 || total + file.size > CAPTURE_LIMIT)
           throw new Error(
-            'Limite de cette série atteinte : 150 photos ou 100 Mo. Exportez vos originaux avant de préparer une autre série.',
+            t(
+              'Limite de cette série atteinte : 150 photos ou 100 Mo. Exportez vos originaux avant de préparer une autre série.',
+            ),
           );
         await storeFrame(sessionId, file, file.name);
         count++;
         total += file.size;
         added++;
         setStatus(
-          `${added} photo${added > 1 ? 's' : ''} enregistrée${added > 1 ? 's' : ''} sur cet appareil…`,
+          t('{0} photo{1} enregistrée{2} sur cet appareil…', [
+            added,
+            added > 1 ? 's' : '',
+            added > 1 ? 's' : '',
+          ]),
         );
       }
       if (navigator.storage?.persist) void navigator.storage.persist().catch(() => {});
       setStatus(
-        `${added} photo${added > 1 ? 's' : ''} ajoutée${added > 1 ? 's' : ''}. Les originaux sont conservés dans ce navigateur.`,
+        t('{0} photo{1} ajoutée{2}. Les originaux sont conservés dans ce navigateur.', [
+          added,
+          added > 1 ? 's' : '',
+          added > 1 ? 's' : '',
+        ]),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'L’import a échoué.');
+      setError(err instanceof Error ? err.message : t('L’import a échoué.'));
     } finally {
       setFrames(await listFrames(sessionId).catch(() => frames));
       setBusy(false);
@@ -340,7 +367,7 @@ export function Capture() {
         canvas.width = 0;
         canvas.height = 0;
         if (!blob) {
-          setError('La prise n’a pas pu être enregistrée. Réessayez.');
+          setError(t('La prise n’a pas pu être enregistrée. Réessayez.'));
           setBusy(false);
           return;
         }
@@ -367,7 +394,7 @@ export function Capture() {
         });
         void (async () => {
           for (const [index, frame] of frames.entries()) {
-            setStatus(`Export de l’original ${index + 1} / ${frames.length}…`);
+            setStatus(t('Export de l’original {0} / {1}…', [index + 1, frames.length]));
             const entry = new ZipPassThrough(
               `images/${String(index + 1).padStart(3, '0')}-${frame.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
             );
@@ -388,7 +415,9 @@ export function Capture() {
                   frames,
                   poses: null,
                   intrinsics: null,
-                  note: 'Photos originales. Aucun modèle reconstruit ni couverture géométrique mesurée.',
+                  note: t(
+                    'Photos originales. Aucun modèle reconstruit ni couverture géométrique mesurée.',
+                  ),
                 },
                 null,
                 2,
@@ -406,13 +435,15 @@ export function Capture() {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
       setStatus(
-        'Archive préparée. Vérifiez son enregistrement dans vos téléchargements. Les prises locales sont conservées.',
+        t(
+          'Archive préparée. Vérifiez son enregistrement dans vos téléchargements. Les prises locales sont conservées.',
+        ),
       );
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : 'L’export n’a pas pu être préparé. Vos prises sont conservées.',
+          : t('L’export n’a pas pu être préparé. Vos prises sont conservées.'),
       );
     } finally {
       setBusy(false);
@@ -442,8 +473,10 @@ export function Capture() {
         setRemoteState(existing.scan.state);
         setStatus(
           existing.scan.state === 'cancelled'
-            ? 'Cette série distante est annulée. Vos originaux sont conservés ; créez une nouvelle série pour poursuivre.'
-            : 'Cette série est déjà finalisée. Vos originaux restent disponibles à l’export.',
+            ? t(
+                'Cette série distante est annulée. Vos originaux sont conservés ; créez une nouvelle série pour poursuivre.',
+              )
+            : t('Cette série est déjà finalisée. Vos originaux restent disponibles à l’export.'),
         );
         return;
       }
@@ -460,16 +493,23 @@ export function Capture() {
           known.add(hash);
         }
         setStatus(
-          `Transfert vérifié : ${index + 1} / ${frames.length} photos. Une reprise ignore les images déjà reçues.`,
+          t('Transfert vérifié : {0} / {1} photos. Une reprise ignore les images déjà reçues.', [
+            index + 1,
+            frames.length,
+          ]),
         );
       }
       setSynchronized(true);
       setStatus(
-        'Photos transférées et vérifiées. Vous pouvez finaliser cette série ou ajouter des vues. Les originaux restent sur cet appareil.',
+        t(
+          'Photos transférées et vérifiées. Vous pouvez finaliser cette série ou ajouter des vues. Les originaux restent sur cet appareil.',
+        ),
       );
     } catch (err) {
       setError(
-        `${err instanceof Error ? err.message : 'Le transfert a été interrompu.'} Vos originaux sont conservés. Réessayez pour reprendre.`,
+        t('{0} Vos originaux sont conservés. Réessayez pour reprendre.', [
+          err instanceof Error ? err.message : t('Le transfert a été interrompu.'),
+        ]),
       );
     } finally {
       setBusy(false);
@@ -483,10 +523,12 @@ export function Capture() {
       setFinalized(true);
       setRemoteState('finalized');
       setStatus(
-        'Série finalisée : les fichiers reçus sont figés. Le calcul 3D nécessite un worker de reconstruction configuré.',
+        t(
+          'Série finalisée : les fichiers reçus sont figés. Le calcul 3D nécessite un worker de reconstruction configuré.',
+        ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Finalisation impossible.');
+      setError(err instanceof Error ? err.message : t('Finalisation impossible.'));
     } finally {
       setBusy(false);
     }
@@ -495,24 +537,26 @@ export function Capture() {
     <div className="capture-page">
       <header className="capture-header container">
         <Brand />
+        <LanguageSwitcher />
         <Link href="/dashboard" className="subtle-link">
-          <ArrowLeft size={16} /> Mon espace restaurant
+          <ArrowLeft size={16} /> {t('Mon espace restaurant')}{' '}
         </Link>
       </header>
       <main id="main" className="container capture-main">
         <div className="capture-heading">
           <div>
-            <p className="eyebrow">L’ATELIER DE CAPTURE</p>
-            <h1>Gardez le bon angle.</h1>
-            <p>Une série de photos, pour préparer la suite.</p>
+            <p className="eyebrow">{t('L’ATELIER DE CAPTURE')}</p>
+            <h1>{t('Gardez le bon angle.')}</h1>
+            <p>{t('Une série de photos, pour préparer la suite.')}</p>
           </div>
           <span className="capture-mode">
-            <Camera size={16} /> Photos guidées · Navigateur
+            <Camera size={16} /> {t('Photos guidées · Navigateur')}{' '}
           </span>
         </div>
         <div className="capture-session-bar">
           <label htmlFor="capture-series">
-            Série de photos
+            {' '}
+            {t('Série de photos')}{' '}
             <select
               id="capture-series"
               value={sessionId}
@@ -521,7 +565,8 @@ export function Capture() {
             >
               {history.map((item, index) => (
                 <option value={item.id} key={item.id}>
-                  Série {index + 1} · {new Date(item.createdAt).toLocaleString('fr-FR')}
+                  {' '}
+                  {t('Série')} {index + 1} · {new Date(item.createdAt).toLocaleString(numberLocale)}
                 </option>
               ))}
             </select>
@@ -531,7 +576,8 @@ export function Capture() {
             disabled={busy || opening}
             onClick={() => void newSession()}
           >
-            Nouvelle série
+            {' '}
+            {t('Nouvelle série')}{' '}
           </button>
         </div>
         <div className="capture-grid">
@@ -542,7 +588,7 @@ export function Capture() {
                 playsInline
                 muted
                 autoPlay
-                aria-label="Aperçu de la caméra"
+                aria-label={t('Aperçu de la caméra')}
                 className={live ? 'is-live' : ''}
               />
               {!live && (
@@ -550,17 +596,19 @@ export function Capture() {
                   <div>
                     <Focus size={50} strokeWidth={1} />
                   </div>
-                  <h2>Tout commence par votre plat.</h2>
+                  <h2>{t('Tout commence par votre plat.')}</h2>
                   <p>
-                    Ouvrez la caméra ou importez une série de photos. Placez l’assiette au centre du
-                    cadre.
+                    {' '}
+                    {t(
+                      'Ouvrez la caméra ou importez une série de photos. Placez l’assiette au centre du cadre.',
+                    )}{' '}
                   </p>
                   <button
                     className="button button-white"
                     onClick={openCamera}
                     disabled={busy || opening || !sessionId}
                   >
-                    <Camera size={18} /> {opening ? 'Ouverture…' : 'Ouvrir la caméra'}
+                    <Camera size={18} /> {opening ? t('Ouverture…') : t('Ouvrir la caméra')}
                   </button>
                 </div>
               )}
@@ -573,13 +621,13 @@ export function Capture() {
                     <i />
                   </div>
                   <span className="live-label">
-                    <span className="tiny-dot" /> CAMÉRA ACTIVE
+                    <span className="tiny-dot" /> {t('CAMÉRA ACTIVE')}{' '}
                   </span>
                   <div className="camera-controls">
                     <button
                       className="icon-button"
                       onClick={stopCamera}
-                      aria-label="Mettre la caméra en pause"
+                      aria-label={t('Mettre la caméra en pause')}
                     >
                       <Pause size={20} />
                     </button>
@@ -587,7 +635,7 @@ export function Capture() {
                       className="shutter"
                       onClick={takePhoto}
                       disabled={busy || finalized}
-                      aria-label="Prendre une photo"
+                      aria-label={t('Prendre une photo')}
                     >
                       <span />
                     </button>
@@ -601,7 +649,7 @@ export function Capture() {
             <div className="capture-import">
               <div>
                 <ShieldCheck size={19} />
-                <span>Originaux conservés sur cet appareil</span>
+                <span>{t('Originaux conservés sur cet appareil')}</span>
               </div>
               <input
                 className="visually-hidden"
@@ -609,7 +657,7 @@ export function Capture() {
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
-                aria-label="Importer les photos"
+                aria-label={t('Importer les photos')}
                 onChange={(event) => {
                   if (event.target.files?.length) void addFiles(event.target.files);
                   event.target.value = '';
@@ -620,25 +668,29 @@ export function Capture() {
                 onClick={() => input.current?.click()}
                 disabled={busy || !sessionId || finalized}
               >
-                <ImagePlus size={17} /> Importer des photos
+                <ImagePlus size={17} /> {t('Importer des photos')}{' '}
               </button>
             </div>
             {error && (
               <div className="notice notice-error" role="alert">
                 <Info size={18} />
-                <p>{error}</p>
+                <p>{t(error)}</p>
               </div>
             )}
             {status && (
               <p className="notice notice-success" role="status">
-                {busy ? <LoaderCircle size={17} className="spin" /> : <Check size={17} />} {status}
+                {busy ? <LoaderCircle size={17} className="spin" /> : <Check size={17} />}{' '}
+                {t(status)}
               </p>
             )}
             <div className="capture-gallery-heading">
               <h2>
-                Vos prises <span>{frames.length}</span>
+                {' '}
+                {t('Vos prises')} <span>{frames.length}</span>
               </h2>
-              <span>{(bytes / 1024 / 1024).toFixed(1)} / 100 Mo</span>
+              <span>
+                {(bytes / 1024 / 1024).toFixed(1)} {t('/ 100 Mo')}
+              </span>
             </div>
             {frames.length ? (
               <>
@@ -654,20 +706,21 @@ export function Capture() {
                 </div>
                 {frames.length > 4 && (
                   <p className="field-hint">
-                    Les 4 dernières prises sont affichées. Les {frames.length} originaux sont inclus
-                    dans l’export.
+                    {' '}
+                    {t('Les 4 dernières prises sont affichées. Les')} {frames.length}{' '}
+                    {t('originaux sont inclus dans l’export.')}{' '}
                   </p>
                 )}
               </>
             ) : (
               <div className="capture-empty">
                 <ImagePlus size={23} />
-                <p>Vos premières prises apparaîtront ici.</p>
+                <p>{t('Vos premières prises apparaîtront ici.')}</p>
               </div>
             )}
             {deleteId && (
               <div className="notice notice-error">
-                <p>Supprimer cet original de cet appareil ? Cette action est définitive.</p>
+                <p>{t('Supprimer cet original de cet appareil ? Cette action est définitive.')}</p>
                 <div className="button-row">
                   <button
                     className="button button-danger button-small"
@@ -679,55 +732,61 @@ export function Capture() {
                         setSynchronized(false);
                         setDeleteId('');
                       } catch {
-                        setError('Impossible de supprimer cette prise.');
+                        setError(t('Impossible de supprimer cette prise.'));
                       }
                     }}
                   >
-                    Supprimer l’original
+                    {' '}
+                    {t('Supprimer l’original')}{' '}
                   </button>
                   <button className="text-button" onClick={() => setDeleteId('')}>
-                    Conserver
+                    {' '}
+                    {t('Conserver')}{' '}
                   </button>
                 </div>
               </div>
             )}
           </div>
           <aside className="capture-guide">
-            <div className="guide-progress" aria-label="Étapes du guide">
+            <div className="guide-progress" aria-label={t('Étapes du guide')}>
               {guides.map((guide, index) => (
                 <button
                   key={guide.title}
                   onClick={() => setStep(index)}
-                  aria-label={`Conseil ${index + 1} : ${guide.title}`}
+                  aria-label={t('Conseil {0} : {1}', [index + 1, t(guide.title)])}
                   aria-current={step === index ? 'step' : undefined}
                 >
                   {String(index + 1).padStart(2, '0')}
                 </button>
               ))}
             </div>
-            <p className="eyebrow">CONSEIL {step + 1} / 3</p>
-            <h2>{guides[step].title}</h2>
-            <p>{guides[step].text}</p>
+            <p className="eyebrow">
+              {t('CONSEIL')} {step + 1} / 3
+            </p>
+            <h2>{t(guides[step].title)}</h2>
+            <p>{t(guides[step].text)}</p>
             <div className="guide-tip">
               <Info size={18} />
-              <p>{guides[step].detail}</p>
+              <p>{t(guides[step].detail)}</p>
             </div>
             <button className="inline-link" onClick={() => setStep((step + 1) % 3)}>
-              {step === 2 ? 'Revoir les conseils' : 'Conseil suivant'}
+              {step === 2 ? t('Revoir les conseils') : t('Conseil suivant')}
               {step === 2 ? <RotateCcw size={16} /> : <ArrowRight size={16} />}
             </button>
             <div className="capture-separator" />
-            <h3>Votre série, bien gardée.</h3>
+            <h3>{t('Votre série, bien gardée.')}</h3>
             <p className="field-hint">
-              150 photos maximum, 100 Mo par série. Exportez vos originaux : le navigateur peut
-              libérer son stockage. Le transfert prépare une copie allégée si nécessaire.
+              {' '}
+              {t(
+                '150 photos maximum, 100 Mo par série. Exportez vos originaux : le navigateur peut libérer son stockage. Le transfert prépare une copie allégée si nécessaire.',
+              )}{' '}
             </p>
             <button
               className="button button-dark"
               onClick={exportOriginals}
               disabled={busy || !frames.length}
             >
-              <Download size={17} /> Exporter les originaux
+              <Download size={17} /> {t('Exporter les originaux')}{' '}
             </button>
             {dishId ? (
               <>
@@ -737,7 +796,7 @@ export function Capture() {
                   disabled={busy || !frames.length || finalized}
                 >
                   <CloudUpload size={17} />{' '}
-                  {remoteId ? 'Reprendre le transfert' : 'Transférer vers le plat'}
+                  {remoteId ? t('Reprendre le transfert') : t('Transférer vers le plat')}
                 </button>
                 {remoteId && !finalized && (
                   <button
@@ -745,15 +804,16 @@ export function Capture() {
                     disabled={busy || frames.length < 3 || !synchronized}
                     onClick={finalize}
                   >
-                    Finaliser la série <Check size={17} />
+                    {' '}
+                    {t('Finaliser la série')} <Check size={17} />
                   </button>
                 )}
                 {finalized && (
                   <p className="notice notice-success">
                     <Check size={17} />{' '}
                     {remoteState === 'cancelled'
-                      ? 'Série annulée · Originaux conservés'
-                      : 'Série finalisée'}
+                      ? t('Série annulée · Originaux conservés')
+                      : t('Série finalisée')}
                   </p>
                 )}
                 {remoteId && remoteState === 'finalized' && (
@@ -762,16 +822,19 @@ export function Capture() {
               </>
             ) : (
               <p className="field-hint">
-                Pour associer ces photos à un plat, ouvrez la capture depuis sa fiche dans votre
-                espace restaurant.
+                {' '}
+                {t(
+                  'Pour associer ces photos à un plat, ouvrez la capture depuis sa fiche dans votre espace restaurant.',
+                )}{' '}
               </p>
             )}
             <div className="capture-truth">
               <Focus size={19} />
               <p>
-                <strong>La photo d’abord.</strong> Ce parcours ne mesure ni poses ni couverture 3D.
-                La reconstruction s’effectue ensuite avec un moteur séparé ; aucun calcul n’est
-                lancé sur votre téléphone.
+                <strong>{t('La photo d’abord.')}</strong>{' '}
+                {t(
+                  'Ce parcours ne mesure ni poses ni couverture 3D. La reconstruction s’effectue ensuite avec un moteur séparé ; aucun calcul n’est lancé sur votre téléphone.',
+                )}{' '}
               </p>
             </div>
           </aside>

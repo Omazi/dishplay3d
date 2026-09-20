@@ -3824,6 +3824,113 @@ dialog::backdrop {
   }
 }
 
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 3px;
+  border: 1px solid var(--line, #ddded5);
+  border-radius: 999px;
+}
+.language-switcher a {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.language-switcher a[aria-current='page'] {
+  background: #272c27;
+  color: white;
+}
+.auth-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nav-inner {
+  gap: 18px;
+}
+.nav-inner > nav:not(.language-switcher) {
+  margin-left: auto;
+}
+.nav-inner > .language-switcher {
+  gap: 2px;
+}
+.menu-nav > .language-switcher,
+.capture-header > .language-switcher {
+  margin-left: auto;
+  margin-right: 16px;
+}
+.dashboard-topbar > .language-switcher {
+  order: 2;
+  margin-left: auto;
+}
+.dashboard-topbar > .mobile-logout {
+  order: 3;
+}
+.standalone-state > .language-switcher {
+  margin-bottom: 24px;
+}
+@media (max-width: 720px) {
+  .site-header {
+    height: auto;
+  }
+  .nav-inner {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-block: 12px;
+  }
+  .nav-inner > .language-switcher {
+    margin-left: auto;
+  }
+  .nav-inner > nav:not(.language-switcher) {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+  .nav-login {
+    margin-left: 0;
+    font-size: 12px;
+  }
+  .menu-nav,
+  .capture-header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 80px;
+    padding-block: 14px;
+    gap: 10px;
+  }
+  .menu-nav > .language-switcher,
+  .capture-header > .language-switcher {
+    margin-right: 0;
+  }
+  .menu-nav > .subtle-link,
+  .capture-header > .subtle-link {
+    width: 100%;
+    justify-content: flex-end;
+    font-size: 11px;
+  }
+  .dashboard-topbar {
+    gap: 8px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 64px;
+    padding-block: 8px;
+  }
+}
+@media print {
+  .language-switcher {
+    display: none;
+  }
+}
 .mobile-logout {
   display: none;
 }

@@ -1,7 +1,8 @@
 'use client';
+import { useI18n, LanguageSwitcher } from '@/components/language';
 
 import { createElement, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { LocalizedLink as Link } from '@/components/language';
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -13,11 +14,12 @@ import {
   X,
 } from 'lucide-react';
 import type { Dish, PublicMenu } from '@/lib/contracts';
-import { dishImageUrl } from '@/lib/demo';
+import { dishImageUrl, localizedDemoMenu } from '@/lib/demo';
 import { formatPrice } from './api-client';
 import { Brand } from './brand';
 
 function ModelView({ dish }: { dish: Dish }) {
+  const { t } = useI18n();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const container = useRef<HTMLDivElement>(null);
@@ -28,7 +30,7 @@ function ModelView({ dish }: { dish: Dish }) {
         if (alive) setReady(true);
       })
       .catch(() => {
-        if (alive) setError('La vue 3D n’a pas pu charger. Vous pouvez revenir à la photo.');
+        if (alive) setError(t('La vue 3D n’a pas pu charger. Vous pouvez revenir à la photo.'));
       });
     return () => {
       alive = false;
@@ -38,7 +40,7 @@ function ModelView({ dish }: { dish: Dish }) {
     const viewer = container.current?.querySelector('model-viewer');
     if (!viewer) return;
     const onError = () =>
-      setError('Le modèle est indisponible. Revenez à la photo ou réessayez plus tard.');
+      setError(t('Le modèle est indisponible. Revenez à la photo ou réessayez plus tard.'));
     viewer.addEventListener('error', onError);
     return () => viewer.removeEventListener('error', onError);
   }, [ready]);
@@ -46,14 +48,14 @@ function ModelView({ dish }: { dish: Dish }) {
     return (
       <div className="viewer-message" role="alert">
         <ImageIcon size={30} />
-        <p>{error}</p>
+        <p>{t(error)}</p>
       </div>
     );
   if (!ready)
     return (
       <div className="viewer-message" role="status">
         <LoaderCircle className="spin" size={28} />
-        <p>Chargement de la visionneuse…</p>
+        <p>{t('Chargement de la visionneuse…')}</p>
       </div>
     );
   return (
@@ -64,7 +66,7 @@ function ModelView({ dish }: { dish: Dish }) {
           src: dish.modelGlbUrl,
           'ios-src': dish.modelUsdzUrl || undefined,
           poster: dishImageUrl(dish) || undefined,
-          alt: `Modèle 3D de ${dish.name}`,
+          alt: t('Modèle 3D de {0}', [dish.name]),
           'camera-controls': true,
           'touch-action': 'pan-y',
           ar: true,
@@ -75,15 +77,17 @@ function ModelView({ dish }: { dish: Dish }) {
           style: { width: '100%', height: '100%', minHeight: '320px' },
         },
         <button className="button button-blue ar-button" slot="ar-button">
-          <Camera size={17} /> Voir sur ma table
+          <Camera size={17} /> {t('Voir sur ma table')}{' '}
         </button>,
       )}
-      <p className="viewer-hint">Glissez pour tourner · Pincez pour zoomer</p>
+      <p className="viewer-hint">{t('Glissez pour tourner · Pincez pour zoomer')}</p>
     </div>
   );
 }
 
 export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?: boolean }) {
+  const { t, locale, numberLocale } = useI18n();
+  if (menu.isDemo) menu = localizedDemoMenu(locale);
   const [category, setCategory] = useState('all');
   const [selected, setSelected] = useState<Dish | null>(null);
   const [mode, setMode] = useState<'photo' | '3d'>('photo');
@@ -111,37 +115,40 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
       {menu.isDemo && (
         <div className="demo-banner">
           <span>
-            <span className="tiny-dot" /> Menu de démonstration · Photos et informations
-            illustratives
+            <span className="tiny-dot" />{' '}
+            {t('Menu de démonstration · Photos et informations illustratives')}{' '}
           </span>
           <Link href="/signup">
-            Créer ma carte <ArrowUpRight size={14} />
+            {' '}
+            {t('Créer ma carte')} <ArrowUpRight size={14} />
           </Link>
         </div>
       )}
       <header className="menu-nav container">
         <Brand />
+        {!preview && <LanguageSwitcher />}
         {!preview && (
           <Link href="/" className="subtle-link">
-            <ArrowLeft size={15} /> À propos de DishPlay
+            <ArrowLeft size={15} /> {t('À propos de DishPlay')}{' '}
           </Link>
         )}
       </header>
       <main id={preview ? undefined : 'main'} className="container menu-main">
         <div className="menu-intro">
-          <p className="eyebrow">BONJOUR, INSTALLEZ-VOUS.</p>
+          <p className="eyebrow">{t('BONJOUR, INSTALLEZ-VOUS.')}</p>
           <h1>{menu.restaurant.name}</h1>
-          <p>{menu.restaurant.tagline || 'De belles assiettes, à découvrir à votre rythme.'}</p>
+          <p>{menu.restaurant.tagline || t('De belles assiettes, à découvrir à votre rythme.')}</p>
           <div className="menu-intro-line">
             <span>
-              <Check size={14} /> Notre carte, à portée de main
+              <Check size={14} /> {t('Notre carte, à portée de main')}{' '}
             </span>
-            <span>Bon appétit.</span>
+            <span>{t('Bon appétit.')}</span>
           </div>
         </div>
-        <nav className="category-tabs" aria-label="Catégories du menu">
+        <nav className="category-tabs" aria-label={t('Catégories du menu')}>
           <button aria-pressed={category === 'all'} onClick={() => setCategory('all')}>
-            Toute la carte <span>{available.length}</span>
+            {' '}
+            {t('Toute la carte')} <span>{available.length}</span>
           </button>
           {menu.categories
             .toSorted((a, b) => a.sortOrder - b.sortOrder)
@@ -162,7 +169,7 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
                 <button
                   className="dish-picture"
                   onClick={(event) => open(dish, event.currentTarget)}
-                  aria-label={`Découvrir ${dish.name}`}
+                  aria-label={t('Découvrir {0}', [dish.name])}
                 >
                   {dishImageUrl(dish) ? (
                     <img
@@ -175,17 +182,17 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
                   ) : (
                     <div className="no-photo">
                       <ImageIcon size={38} />
-                      <span>À découvrir à table</span>
+                      <span>{t('À découvrir à table')}</span>
                     </div>
                   )}
                   <span className="dish-photo-chip">
                     {dish.modelGlbUrl ? (
                       <>
-                        <Box size={14} /> Explorer en 3D
+                        <Box size={14} /> {t('Explorer en 3D')}{' '}
                       </>
                     ) : (
                       <>
-                        <ImageIcon size={14} /> Voir le plat
+                        <ImageIcon size={14} /> {t('Voir le plat')}{' '}
                       </>
                     )}
                   </span>
@@ -198,12 +205,14 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
                       </button>
                     </h2>
                     <strong className="dish-price">
-                      {formatPrice(dish.priceCents, menu.restaurant.currency)}
+                      {formatPrice(dish.priceCents, menu.restaurant.currency, numberLocale)}
                     </strong>
                   </div>
                   <p>{dish.description}</p>
                   {dish.allergens.length > 0 && (
-                    <span className="allergen-line">Allergènes : {dish.allergens.join(', ')}</span>
+                    <span className="allergen-line">
+                      {t('Allergènes :')} {dish.allergens.join(', ')}
+                    </span>
                   )}
                 </div>
               </article>
@@ -212,20 +221,20 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
         ) : (
           <div className="empty-state">
             <ImageIcon size={32} />
-            <h2>La carte se prépare.</h2>
-            <p>Aucun plat disponible dans cette catégorie pour le moment.</p>
+            <h2>{t('La carte se prépare.')}</h2>
+            <p>{t('Aucun plat disponible dans cette catégorie pour le moment.')}</p>
           </div>
         )}
         <div className="menu-bottom-note">
-          <span>Une question sur un ingrédient ?</span>
-          <p>Notre équipe est là pour vous renseigner avant votre choix.</p>
+          <span>{t('Une question sur un ingrédient ?')}</span>
+          <p>{t('Notre équipe est là pour vous renseigner avant votre choix.')}</p>
         </div>
       </main>
       <footer className="menu-footer">
-        <span>LE PLAISIR DE DÉCOUVRIR</span>
+        <span>{t('LE PLAISIR DE DÉCOUVRIR')}</span>
         <Brand />
         {menu.isDemo && (
-          <small>Photographies d’illustration · Voir les crédits dans le dépôt.</small>
+          <small>{t('Photographies d’illustration · Voir les crédits dans le dépôt.')}</small>
         )}
       </footer>
       <dialog
@@ -236,7 +245,11 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
           if (event.target === event.currentTarget) close();
         }}
       >
-        <button className="dialog-close icon-button" onClick={close} aria-label="Fermer le plat">
+        <button
+          className="dialog-close icon-button"
+          onClick={close}
+          aria-label={t('Fermer le plat')}
+        >
           <X size={20} />
         </button>
         {selected && (
@@ -253,7 +266,7 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
               )}
             </div>
             <div className="dish-dialog-body">
-              <div className="view-switch" aria-label="Vue du plat">
+              <div className="view-switch" aria-label={t('Vue du plat')}>
                 <button aria-pressed={mode === 'photo'} onClick={() => setMode('photo')}>
                   <ImageIcon size={15} /> Photo
                 </button>
@@ -265,17 +278,19 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
               </div>
               <div className="dish-dialog-heading">
                 <h2>{selected.name}</h2>
-                <strong>{formatPrice(selected.priceCents, menu.restaurant.currency)}</strong>
+                <strong>
+                  {formatPrice(selected.priceCents, menu.restaurant.currency, numberLocale)}
+                </strong>
               </div>
               <p>{selected.description}</p>
               {selected.allergens.length > 0 && (
                 <div className="allergen-box">
-                  <strong>Allergènes déclarés</strong>
+                  <strong>{t('Allergènes déclarés')}</strong>
                   <p>{selected.allergens.join(' · ')}</p>
                 </div>
               )}
               {!selected.modelGlbUrl && (
-                <p className="field-hint">Ce plat est présenté en photographie.</p>
+                <p className="field-hint">{t('Ce plat est présenté en photographie.')}</p>
               )}
             </div>
           </>

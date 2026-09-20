@@ -1,6 +1,6 @@
 # DishPlay
 
-Restaurant photo menus, guided photo capture, published menu snapshots and permanent QR links. Built from the supplied DishPlay dossier in a fresh checkout. French UI; Next.js, React and PostgreSQL.
+Restaurant photo menus, guided photo capture, published menu snapshots and permanent QR links. Built from the supplied DishPlay dossier in a fresh checkout. French and English UI; Next.js, React and PostgreSQL.
 
 **This is a web pilot.** Native Object Capture/ARCore apps and reconstruction of a real dish have not been validated. Browser capture records real images; it does not fabricate tracking, points or 3D results. The separate reconstruction CLI requires external engines and explicit execution.
 
@@ -19,6 +19,8 @@ Open `http://localhost:3000`. Local development stores accounts and catalogue da
 Only run one development server, build or browser test at a time. Development and build commands use one worker, bounded JavaScript heaps and a process memory guard. If it stops a task, use GitHub CI or close unused applications. No script stops unrelated applications.
 
 ## Product paths
+
+Use the **FR / EN** selector on each screen. English pages live under `/en` (for example `/en/signup` and `/en/menu/demo`); existing French URLs and printed QR links stay valid. The selected language follows internal navigation. Switching language preserves the current route and query parameters, plus saved accounts, dishes and local captures. Save in-progress form edits before switching. Only the interface and illustrative demo are translated; restaurant-entered names, descriptions and allergens are kept as entered. Prices and dates follow the interface language without changing stored values.
 
 - `/`: product introduction.
 - `/menu/demo`: explicitly labelled illustrative photo menu; no account or camera needed.
