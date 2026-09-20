@@ -89,7 +89,7 @@ export function CaptureCoach({
               )}
             </p>
             <div className="coach-count">
-              <strong>{t('{0} photos dans ce passage', [count])}</strong>
+              <strong>{t('Photos dans ce passage : {0}', [count])}</strong>
               <span>{t('Repère de départ : environ 30 vues par tour, à adapter au plat.')}</span>
             </div>
             <button

@@ -70,3 +70,11 @@ Live verification on 2026-09-19 America/New_York (2026-09-20 03:46 UTC), source 
 - One local browser session ran under the memory guard, with **1,316 MiB sampled aggregate task RSS**. No local server, mobile SDK or reconstruction engine ran alongside it.
 
 Local and CI account/catalogue/publication checks continue to use isolated databases. The production site has no fallback to ephemeral hosting files.
+
+## Premium presentation and guided capture (2026-09-20)
+
+Source `95c3d7f` passed [the full CI/CD pipeline](https://github.com/Omazi/dishplay3d/actions/runs/35490936889): **15 Node tests, 16 Python tests, 11 browser scenarios**, production dependency audit, build and both-language live smoke checks. The following copy-only adjustment clarifies the per-pass photo count in both languages.
+
+The deployed source marker matched the tested source commit. A single local Chromium session checked the French interactive capture/edit/share explanation, English mobile layout, synthetic-camera assisted shot, pass confirmation, pause, retained original and selected pass after reload, with no page errors. Peak sampled task RSS was **1,307 MiB**; no local Next/database server ran beside the browser. A separate production build measured **767 MiB**. Responsive checks covered 320 and 390 px.
+
+The [capture/design notes](premium-capture.md) describe image metrics, consent and lifecycle, reduced motion, privacy and limitations. Synthetic camera tests verify control flow only. They do not prove physical focus/coverage, native point-cloud parity, or a reconstructed food model. Original hardware acceptance requirements above remain open.
