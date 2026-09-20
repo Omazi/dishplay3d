@@ -245,7 +245,9 @@ test('page scrolling, deliberate model controls and unsupported AR remain usable
       Object.defineProperty(el, 'canActivateAR', { configurable: true, value: false }),
     );
     await section.getByRole('button', { name: 'View on my table' }).click();
-    await expect(section.getByRole('status')).toContainText('Safari on iPhone');
+    await expect(section.locator('.model-interaction').getByRole('status')).toContainText(
+      'Safari on iPhone',
+    );
     await viewer.evaluate((el) => {
       Object.defineProperty(el, 'canActivateAR', { configurable: true, value: true });
       (el as ModelViewerElement).activateAR = async () => {
@@ -253,7 +255,9 @@ test('page scrolling, deliberate model controls and unsupported AR remain usable
       };
     });
     await section.getByRole('button', { name: 'View on my table' }).click();
-    await expect(section.getByRole('status')).toContainText('AR could not start');
+    await expect(section.locator('.model-interaction').getByRole('status')).toContainText(
+      'AR could not start',
+    );
     await page.screenshot({ path: 'test-results/mobile-ar-controls.png' });
   } finally {
     await context.close();
