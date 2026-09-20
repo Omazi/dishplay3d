@@ -41,13 +41,13 @@ Suggested next physical test: immobile matte/textured dish, three passes at diff
 
 ## Remaining product gaps
 
-### Bilingual web coverage
+Native dish pairing/upload, iOS ARKit spatial fallback, web video sampling, automatic reviewed model asset publication, password recovery/member invitations and physical acceptance still require work. The native and worker guides describe available implementation and explicit limits.
+
+## Bilingual web coverage
 
 The interface has French and English versions, with English routes under `/en` and the original French routes preserved. Automated language scenarios cover server-rendered English, switching languages on the same page, mobile widths of 320 and 390 px, English signup/dish/publication/logout, unchanged restaurant-entered content, translated camera errors and tips, and retained local photos/query parameters after switching. The deployment smoke check covers both languages. No translation service processes restaurant data.
 
 The bilingual production build passed locally at **726 MiB sampled task RSS**. The memory guard stopped the combined local browser/server suite at 1,613 MiB; complete browser verification runs on GitHub Actions instead. Its current result is available in the linked CI/CD runs above.
-
-Native dish pairing/upload, iOS ARKit spatial fallback, web video sampling, automatic reviewed model asset publication, password recovery/member invitations and physical acceptance still require work. The native and worker guides describe available implementation and explicit limits.
 
 ## Native build evidence
 

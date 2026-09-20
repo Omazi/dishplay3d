@@ -55,7 +55,7 @@ test('English restaurant workflow keeps user content and publishes to the same s
   await page.goto('/en/signup');
   await page.getByLabel('Restaurant name', { exact: true }).fill('Cuisine française');
   await page.getByLabel('Email address').fill(`english-${randomUUID()}@example.test`);
-  await page.getByLabel('Password', { exact: true }).fill(`DishPlay-${randomUUID()}`);
+  await page.getByLabel('Password').fill(`DishPlay-${randomUUID()}`);
   await page.getByRole('button', { name: 'Create my workspace' }).click();
   await expect(page).toHaveURL(/\/en\/dashboard$/, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Add a dish', exact: true }).click();
@@ -101,7 +101,9 @@ test('capture translates errors and tips while preserving imported originals acr
   });
   await page.goto('/en/capture?source=language-test#main');
   await page.getByRole('button', { name: 'Open camera', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Camera access was denied.');
+  await expect(page.locator('.notice-error[role="alert"]')).toContainText(
+    'Camera access was denied.',
+  );
   await expect(page.getByRole('heading', { name: 'Set the scene.' })).toBeVisible();
   await page.getByRole('button', { name: 'Next tip', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Move around the dish.' })).toBeVisible();

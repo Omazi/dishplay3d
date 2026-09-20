@@ -2932,7 +2932,7 @@ dialog::backdrop {
     padding: 60px 0;
   }
   .showcase-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 50px;
   }
   .showcase-copy {
@@ -2940,6 +2940,9 @@ dialog::backdrop {
   }
   .showcase-copy h2 {
     font-size: 51px;
+  }
+  html[lang='en'] .showcase-copy h2 {
+    font-size: clamp(38px, 11vw, 51px);
   }
   .showcase-copy .eyebrow {
     font-size: 8px;
@@ -3899,6 +3902,7 @@ dialog::backdrop {
   .nav-login {
     margin-left: 0;
     font-size: 12px;
+    display: block;
   }
   .menu-nav,
   .capture-header {
