@@ -137,7 +137,7 @@ class MainActivity : Activity() {
             if (busy.get()) return@button
             wantAr = false; pauseAr()
             try {
-                store.newSession(); surface.queueEvent { renderer.resetAnchor() }
+                store.newSession(); renderer.anchorLocked = false; surface.queueEvent { renderer.resetAnchor() }
                 showMessage("Nouvelle série créée. Les précédentes restent accessibles via Mes séries.")
             } catch (error: Exception) { showMessage(error.localizedMessage ?: "La nouvelle série n’a pas pu être créée. Les précédentes sont conservées.") }
             refreshSummary(); updateControls()
@@ -314,6 +314,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("Séries conservées sur cet appareil")
             .setItems(labels) { _, index ->
                 wantAr = false; pauseAr(); store.selectSession(sessions[index])
+                renderer.anchorLocked = false
                 surface.queueEvent { renderer.resetAnchor() }
                 refreshSummary(); updateControls()
                 showMessage("Série ouverte. Une nouvelle capture AR utilisera un segment distinct. Exportez pour conserver une copie hors de l’appareil.")
@@ -332,7 +333,7 @@ class MainActivity : Activity() {
         arButton.isEnabled = available
         arButton.text = if (arRunning) "Mettre en pause" else "Activer le guidage AR"
         fallbackButton.isEnabled = available
-        exportButton.isEnabled = available && store.count() > 0
+        exportButton.isEnabled = available && store.hasOriginals()
         newButton.isEnabled = available
         historyButton.isEnabled = available
         dimensionControls.forEach { it.isEnabled = available && !renderer.anchorLocked }
