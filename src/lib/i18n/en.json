@@ -657,5 +657,6 @@
   "Explorer le résultat en 3D": "Explore the result in 3D",
   "Résultat de votre reconstruction, à vérifier": "Your reconstruction result, awaiting review",
   "L’aperçu n’a pas pu s’ouvrir. Le modèle reste téléchargeable.": "The preview could not open. You can still download the model.",
-  "Modèle 3D illustratif d’un plat similaire, distinct de la photo.": "Illustrative 3D model of a similar dish, separate from the photo."
+  "Modèle 3D illustratif d’un plat similaire, distinct de la photo.": "Illustrative 3D model of a similar dish, separate from the photo.",
+  "Fermer": "Close"
 }
