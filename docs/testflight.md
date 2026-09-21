@@ -1,6 +1,6 @@
 # Installer DishPlay Capture avec TestFlight
 
-DishPlay reste un site web pour les clients et l’espace restaurant. L’app iPhone est son compagnon de capture. La distribution TestFlight utilise un runner Mac GitHub ; aucun SDK Apple n’est installé sur le laptop Linux de 8 Go.
+DishPlay reste un site web pour les clients et l’espace restaurant. L’app iPhone est son compagnon de capture. La distribution iOS migre vers **Xcode Cloud**, à la demande de l’utilisateur. [Le projet et les scripts sont préparés](xcode-cloud.md), mais la première activation Apple nécessite encore l’accès à un Mac. Aucun SDK Apple n’est installé sur le laptop Linux de 8 Go. Les instructions GitHub ci-dessous décrivent le pipeline historique, conservé uniquement comme solution manuelle de secours.
 
 ## Version disponible
 

@@ -1,11 +1,7 @@
-name: iOS unsigned build
+name: iOS manual verification (legacy)
 
 on:
-  push:
-    branches: [main]
-    paths: ['native/ios/**', 'scripts/apple/**', '.github/workflows/ios.yml']
-  pull_request:
-    paths: ['native/ios/**', 'scripts/apple/**', '.github/workflows/ios.yml']
+  # iOS automation is moving to Xcode Cloud. Retain an explicit manual fallback.
   workflow_dispatch:
   workflow_call:
 
@@ -24,44 +20,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Verify automatic scan coverage
-        run: |
-          swiftc native/ios/DishPlayCapture/ScanCoverage.swift native/ios/Tests/main.swift -o /tmp/dishplay-scan-tests
-          /tmp/dishplay-scan-tests
-      - name: Verify camera startup and recovery
-        run: |
-          swiftc -parse-as-library native/ios/DishPlayCapture/ScanCameraHealth.swift native/ios/DishPlayCapture/ScanDiagnostics.swift native/ios/Tests/ScanCameraHealthTests.swift -o /tmp/dishplay-camera-health-tests
-          /tmp/dishplay-camera-health-tests
-      - name: Verify durable scan receipts
-        run: |
-          swiftc -parse-as-library native/ios/DishPlayCapture/CaptureDelivery.swift native/ios/Tests/CaptureDeliveryTests.swift -o /tmp/dishplay-receipt-tests
-          /tmp/dishplay-receipt-tests
-      - name: Verify live camera movie recording
-        run: |
-          swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
-            native/ios/DishPlayCapture/ScanMovieRecorder.swift native/ios/Tests/ScanMovieTests.swift -o /tmp/dishplay-movie-tests
-          /tmp/dishplay-movie-tests
-      - name: Verify real video frame extraction
-        run: |
-          swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
-            native/ios/DishPlayCapture/VideoFrameExtractor.swift native/ios/Tests/VideoExtractionTests.swift \
-            -o /tmp/dishplay-video-tests
-          /tmp/dishplay-video-tests
-      - name: Verify progressive silhouette geometry
-        run: |
-          swiftc -O -parse-as-library native/ios/DishPlayCapture/ScanVolume.swift native/ios/DishPlayCapture/ScanPreview.swift native/ios/Tests/ScanPreviewTests.swift \
-            -o /tmp/dishplay-preview-tests
-          /tmp/dishplay-preview-tests
-      - name: Verify editable capture volume
-        run: |
-          swiftc -O -parse-as-library native/ios/DishPlayCapture/ScanVolume.swift native/ios/DishPlayCapture/ScanPreview.swift native/ios/Tests/ScanVolumeTests.swift -o /tmp/dishplay-volume-tests
-          /tmp/dishplay-volume-tests
-      - name: Test signing profile guards
-        run: python3 scripts/apple/test_signing.py
-      - name: Verify selected image isolation and orientation
-        run: |
-          swiftc -parse-as-library native/ios/DishPlayCapture/ScanImageMask.swift native/ios/Tests/ScanImageMaskTests.swift -o /tmp/dishplay-image-mask-tests
-          /tmp/dishplay-image-mask-tests
+      - name: Verify native capture, camera, geometry, video and signing guards
+        run: bash scripts/apple/verify-native.sh
       - name: Download pinned project generator
         run: bash scripts/apple/xcodegen.sh
       - name: Generate project and archive the iOS release target

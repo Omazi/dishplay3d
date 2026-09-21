@@ -31,7 +31,7 @@ Au commit `5d2462d`, [les tests natifs, l’archive Release et les deux tests d�
 
 Le job `distribute` de ce workflow a été refusé avant toute étape : GitHub signale des paiements récents échoués ou un plafond de dépenses à augmenter. Aucun build 0.6.1 n’a été signé ni envoyé à Apple. La version installable reste **0.6.0 (10.1)**. Il faut débloquer la facturation GitHub avant de reprendre la distribution ; aucun plafond ni moyen de paiement n’a été modifié.
 
-Après déblocage, relancer les jobs échoués du workflow ci-dessus. Le numéro de build dépendra du numéro de tentative ; vérifier le numéro effectivement envoyé, son état Apple `VALID`, puis son association au groupe interne avant d’annoncer la disponibilité. Le succès des tests ne remplace pas ces étapes.
+L’utilisateur a ensuite choisi de migrer vers **Xcode Cloud** : voir [la préparation du dépôt et le prérequis d’activation sur Mac](xcode-cloud.md). Le workflow GitHub reste une solution manuelle de secours. Quel que soit le service utilisé, vérifier le numéro effectivement envoyé, son état Apple `VALID`, puis son association au groupe interne avant d’annoncer la disponibilité. Le succès des tests ne remplace pas ces étapes.
 
 ## Essai sur l’iPhone 13
 

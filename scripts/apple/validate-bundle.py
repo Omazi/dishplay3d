@@ -8,7 +8,7 @@ app = Path(sys.argv[1])
 info = plistlib.loads((app / 'Info.plist').read_bytes())
 assert info['CFBundlePackageType'] == 'APPL'
 assert info['DTSDKName'].startswith('iphoneos')
-assert int(info['DTSDKName'].removeprefix('iphoneos').split('.')[0]) >= 26, 'App Store Connect requires iOS SDK 26 or newer.'
+assert int(info['DTSDKName'][len('iphoneos'):].split('.')[0]) >= 26, 'App Store Connect requires iOS SDK 26 or newer.'
 assert info.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {}).get('CFBundleIconName') == 'AppIcon', 'Missing compiled application icon.'
 assert (app / 'Assets.car').is_file(), 'Missing asset catalogue.'
 assert 'fr' in info['CFBundleLocalizations'] and 'en' in info['CFBundleLocalizations']
