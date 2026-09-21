@@ -41,6 +41,7 @@ struct CaptureScreen: View {
                         Label(model.imageCount > 0 ? "Start a new scan" : "Film and scan my dish", systemImage: "viewfinder")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
                     }.buttonStyle(.borderedProminent).disabled(model.busy || transfer.busy)
+                        .accessibilityIdentifier("open-guided-scan")
                     Text("Keep the dish still. Follow the highlighted orbit and raise the phone gently. Useful views are saved automatically.")
                         .font(.callout).foregroundStyle(.secondary)
                     if model.phase == .preparing {
@@ -112,7 +113,7 @@ struct CaptureScreen: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }.padding(.top).buttonStyle(.bordered).disabled(model.busy || transfer.busy)
                     }
-                    Text("Version 0.6 · Adjustable box and live capture").font(.caption2).foregroundStyle(.secondary)
+                    Text("Version 0.6.1 · Camera startup and recovery").font(.caption2).foregroundStyle(.secondary)
                     Text("The live preview is provisional. Your saved views are sent to the linked dish; your PC calculates the final 3D model. Check its shape and scale before publishing.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }.padding(22).frame(maxWidth: 650).frame(maxWidth: .infinity)

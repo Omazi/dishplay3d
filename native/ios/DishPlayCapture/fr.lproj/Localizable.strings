@@ -293,3 +293,11 @@
 "~%lld cm" = "~%lld cm";
 "Recenter" = "Recentrer";
 "Start recording" = "Enregistrer";
+
+"Version 0.6.1 · Camera startup and recovery" = "Version 0.6.1 · Démarrage et reprise de la caméra";
+"Camera unavailable" = "Caméra indisponible";
+"Camera paused" = "Caméra en pause";
+"Restart camera" = "Relancer la caméra";
+"Copy camera diagnostic" = "Copier le diagnostic caméra";
+"No camera images arrived. Tap Restart camera. Your saved scans are preserved." = "Aucune image de la caméra n’est arrivée. Appuyez sur Relancer la caméra. Vos scans enregistrés sont conservés.";
+"The camera image could not be displayed. Tap Restart camera. Your saved scans are preserved." = "L’image de la caméra n’a pas pu être affichée. Appuyez sur Relancer la caméra. Vos scans enregistrés sont conservés.";
