@@ -22,7 +22,13 @@ export default defineConfig({
           ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
             ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
             : {}),
-          args: ['--enable-unsafe-swiftshader'],
+          args: [
+            '--enable-unsafe-swiftshader',
+            '--renderer-process-limit=1',
+            '--js-flags=--max-old-space-size=128',
+            '--in-process-gpu',
+            '--no-zygote',
+          ],
         },
       },
     },

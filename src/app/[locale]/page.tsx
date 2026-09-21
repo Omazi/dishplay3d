@@ -1,212 +1,132 @@
-import { createTranslator, isLocale } from '@/lib/i18n';
-import { LocalizedLink as Link } from '@/components/language';
-import {
-  ArrowDown,
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  Camera,
-  Layers3,
-  QrCode,
-  Plus,
-} from 'lucide-react';
-import { Footer, Header } from '@/components/brand';
-import { ProductStory, RevealMotion } from '@/components/product-story';
-import { PhotoGallery, PhotoShowcase } from '@/components/photo-showcase';
+import Link from 'next/link';
 import QRCode from 'qrcode';
-import '../premium.css';
-import '../showcase.css';
+import { ArrowUpRight } from 'lucide-react';
+import { Brand } from '@/components/brand';
+import { LanguageSwitcher } from '@/components/language';
+import { isLocale, localizePath } from '@/lib/i18n';
+import { localizedDemoMenu } from '@/lib/demo';
+import { showcaseModels } from '@/lib/showcase-models';
+import { landingCopy } from '@/components/landing/content';
+import { LandingStory } from '@/components/landing/story';
+import {
+  Arrival,
+  Exploration,
+  MenuReveal,
+  TableScene,
+  CreatorJourney,
+  LandingFAQ,
+  Conclusion,
+} from '@/components/landing/sections';
+import '../launch.css';
 
 export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  const t = createTranslator(isLocale(locale) ? locale : 'fr');
-  const qr = await QRCode.toDataURL(
-    `https://dishplay3d.vercel.app${locale === 'en' ? '/en' : ''}/menu/demo`,
-    { width: 256, margin: 2, color: { dark: '#252824', light: '#ffffff' } },
+  const { locale: value } = await params;
+  const locale = isLocale(value) ? value : 'fr';
+  const c = landingCopy(locale);
+  const path = (href: string) => localizePath(href, locale);
+  const menu = localizedDemoMenu(locale),
+    dish = menu.dishes[0];
+  const price = new Intl.NumberFormat(locale === 'fr' ? 'fr-FR' : 'en-GB', {
+    style: 'currency',
+    currency: menu.restaurant.currency,
+  }).format(dish.priceCents / 100);
+  const demoUrl = `https://dishplay3d.vercel.app${path('/menu/demo')}`;
+  const qr = await QRCode.toDataURL(demoUrl, {
+    width: 180,
+    margin: 1,
+    color: { dark: '#252824', light: '#f6f5f0' },
+  });
+  const demoLink = (
+    <Link className="launch-text-link" href={path('/menu/demo')}>
+      {c.openMenu}
+      <ArrowUpRight size={17} />
+    </Link>
   );
   return (
-    <div className="premium-site">
-      <Header />
-      <RevealMotion />
+    <div className="dishplay-launch">
+      <noscript>
+        <link rel="stylesheet" href="/landing-static.css" />
+      </noscript>
+      <header className="launch-header">
+        <Brand light />
+        <nav aria-label={locale === 'fr' ? 'Navigation principale' : 'Main navigation'}>
+          <a className="launch-nav-how" href="#comment-ca-marche">
+            {c.how}
+          </a>
+          <Link className="launch-nav-demo" href={path('/menu/demo')}>
+            <span className="launch-label-long">{c.navDemo}</span>
+            <span className="launch-label-short">{locale === 'fr' ? 'Démo' : 'Demo'}</span>
+          </Link>
+          <Link className="launch-nav-login" href={path('/login')}>
+            {c.login}
+          </Link>
+          <LanguageSwitcher />
+          <Link className="launch-nav-cta" href={path('/signup')}>
+            <span className="launch-label-long">{c.navCreate}</span>
+            <span className="launch-label-short">{locale === 'fr' ? 'Créer' : 'Create'}</span>
+            <ArrowUpRight size={14} />
+          </Link>
+        </nav>
+      </header>
       <main id="main">
-        <section className="premium-hero">
-          <div className="container premium-hero-copy">
-            <p className="eyebrow">
-              <span className="tiny-dot" />
-              {t('LA CARTE QUI DONNE ENVIE')}
-            </p>
-            <h1>
-              {t('Votre cuisine.')}
-              <br />
-              <span>{t('Une nouvelle dimension.')}</span>
-            </h1>
-            <p className="premium-hero-description">
-              {t('Une carte aussi remarquable que ce que vous servez.')}
-              <br />
-              {t('Photographies immersives. Plats en 3D. Un simple QR.')}
-            </p>
-            <div className="premium-actions">
-              <Link className="button button-blue" href="/signup">
-                {t('Créer ma carte')}
-                <ArrowUpRight size={18} />
-              </Link>
-              <a className="text-button" href="#experience-3d">
-                {t('Découvrir l’expérience')}
-                <ArrowDown size={17} />
-              </a>
-            </div>
-          </div>
-          <PhotoGallery />
-          <div className="premium-proof container">
-            <span>
-              <Camera size={18} />
-              {t('Vos vrais plats')}
-            </span>
-            <span>
-              <QrCode size={18} />
-              {t('Un QR toujours valable')}
-            </span>
-            <span>
-              <Check size={18} />
-              {t('Sans app pour vos clients')}
-            </span>
-          </div>
-        </section>
-        <section className="premium-manifesto container" data-reveal>
-          <p className="eyebrow">{t('VOUS CUISINEZ. DISHPLAY DONNE À VOIR.')}</p>
-          <h2>
-            {t('Une carte raconte.')}
-            <br />
-            <span>{t('La vôtre donne envie.')}</span>
-          </h2>
-          <p>
-            {t(
-              'La texture d’un pain. Le détail d’un dressage. La générosité d’une assiette. Donnez à chaque plat la place qu’il mérite, avec une carte aussi soignée que votre cuisine.',
-            )}
-          </p>
-        </section>
-        <PhotoShowcase />
-        <ProductStory qr={qr} />
-        <section className="premium-capture-section">
-          <div className="container premium-capture-layout">
-            <div data-reveal>
-              <p className="eyebrow">{t('LA CAPTURE, EN CLAIR')}</p>
-              <h2>
-                {t('Vous bougez.')}
-                <br />
-                <span>{t('Le plat reste.')}</span>
-              </h2>
-              <p>
-                {t(
-                  'Dans l’app iPhone, suivez une orbite en montant doucement le téléphone. Les vues utiles sont sélectionnées automatiquement.',
-                )}
-              </p>
-              <Link className="button button-white" href="/capture">
-                {t('Ouvrir la capture guidée')}
-                <ArrowUpRight size={18} />
-              </Link>
-            </div>
-            <div className="premium-capture-steps">
-              {[
-                [
-                  '01',
-                  'Préparez la scène.',
-                  'Une lumière douce, une assiette immobile et la place de faire le tour.',
-                ],
-                [
-                  '02',
-                  'Tournez. Le scan vous guide.',
-                  'Gardez le plat entier dans le cadre. L’orbite se remplit à mesure que de nouvelles vues sont acceptées.',
-                ],
-                [
-                  '03',
-                  'Validez. Retrouvez votre modèle.',
-                  'Complétez les zones manquantes, puis continuez. Les images partent vers votre PC et le modèle revient dans l’app.',
-                ],
-              ].map(([number, title, description]) => (
-                <article key={number} data-reveal>
-                  <span>{number}</span>
-                  <div>
-                    <h3>{t(title)}</h3>
-                    <p>{t(description)}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-        <section className="premium-real container">
-          <div className="premium-section-heading" data-reveal>
-            <p className="eyebrow">{t('UNE BELLE EXPÉRIENCE. DES REPÈRES CLAIRS.')}</p>
-            <h2>
-              {t('La photo aujourd’hui.')}
-              <br />
-              <span>{t('La 3D, quand elle est prête.')}</span>
-            </h2>
-          </div>
-          <div className="premium-real-grid">
-            <article data-reveal>
-              <Camera size={26} />
-              <h3>{t('Votre carte peut déjà vivre.')}</h3>
-              <p>
-                {t(
-                  'Une photo suffit pour publier un plat. Ajoutez prix, description et allergènes, partagez le QR et faites évoluer votre carte à votre rythme.',
-                )}
-              </p>
-            </article>
-            <article data-reveal>
-              <Layers3 size={26} />
-              <h3>{t('Un modèle, une étape en plus.')}</h3>
-              <p>
-                {t(
-                  'Après l’envoi, votre PC calcule le modèle 3D. Vérifiez le résultat avant de le proposer sur votre carte. Vous pouvez aussi importer un modèle GLB/USDZ existant.',
-                )}
-              </p>
-            </article>
-          </div>
-          <div className="premium-faq">
-            {[
-              [
-                'Le guide web reproduit-il le cube et les points 3D ?',
-                'Le navigateur propose des photos guidées et des indices sur l’image. Le volume ancré et les points spatiaux appartiennent au parcours de capture native, à valider sur un appareil compatible. Le guide web ne mesure pas votre couverture 3D.',
-              ],
-              [
-                'Mes clients doivent-ils installer une application ?',
-                'Non. Le QR ouvre le menu dans leur navigateur, sans compte. Les photos restent disponibles ; l’affichage en réalité augmentée dépend du modèle et de l’appareil.',
-              ],
-              [
-                'Le QR change-t-il quand je change un prix ?',
-                'Non. Préparez vos modifications puis publiez-les : le lien du restaurant et le QR restent identiques.',
-              ],
-            ].map(([question, answer]) => (
-              <details key={question}>
-                <summary>
-                  {t(question)}
-                  <Plus size={18} />
-                </summary>
-                <p>{t(answer)}</p>
-              </details>
-            ))}
-          </div>
-        </section>
-        <section className="premium-closing container" data-reveal>
-          <p className="eyebrow">{t('VOTRE PROCHAIN CHAPITRE')}</p>
-          <h2>
-            {t('À vous de')}
-            <br />
-            <span>{t('donner envie.')}</span>
-          </h2>
-          <Link href="/signup" className="button button-blue">
-            {t('Créer mon espace restaurant')}
-            <ArrowRight size={18} />
-          </Link>
-          <Link href="/menu/demo" className="inline-link">
-            {t('Explorer le menu démo')}
-            <ArrowUpRight size={16} />
-          </Link>
-        </section>
+        <LandingStory
+          copy={c}
+          phone={
+            <>
+              <div className="launch-phone-speaker" />
+              <div className="launch-phone-brand">
+                dishplay<span>.</span>
+              </div>
+              <div className="launch-phone-restaurant">{menu.restaurant.name}</div>
+              <div className="launch-phone-media" />
+              <div className="launch-phone-info">
+                <div>
+                  <h3>{dish.name}</h3>
+                  <strong>{price}</strong>
+                </div>
+                <p>{dish.description}</p>
+                <span>3D · {c.illustrative}</span>
+              </div>
+              <div className="launch-phone-home" />
+            </>
+          }
+        >
+          <Arrival c={c} path={path} />
+          <Exploration c={c} demoLink={demoLink} />
+          <MenuReveal
+            c={c}
+            demoLink={demoLink}
+            qr={qr}
+            demoUrl={demoUrl}
+            dish={dish}
+            price={price}
+          />
+          <TableScene c={c} demoLink={demoLink} />
+        </LandingStory>
+        <CreatorJourney c={c} path={path} locale={locale} dish={dish} />
+        <LandingFAQ c={c} />
+        <Conclusion c={c} path={path} demoLink={demoLink} />
       </main>
-      <Footer />
+      <footer className="launch-footer">
+        <div>
+          <Brand light />
+          <p>© {new Date().getFullYear()} DishPlay</p>
+          <Link href={path('/login')}>
+            {c.login}
+            <ArrowUpRight size={15} />
+          </Link>
+        </div>
+        <p>
+          {c.credits}{' '}
+          <a href={showcaseModels[0].source} target="_blank" rel="noreferrer">
+            Sketchfab
+          </a>{' '}
+          ·{' '}
+          <a href={showcaseModels[0].licenseUrl} target="_blank" rel="noreferrer">
+            {showcaseModels[0].license}
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }

@@ -1,23 +1,20 @@
 import { test, expect } from '@playwright/test';
 
-test('product explanation works with keyboard, translated controls and reduced motion', async ({
+test('the new product story has keyboard navigation, translated FAQ and a real demo link', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/en');
-  await page.getByRole('tab', { name: '01 Capture' }).focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: '02 Create' })).toBeFocused();
-  await expect(page.getByRole('tabpanel')).toContainText('Your menu. Your signature.');
-  await page.getByRole('button', { name: 'Increase demo price' }).click();
-  await expect(page.locator('.story-price output')).toHaveText('€22.50');
-  await page.getByRole('button', { name: 'Publish in the demo' }).click();
-  await expect(page.getByRole('button', { name: 'Preview updated' })).toBeVisible();
-  await page.getByRole('tab', { name: '03 Share' }).click();
-  await expect(
-    page.getByRole('img', { name: 'QR code opening the DishPlay demo menu' }),
-  ).toBeVisible();
-  await page.getByRole('link', { name: 'Open this demo menu' }).click();
+  const question = page.locator('summary').filter({ hasText: 'Is reconstruction instant?' });
+  await question.focus();
+  await expect(question).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('No. A capture must be uploaded', { exact: false })).toBeVisible();
+  const demo = page
+    .locator('#menu-reveal')
+    .getByRole('link', { name: 'Open the demo menu', exact: true });
+  await demo.focus();
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/en\/menu\/demo$/);
 });
 
