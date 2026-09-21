@@ -269,8 +269,14 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         if trackingReady != normal { trackingReady = normal }
         if phase == .scanning { recordMovie(frame) }
         if phase == .adjusting {
-            let next = normal ? "Fit the box around the whole dish, then start recording." : "Move gently while the camera finds its position."
-            if instruction != next { instruction = next }
+            // Keep an explicit start/framing error visible until the box is adjusted.
+            if !normal {
+                if instruction != "Move gently while the camera finds its position." {
+                    instruction = "Move gently while the camera finds its position."
+                }
+            } else if instruction == "Move gently while the camera finds its position." {
+                instruction = "Fit the box around the whole dish, then start recording."
+            }
             return
         }
         guard phase == .detecting || phase == .scanning, !analyzing,
@@ -569,6 +575,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     private func setVolume(_ volume: ScanVolume) {
         guard phase == .adjusting else { return }
         captureVolume = volume; target = volume.origin; radius = volume.radius
+        instruction = "Fit the box around the whole dish, then start recording."
         gizmo.display(volume, editable: true)
         if let eye = preview.rootNode.childNodes.first(where: { $0.camera != nil }) {
             eye.position = SCNVector3(0, max(radius, volume.size.y) * 1.9 + 0.15, radius * 3 + 0.2)
