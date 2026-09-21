@@ -27,3 +27,7 @@ The supplied [burger demonstration](https://www.tiktok.com/@arcodecom/video/7345
 Hosted Mac tests exercise rotated box containment, resize bounds, camera projection and background exclusion; a real Core Image/JPEG test checks asymmetric mask orientation, unchanged source image, output dimensions and invalid-selection rejection. Existing actual-MOV, silhouette, coverage, receipt and signing suites remain required. A full iOS archive must succeed before TestFlight distribution.
 
 Physical acceptance remains necessary: drag every face handle on a real iPhone, rotate/reposition the box, confirm setup records nothing, scan an opaque textured dish, inspect the lower preview and preserved originals, interrupt/resume, upload, then inspect the resulting GLB/USDZ and AR placement. Automated tests cannot verify physical tracking, smoothness or final food fidelity.
+
+## Release evidence
+
+Version **0.6.0 (10.1)**, source `0db1655`, passed [native verification, signed archive and Apple upload](https://github.com/Omazi/dishplay3d/actions/runs/35546101415). Apple confirms build `97c10d60-a1c7-4dd3-8391-dee285b778d1` as `VALID` / `IN_BETA_TESTING` in the existing internal group, with automatic notifications disabled and FR/EN test notes. [Web CI and Vercel delivery](https://github.com/Omazi/dishplay3d/actions/runs/35546069808) also passed. This evidence does not replace the physical acceptance described above.

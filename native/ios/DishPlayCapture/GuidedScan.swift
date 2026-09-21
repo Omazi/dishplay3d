@@ -22,7 +22,7 @@ private struct FrameAnalysis {
 
 // One retained analysis frame; movie encoding admits at most one additional camera buffer.
 @MainActor
-final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDelegate, Identifiable {
+final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDelegate, @preconcurrency ARSCNViewDelegate, Identifiable {
     let id = UUID()
     enum Phase { case preparing, detecting, adjusting, scanning, paused, review, failed }
     @Published var phase: Phase = .preparing
@@ -46,6 +46,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     @Published private(set) var trackingReady = false
     @Published private(set) var acceptedViewCount = 0
     @Published private(set) var previewPointCount = 0
+    @Published private(set) var cameraReady = false
     // A display-density warning, not a photogrammetry confidence or a fidelity score.
     var previewSparse: Bool { previewPointCount < 80 }
     private var volumeConfirmed = false
@@ -59,7 +60,32 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     private var movieStarted: Double?
     private var movieFinalization: Task<Void, Never>?
     private var backgroundSave: UIBackgroundTaskIdentifier = .invalid
-    let camera = ARSCNView(frame: .zero)
+    // Creating a Metal view in the button action can block presentation of the entire screen.
+    // Allocate it only after the host is visible and camera access has been granted.
+    private lazy var cameraStorage: ARSCNView = {
+        let view = ARSCNView(frame: .zero)
+        view.scene = SCNScene()
+        view.preferredFramesPerSecond = 30
+        view.automaticallyUpdatesLighting = false
+        view.rendersCameraGrain = false
+        view.rendersMotionBlur = false
+        view.rendersContinuously = true
+        view.isPlaying = true
+        view.delegate = self
+        view.session.delegate = self
+        view.session.delegateQueue = .main
+        return view
+    }()
+    var camera: ARSCNView { cameraStorage }
+    private weak var cameraHost: ScanCameraHost?
+    private var cameraAllocated = false
+    private var permissionRequestPending = false
+    private var visible = false
+    private var resumePreviewOnActivation = false
+    private var health = ScanCameraHealth()
+    nonisolated private let renderHeartbeat = ScanRenderHeartbeat()
+    private var healthTask: Task<Void, Never>?
+    private let diagnostics: ScanDiagnostics
     let preview = SCNScene()
     let record: CaptureRecord
     private let processing = DispatchQueue(label: "app.dishplay.scan.analysis", qos: .userInitiated)
@@ -94,13 +120,10 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
 
     init(record: CaptureRecord) {
         self.record = record
+        diagnostics = ScanDiagnostics(folder: CaptureFiles.root(record))
         super.init()
-        camera.scene = SCNScene()
-        camera.preferredFramesPerSecond = 30
-        camera.automaticallyUpdatesLighting = false
-        camera.rendersContinuously = false
-        camera.session.delegate = self
-        camera.session.delegateQueue = .main
+        let info = Bundle.main.infoDictionary ?? [:]
+        diagnostics.record("created", "version=\(info["CFBundleShortVersionString"] ?? "?") build=\(info["CFBundleVersion"] ?? "?") iOS=\(UIDevice.current.systemVersion)")
         preview.rootNode.addChildNode(previewRoot)
         let eye = SCNNode()
         eye.camera = SCNCamera()
@@ -109,30 +132,129 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         eye.look(at: SCNVector3(0, 0.04, 0))
         preview.rootNode.addChildNode(eye)
     }
+    func hostReady(_ host: ScanCameraHost) {
+        guard !stopped else { return }
+        if cameraHost !== host {
+            cameraHost = host
+            diagnostics.record("view-ready", "\(Int(host.bounds.width))x\(Int(host.bounds.height))")
+            if cameraAllocated { attachCamera(to: host) }
+        }
+        start()
+    }
+    private func attachCamera(to host: ScanCameraHost) {
+        guard camera.superview !== host else { return }
+        camera.removeFromSuperview()
+        camera.frame = host.bounds
+        camera.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        host.addSubview(camera)
+        cameraAllocated = true
+    }
     func start() {
-        guard phase == .preparing, !configured, !stopped else { return }
-        guard ARWorldTrackingConfiguration.isSupported else {
-            phase = .failed
-            error = "Spatial tracking is unavailable on this device. Use Video only under Other capture methods; your PC can still reconstruct the saved views."
+        visible = true
+        guard phase == .preparing, !configured, !stopped, !permissionRequestPending,
+              UIApplication.shared.applicationState == .active,
+              let host = cameraHost, host.window != nil, host.bounds.width > 1, host.bounds.height > 1 else { return }
+        #if DEBUG && targetEnvironment(simulator)
+        if testCameraMode == "denied" { failCamera("permission-denied", "Camera access is off. Enable it in Settings, then try again. Existing captures are preserved."); return }
+        if testCameraMode == "no-frames" {
+            configured = true; beginDetection(); startHealthMonitor(); return
+        }
+        #endif
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .notDetermined:
+            permissionRequestPending = true
+            diagnostics.record("permission-requested")
+            Task { [weak self] in
+                let allowed = await AVCaptureDevice.requestAccess(for: .video)
+                guard let self else { return }
+                self.permissionRequestPending = false
+                self.diagnostics.record("permission-result", allowed ? "allowed" : "denied")
+                guard !self.stopped else { return }
+                if allowed { self.start() }
+                else { self.failCamera("permission-denied", "Camera access is off. Enable it in Settings, then try again. Existing captures are preserved.") }
+            }
+            return
+        case .authorized: break
+        default:
+            failCamera("permission-denied", "Camera access is off. Enable it in Settings, then try again. Existing captures are preserved.")
             return
         }
-        Task {
-            let allowed: Bool
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
-            case .authorized: allowed = true
-            case .notDetermined: allowed = await AVCaptureDevice.requestAccess(for: .video)
-            default: allowed = false
+        guard ARWorldTrackingConfiguration.isSupported else {
+            failCamera("tracking-unsupported", "Spatial tracking is unavailable on this device. Use Video only under Other capture methods; your PC can still reconstruct the saved views.")
+            return
+        }
+        diagnostics.record("renderer-creating")
+        attachCamera(to: host)
+        diagnostics.record("renderer-attached")
+        beginDetection()
+        runSession(reset: true)
+    }
+    #if DEBUG && targetEnvironment(simulator)
+    private var testCameraMode: String? {
+        ProcessInfo.processInfo.environment["DISHPLAY_TEST_CAMERA"]
+    }
+    #endif
+    private func startHealthMonitor() {
+        healthTask?.cancel()
+        renderHeartbeat.reset(); health.start(at: ProcessInfo.processInfo.systemUptime); cameraReady = false
+        diagnostics.record("session-started")
+        healthTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                guard let self, !self.stopped else { return }
+                let active = UIApplication.shared.applicationState == .active
+                if let failure = self.health.failure(at: ProcessInfo.processInfo.systemUptime,
+                    lastRenderAt: self.renderHeartbeat.latest, active: active) {
+                    self.failCamera(failure.rawValue, failure == .noRendering
+                        ? "The camera image could not be displayed. Tap Restart camera. Your saved scans are preserved."
+                        : "No camera images arrived. Tap Restart camera. Your saved scans are preserved.")
+                    return
+                }
+                let ready = self.health.ready(lastRenderAt: self.renderHeartbeat.latest)
+                if ready && !self.cameraReady {
+                    self.cameraReady = true
+                    self.diagnostics.record("camera-visible", "frames=\(self.health.frameCount)")
+                }
             }
-            guard phase == .preparing, !stopped else { return }
-            guard allowed else {
-                phase = .failed
-                error = "Camera access is off. Enable it in Settings, then try again. Existing captures are preserved."
-                return
-            }
-            runSession(reset: true)
-            beginDetection()
         }
     }
+    nonisolated func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
+        renderHeartbeat.mark(at: ProcessInfo.processInfo.systemUptime)
+    }
+    private func suspendCamera() {
+        healthTask?.cancel(); healthTask = nil; health.stop(); cameraReady = false
+        guard cameraAllocated else { return }
+        camera.session.pause(); camera.isPlaying = false; camera.rendersContinuously = false
+    }
+    private func failCamera(_ code: String, _ message: String) {
+        generation += 1; phase = .failed
+        diagnostics.record("camera-failed", code)
+        suspendCamera()
+        if cameraAllocated { gizmo.enabled = false }
+        finishMovie(); error = message; instruction = "Camera unavailable"
+        onSaved?()
+    }
+    func sceneChanged(_ state: ScenePhase) {
+        if state == .background {
+            resumePreviewOnActivation = phase == .preparing || phase == .detecting || phase == .adjusting
+            pause()
+        } else if state == .active {
+            guard visible, !stopped else { return }
+            if phase == .preparing { start() }
+            else if resumePreviewOnActivation && phase == .paused && !savingVideo {
+                resumePreviewOnActivation = false; resume()
+            }
+        }
+        // Permission prompts and sheets may make the scene briefly inactive. They must not
+        // permanently stop a camera that has just been authorized.
+    }
+    func retryCamera() {
+        guard phase == .failed, !savingVideo else { return }
+        diagnostics.record("retry-requested")
+        if cameraAllocated { restart(); return }
+        error = nil; configured = false; phase = .preparing; start()
+    }
+    func copyDiagnostics() { UIPasteboard.general.string = diagnostics.summary }
     private func recordMovie(_ frame: ARFrame) {
         guard !savingVideo else { return }
         if movie == nil {
@@ -199,6 +321,9 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         }
     }
     private func runSession(reset: Bool) {
+        camera.isPlaying = true
+        camera.rendersContinuously = true
+        camera.scene.isPaused = false
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.horizontal]
         configuration.isAutoFocusEnabled = true
@@ -209,15 +334,18 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         if let format = ARWorldTrackingConfiguration.supportedVideoFormats.first(where: {
             $0.framesPerSecond == 30 && $0.imageResolution.width >= 1920 && $0.imageResolution.width <= 2048
         }) { configuration.videoFormat = format }
+        diagnostics.record("configuration", "depth=\(depthAvailable) mesh=\(meshAvailable) reset=\(reset)")
+        startHealthMonitor()
         camera.session.run(configuration, options: reset ? [.resetTracking, .removeExistingAnchors] : [])
         configured = true
     }
     func pause() {
         guard phase == .detecting || phase == .adjusting || phase == .scanning else { return }
         generation += 1
-        camera.session.pause()
+        suspendCamera()
         phase = .paused
-        gizmo.enabled = false
+        if cameraAllocated { gizmo.enabled = false }
+        diagnostics.record("paused", "views=\(coverage.accepted)")
         trackingReady = false
         finishMovie()
         instruction = "Scan paused. Return to the same view, then resume."
@@ -234,7 +362,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
     func finish() {
         guard phase == .scanning || phase == .paused else { return }
         generation += 1
-        camera.session.pause()
+        suspendCamera()
         phase = .review
         finishMovie()
         previewRoot.removeAction(forKey: "scan-rotation")
@@ -245,25 +373,34 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         onSaved?()
     }
     func stop() {
-        stopped = true
+        stopped = true; visible = false
         generation += 1
-        camera.session.pause()
-        camera.session.delegate = nil
-        gizmo.enabled = false
+        suspendCamera()
+        if cameraAllocated {
+            camera.session.delegate = nil; camera.delegate = nil
+            gizmo.enabled = false
+        }
+        diagnostics.record("closed", "views=\(coverage.accepted)")
         finishMovie()
         onSaved?()
     }
-    func sessionWasInterrupted(_ session: ARSession) { pause() }
+    func sessionWasInterrupted(_ session: ARSession) {
+        diagnostics.record("session-interrupted")
+        resumePreviewOnActivation = phase == .preparing || phase == .detecting || phase == .adjusting
+        pause()
+    }
+    func sessionInterruptionEnded(_ session: ARSession) {
+        diagnostics.record("interruption-ended")
+        if UIApplication.shared.applicationState == .active { sceneChanged(.active) }
+    }
     func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { true }
     func session(_ session: ARSession, didFailWithError error: Error) {
-        generation += 1
-        phase = .failed
-        gizmo.enabled = false
-        finishMovie()
-        self.error = error.localizedDescription
-        onSaved?()
+        failCamera("AR-\((error as NSError).code)", error.localizedDescription)
     }
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard !stopped else { return }
+        if health.frameCount == 0 { diagnostics.record("first-frame") }
+        health.receiveFrame(at: ProcessInfo.processInfo.systemUptime)
         let normal: Bool
         if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
         if trackingReady != normal { trackingReady = normal }
@@ -595,7 +732,7 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         }
     }
     func startCapture() {
-        guard phase == .adjusting, let volume = captureVolume, let frame = camera.session.currentFrame,
+        guard phase == .adjusting, cameraReady, let volume = captureVolume, let frame = camera.session.currentFrame,
               case .normal = frame.camera.trackingState else {
             instruction = "Move gently while the camera finds its position."; return
         }
@@ -614,9 +751,9 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
         instruction = "Continue slowly around the highlighted arc."
     }
     func restart() {
-        guard !savingVideo, phase == .review || phase == .paused else { return }
+        guard !savingVideo, phase == .review || phase == .paused || phase == .failed else { return }
         generation += 1
-        camera.session.pause()
+        suspendCamera()
         do {
             let archive = CaptureFiles.root(record).appendingPathComponent("Retakes/" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
@@ -836,8 +973,14 @@ final class GuidedScan: NSObject, ObservableObject, @preconcurrency ARSessionDel
 
 struct ScanCameraView: UIViewRepresentable {
     let scan: GuidedScan
-    func makeUIView(context: Context) -> ARSCNView { scan.camera }
-    func updateUIView(_ view: ARSCNView, context: Context) {}
+    func makeUIView(context: Context) -> ScanCameraHost {
+        let host = ScanCameraHost()
+        host.backgroundColor = .black
+        host.accessibilityIdentifier = "scan-camera-host"
+        host.onReady = { [weak scan] host in scan?.hostReady(host) }
+        return host
+    }
+    func updateUIView(_ view: ScanCameraHost, context: Context) {}
 }
 
 struct GuidedScanScreen: View {
@@ -869,9 +1012,10 @@ struct GuidedScanScreen: View {
                 .frame(maxWidth: .infinity).background(Color(.systemBackground))
         }
         .background(Color(.systemBackground))
+        .accessibilityIdentifier("scan-screen")
         .onAppear { scan.start() }
         .onDisappear { scan.stop() }
-        .onChange(of: scenePhase) { _, value in if value != .active { scan.pause() } }
+        .onChange(of: scenePhase) { _, value in scan.sceneChanged(value) }
         .alert("One gentle orbit", isPresented: $help) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -884,6 +1028,25 @@ struct GuidedScanScreen: View {
     private var cameraPanel: some View {
         ZStack {
             ScanCameraView(scan: scan)
+            if !scan.cameraReady && scan.phase != .review {
+                VStack(spacing: 12) {
+                    if scan.phase == .failed {
+                        Image(systemName: "video.slash").font(.largeTitle)
+                        Text("Camera unavailable").font(.headline)
+                        if let error = scan.error { Text(LocalizedStringKey(error)).font(.callout).multilineTextAlignment(.center) }
+                    } else if scan.phase == .paused {
+                        Image(systemName: "pause.circle").font(.largeTitle)
+                        Text("Camera paused").font(.headline)
+                    } else {
+                        ProgressView().tint(.white)
+                        Text("Opening camera…").font(.headline)
+                    }
+                }.padding(20).frame(maxWidth: 320).foregroundStyle(.white)
+                    .background(.black.opacity(0.80), in: RoundedRectangle(cornerRadius: 20))
+                    .padding(.horizontal, 18).padding(.vertical, 72)
+                    .accessibilityIdentifier("scan-camera-status")
+                    .allowsHitTesting(false)
+            }
             if scan.phase == .detecting {
                 RoundedRectangle(cornerRadius: 44)
                     .stroke(.white.opacity(0.65), style: StrokeStyle(lineWidth: 1.5, dash: [8,8]))
@@ -894,7 +1057,7 @@ struct GuidedScanScreen: View {
                 HStack {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark").frame(width: 44, height: 44)
-                    }.accessibilityLabel("Close").disabled(scan.savingVideo)
+                    }.accessibilityLabel("Close").accessibilityIdentifier("scan-close").disabled(scan.savingVideo)
                     Spacer()
                     VStack(spacing: 2) {
                         Text("Film and scan my dish").font(.headline)
@@ -922,6 +1085,7 @@ struct GuidedScanScreen: View {
                         .font(.title2).foregroundStyle(Color.orange)
                     Text(LocalizedStringKey(scan.instruction)).font(.callout.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("scan-instruction")
                 }.padding(12).frame(maxWidth: .infinity)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
             }.padding(14)
@@ -938,7 +1102,10 @@ struct GuidedScanScreen: View {
                 Text("Include the whole plate. Leave neighbouring objects outside.").font(.caption).foregroundStyle(.secondary)
             } else { Text(LocalizedStringKey(scan.previewKind)).font(.caption).foregroundStyle(.secondary) }
             ZStack {
-                SceneView(scene: scan.preview, options: scan.phase == .review ? [.allowsCameraControl] : [], preferredFramesPerSecond: 30)
+                if scan.previewHasPoints {
+                    // Do not initialize a second Metal renderer while the camera is still starting.
+                    SceneView(scene: scan.preview, options: scan.phase == .review ? [.allowsCameraControl] : [], preferredFramesPerSecond: 30)
+                }
                 if !scan.previewHasPoints {
                     if scan.phase == .adjusting {
                         VStack(spacing: 8) {
@@ -1012,7 +1179,7 @@ struct GuidedScanScreen: View {
                     Button("Recenter", systemImage: "scope") { scan.centerManually() }.buttonStyle(.bordered)
                     Spacer()
                     Button("Start recording", systemImage: "record.circle") { scan.startCapture() }
-                        .buttonStyle(.borderedProminent).disabled(!scan.trackingReady)
+                        .buttonStyle(.borderedProminent).disabled(!scan.trackingReady || !scan.cameraReady)
                 }
             }
         case .scanning:
@@ -1045,7 +1212,15 @@ struct GuidedScanScreen: View {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }.buttonStyle(.borderedProminent)
             }
-            Button("Back to my dish") { dismiss() }.buttonStyle(.bordered)
+            VStack(spacing: 10) {
+                Button("Restart camera", systemImage: "arrow.clockwise") { scan.retryCamera() }
+                    .buttonStyle(.borderedProminent).disabled(scan.savingVideo)
+                    .accessibilityIdentifier("scan-retry-camera")
+                HStack {
+                    Button("Back to my dish") { dismiss() }.buttonStyle(.bordered)
+                    Button("Copy camera diagnostic") { scan.copyDiagnostics() }.font(.caption)
+                }
+            }
         }
     }
 }
