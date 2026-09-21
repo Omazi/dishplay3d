@@ -1012,7 +1012,6 @@ struct GuidedScanScreen: View {
                 .frame(maxWidth: .infinity).background(Color(.systemBackground))
         }
         .background(Color(.systemBackground))
-        .accessibilityIdentifier("scan-screen")
         .onAppear { scan.start() }
         .onDisappear { scan.stop() }
         .onChange(of: scenePhase) { _, value in scan.sceneChanged(value) }
@@ -1216,9 +1215,15 @@ struct GuidedScanScreen: View {
                 Button("Restart camera", systemImage: "arrow.clockwise") { scan.retryCamera() }
                     .buttonStyle(.borderedProminent).disabled(scan.savingVideo)
                     .accessibilityIdentifier("scan-retry-camera")
-                HStack {
-                    Button("Back to my dish") { dismiss() }.buttonStyle(.bordered)
-                    Button("Copy camera diagnostic") { scan.copyDiagnostics() }.font(.caption)
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        Button("Back to my dish") { dismiss() }.buttonStyle(.bordered).fixedSize()
+                        Button("Copy camera diagnostic") { scan.copyDiagnostics() }.font(.caption).fixedSize()
+                    }
+                    VStack(spacing: 6) {
+                        Button("Back to my dish") { dismiss() }.buttonStyle(.bordered)
+                        Button("Copy camera diagnostic") { scan.copyDiagnostics() }.font(.caption)
+                    }
                 }
             }
         }
