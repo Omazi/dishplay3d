@@ -1,8 +1,10 @@
 # Installer DishPlay Capture avec TestFlight
 
-DishPlay reste un site web pour les clients et l’espace restaurant. L’app iPhone est son compagnon de capture. La distribution TestFlight utilise un runner Mac GitHub ; aucun SDK Apple n’est installé sur le laptop Linux de 8 Go.
+DishPlay reste un site web pour les clients et l’espace restaurant. L’app iPhone est son compagnon de capture. La distribution iOS migre vers **Xcode Cloud**, à la demande de l’utilisateur. [Le projet et les scripts sont préparés](xcode-cloud.md), mais la première activation Apple nécessite encore l’accès à un Mac. Aucun SDK Apple n’est installé sur le laptop Linux de 8 Go. Les instructions GitHub ci-dessous décrivent le pipeline historique, conservé uniquement comme solution manuelle de secours.
 
 ## Version disponible
+
+**Correctif 0.6.1 en attente de publication :** les tests natifs, l’archive et les tests d’interface du commit `5d2462d` ont réussi, mais [GitHub a refusé de démarrer la signature](https://github.com/Omazi/dishplay3d/actions/runs/35548134345/job/106179063971) pour un problème de paiement ou de plafond de dépenses. Aucun nouveau build n’a été envoyé à Apple. Voir [le correctif de caméra, ses preuves et ses limites](ios-camera-startup.md). La version disponible ci-dessous reste 0.6.0.
 
 **0.6.0 (build 10.1)** a passé [le workflow de signature et d’envoi](https://github.com/Omazi/dishplay3d/actions/runs/35546101415), depuis le commit `0db1655`, avec Xcode 26.3 et le SDK iOS 26.2. L’API Apple confirme le build `97c10d60-a1c7-4dd3-8391-dee285b778d1` comme `VALID`, avec l’état `IN_BETA_TESTING`. Les [contrôles web et le déploiement Vercel du même code](https://github.com/Omazi/dishplay3d/actions/runs/35546069808) ont également réussi.
 

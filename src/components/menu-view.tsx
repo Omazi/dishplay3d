@@ -296,12 +296,8 @@ export function MenuView({ menu, preview = false }: { menu: PublicMenu; preview?
                     {illustration.author}
                   </a>{' '}
                   ·{' '}
-                  <a
-                    href="https://creativecommons.org/licenses/by/4.0/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    CC BY 4.0
+                  <a href={illustration.licenseUrl} target="_blank" rel="noreferrer">
+                    {illustration.license}
                   </a>
                 </p>
               )}

@@ -14,7 +14,8 @@ final class CameraStartupUITests: XCTestCase {
         return app
     }
     private func evidence(_ name: String, app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        // App-region screenshots can be cropped incorrectly during a device rotation.
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways
         add(attachment)
     }
@@ -41,8 +42,13 @@ final class CameraStartupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "accès à la caméra")).firstMatch.exists)
         evidence("camera-denied-portrait", app: app)
         XCUIDevice.shared.orientation = .landscapeLeft
+        let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.frame.width > app.frame.height
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 5), .completed)
         XCTAssertTrue(app.buttons["scan-close"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["scan-close"].isHittable)
+        XCTAssertTrue(app.buttons["scan-retry-camera"].isHittable)
         evidence("camera-denied-landscape", app: app)
         XCUIDevice.shared.orientation = .portrait
         app.buttons["scan-close"].tap()

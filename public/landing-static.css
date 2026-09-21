@@ -1,0 +1,42 @@
+/* Only loaded through <noscript>. All narrative content is ordinary server HTML. */
+.dishplay-launch .launch-story {
+  height: auto !important;
+}
+.dishplay-launch .launch-stage {
+  position: relative !important;
+  top: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+.dishplay-launch .launch-scene {
+  position: relative !important;
+  inset: auto !important;
+  min-height: 0 !important;
+  padding: 60px 7% !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+.dishplay-launch .launch-copy {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
+  width: auto !important;
+}
+.dishplay-launch .launch-static-dish,
+.dishplay-launch .launch-static-card,
+.dishplay-launch .launch-static-table,
+.dishplay-launch .launch-static-link {
+  display: block !important;
+}
+.dishplay-launch .launch-table,
+.dishplay-launch .launch-phone,
+.dishplay-launch .launch-shared-dish,
+.dishplay-launch .launch-tools,
+.dishplay-launch .launch-stage-bottom,
+.dishplay-launch .launch-explore {
+  display: none !important;
+}

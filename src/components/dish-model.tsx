@@ -202,8 +202,8 @@ export function DishModel({ model }: { model: ShowcaseModel }) {
           {model.author}
         </a>{' '}
         ·{' '}
-        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">
-          CC BY 4.0
+        <a href={model.licenseUrl} target="_blank" rel="noreferrer">
+          {model.license}
         </a>
       </p>
     </div>

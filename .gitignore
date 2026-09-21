@@ -27,4 +27,3 @@ artifacts/
 *.p12
 *.mobileprovision
 native/ios/build/
-native/ios/*.xcodeproj/

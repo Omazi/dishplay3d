@@ -20,7 +20,9 @@ test('French and English pages render on the server and switch without losing th
   await page.getByRole('link', { name: 'English', exact: true }).click();
   await expect(page).toHaveURL(/\/en$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your food.A whole new dimension.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'Your dishes.A new perspective.',
+  );
   await page.getByRole('link', { name: 'Demo menu', exact: true }).first().click();
   await expect(page).toHaveURL(/\/en\/menu\/demo$/);
   await expect(
