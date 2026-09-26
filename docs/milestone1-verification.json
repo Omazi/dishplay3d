@@ -34,5 +34,28 @@
     "failed": 0
   },
   "legacyCommandSnapshot": "All 10 commands match the frozen pre-milestone HEAD.",
-  "typecheck": "passed"
+  "typecheck": "passed",
+  "productionBuild": {
+    "status": "passed",
+    "peakSampledRssMiB": 735
+  },
+  "httpIntegration": {
+    "status": "passed",
+    "peakSampledRssMiB": 1094,
+    "command": "node scripts/verify-video-api.mjs"
+  },
+  "browserSuite": {
+    "status": "not_fully_verified",
+    "reason": "Bundled browsers missing; installed Chrome combined batch stopped by memory guard after first capture scenario passed."
+  },
+  "githubCi": {
+    "status": "blocked_account_billing",
+    "runId": 36205130522
+  },
+  "dependencyAudit": {
+    "highSeverityThreshold": "passed",
+    "moderateAdvisories": [
+      "GHSA-px8p-9vwx-vf98"
+    ]
+  }
 }

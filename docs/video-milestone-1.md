@@ -22,6 +22,7 @@ Created:
 - `worker/video.py`: ISO-BMFF validation, bounded probe/decode, real PTS timestamps, orientation and deterministic extraction.
 - `worker/engines.py`: explicit engine registry.
 - `tests/capture-manifest.test.ts`, `worker/tests/test_video.py`, `worker/tests/fixtures/legacy_plan.json`: identity, storage, decoder and frozen baseline evidence.
+- `scripts/verify-video-api.mjs`: real HTTP checks with a disposable database and storage, without a browser.
 - `docs/THIRD_PARTY_3D_LICENSES.md`, this report.
 
 Modified:
@@ -63,6 +64,8 @@ python3 worker/reconstruct.py --input /absolute/path/originals \
   --engine legacy-photogrammetry-v1 --output .data/photo-reconstruction
 
 npm run check
+npm run build
+node scripts/low-memory.mjs node scripts/verify-video-api.mjs
 python3 -m unittest discover -s worker/tests
 ```
 
@@ -125,3 +128,11 @@ Compared with photos, raw video adds header probing, two complete video decode p
 - Raw-frame sequence metadata is persisted in the worker output, not inserted as hundreds of PostgreSQL frame records.
 - Originals are not deleted automatically. Operators must budget long-term storage. Rejected transport uploads are removed; failed worker attempts retain logs and input evidence.
 - S3/object storage and native raw-video client wiring remain absent. This does not provide raw uploads from Vercel to the laptop yet.
+
+## Deployment verification follow-up
+
+The production build passed at 735 MiB peak sampled RSS. The HTTP-only smoke passed against an isolated local PGlite database: real ordered image upload, retries/conflicts, temporal retrieval, immutable finalization, real MP4 upload, checksum rejection, authentication, deduplication, mixed-source rejection, and native pairing/video/finalization. Its task peak was 1,094 MiB.
+
+GitHub run `36205130522` could not start any verification step because GitHub reported failed recent account payments or an insufficient spending limit. Automatic deployment was skipped. The workflow is configured, but requires the account billing issue to be resolved.
+
+Full browser regression was **not** revalidated here. Bundled Playwright browsers are absent on the PC; using installed Chrome passed the first capture scenario, then the existing memory supervisor stopped the combined batch. No UI code changed. The backend HTTP check above is the targeted deployment evidence; it is not represented as a full browser-suite pass. The production dependency audit passed the existing high-severity threshold but reported the pre-existing moderate `fflate` advisory GHSA-px8p-9vwx-vf98; no dependency upgrade was bundled into this reconstruction milestone.
