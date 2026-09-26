@@ -18,7 +18,7 @@ jobs:
         run: |
           docker save dishplay-reconstruction:1 | gzip -1 > dishplay-reconstruction.tar.gz
           sha256sum dishplay-reconstruction.tar.gz > dishplay-reconstruction.tar.gz.sha256
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dishplay-reconstruction-tools
           path: dishplay-reconstruction.tar.gz*
