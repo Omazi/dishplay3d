@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Database, Queryable, Row } from './db';
+import { scanInputs } from './capture-manifest';
 import { ApiError, idField, integerField, textField } from './domain';
 
 export const ENGINE_PINS = {
@@ -9,6 +10,8 @@ export const ENGINE_PINS = {
   pillow: '12.3.0',
 } as const;
 export const RECONSTRUCTION_ENGINE = 'colmap3.11.1-openmvs2.3.0-blender4.5.13-pillow12.3.0:bridge1';
+export const ORDERED_RECONSTRUCTION_ENGINE = `${RECONSTRUCTION_ENGINE}:capture2-ffmpeg-temporal1`;
+export const RECONSTRUCTION_ENGINE_ID = 'legacy-photogrammetry-v1';
 export const LEASE_SECONDS = 90;
 export const HEARTBEAT_FRESH_SECONDS = 45;
 export interface ReconstructionSettings {
@@ -22,6 +25,8 @@ export interface ReconstructionSettings {
   openMvsCudaBuild: boolean;
 }
 export interface WorkerCapabilities {
+  orderedCapture?: boolean;
+  rawVideo?: boolean;
   maxImages: number;
   longEdge: number;
   memoryMiB: number;
@@ -30,6 +35,7 @@ export interface WorkerCapabilities {
   openMvsCudaBuild: boolean;
 }
 export interface JobLease {
+  engine?: string;
   id: string;
   restaurantId: string;
   scanId: string;
@@ -89,12 +95,16 @@ export function normalizeSettings(value: unknown = {}): ReconstructionSettings {
     openMvsCudaBuild: settings.openMvsCudaBuild === true,
   };
 }
-export function queueIdentity(manifestHash: string, settings: ReconstructionSettings): string {
+export function queueIdentity(
+  manifestHash: string,
+  settings: ReconstructionSettings,
+  engine = RECONSTRUCTION_ENGINE,
+): string {
   return sha256(
     JSON.stringify({
       schema: 1,
       manifestHash,
-      engine: RECONSTRUCTION_ENGINE,
+      engine,
       settings: normalizeSettings(settings),
     }),
   );
@@ -139,6 +149,7 @@ export function publicJob(row: Row) {
     id: String(row.id),
     scanId: String(row.scan_id),
     engine: String(row.engine),
+    engineId: RECONSTRUCTION_ENGINE_ID,
     state: String(row.state),
     attempts: Number(row.attempts),
     maxAttempts: Number(row.max_attempts),
@@ -181,13 +192,8 @@ export async function enqueueReconstruction(
         'Finalize the capture before requesting reconstruction.',
         'SCAN_NOT_FINALIZED',
       );
-    const frames = (
-      await tx.query(
-        `SELECT f.sha256,a.mime_type FROM scan_frames f JOIN media_assets a ON a.id=f.media_id WHERE f.scan_id=$1 ORDER BY f.sha256`,
-        [scanId],
-      )
-    ).rows;
-    if (frames.length < 3 || frames.length > settings.maxImages)
+    const { frames, video, hash: manifestHash } = await scanInputs(tx, scan);
+    if (!video && (frames.length < 3 || frames.length > settings.maxImages))
       throw new ApiError(
         400,
         `This worker request accepts 3–${settings.maxImages} photos; this capture contains ${frames.length}. Create a capture within that budget. No photos were discarded.`,
@@ -199,20 +205,23 @@ export async function enqueueReconstruction(
         'This reconstruction engine accepts JPEG and PNG inputs. Preserve this capture and create a JPEG/PNG capture for reconstruction.',
         'UNSUPPORTED_RECONSTRUCTION_IMAGE',
       );
-    const manifestHash = sha256(
-      JSON.stringify({ schema: 1, frames: frames.map((frame) => String(frame.sha256)).sort() }),
-    );
     if (manifestHash !== scan.manifest_hash)
       throw new ApiError(
         409,
         'The finalized capture manifest does not match its frames.',
         'INPUT_CHANGED',
       );
+    const engine =
+      Number(scan.manifest_schema) === 2 ? ORDERED_RECONSTRUCTION_ENGINE : RECONSTRUCTION_ENGINE;
     const workers = await freshWorkers(tx);
     if (
       !allowOffline &&
-      !workers.some((worker) =>
-        workerCanRun(worker.capabilities as unknown as WorkerCapabilities, settings),
+      !workers.some(
+        (worker) =>
+          workerCanRun(worker.capabilities as unknown as WorkerCapabilities, settings) &&
+          (engine === RECONSTRUCTION_ENGINE ||
+            (worker.capabilities as unknown as WorkerCapabilities).orderedCapture === true) &&
+          (!video || (worker.capabilities as unknown as WorkerCapabilities).rawVideo === true),
       )
     )
       throw new ApiError(
@@ -220,11 +229,11 @@ export async function enqueueReconstruction(
         'No recently connected worker supports this image and resource budget. Your photos and current model are preserved.',
         'WORKER_UNAVAILABLE',
       );
-    const hash = queueIdentity(manifestHash, settings);
+    const hash = queueIdentity(manifestHash, settings, engine);
     const existing = (
       await tx.query(
         'SELECT * FROM reconstruction_jobs WHERE restaurant_id=$1 AND input_hash=$2 AND engine=$3',
-        [restaurantId, hash, RECONSTRUCTION_ENGINE],
+        [restaurantId, hash, engine],
       )
     ).rows[0];
     if (existing)
@@ -244,7 +253,7 @@ export async function enqueueReconstruction(
     const id = randomUUID();
     await tx.query(
       `INSERT INTO reconstruction_jobs(id,restaurant_id,scan_id,input_hash,engine,settings,max_attempts) VALUES($1,$2,$3,$4,$5,$6,2)`,
-      [id, restaurantId, scanId, hash, RECONSTRUCTION_ENGINE, JSON.stringify(settings)],
+      [id, restaurantId, scanId, hash, engine, JSON.stringify(settings)],
     );
     await tx.query(
       'INSERT INTO audit_events(id,restaurant_id,actor_id,action,details) VALUES($1,$2,$3,$4,$5)',
@@ -253,7 +262,7 @@ export async function enqueueReconstruction(
         restaurantId,
         actorId,
         'reconstruction.queued',
-        JSON.stringify({ jobId: id, scanId, engine: RECONSTRUCTION_ENGINE }),
+        JSON.stringify({ jobId: id, scanId, engine, engineId: RECONSTRUCTION_ENGINE_ID }),
       ],
     );
     return { id, state: 'queued', deduplicated: false };
@@ -318,13 +327,16 @@ export async function claimJob(
     if (!registration) return null;
     const rows = (
       await tx.query(
-        `SELECT * FROM reconstruction_jobs WHERE state='queued' AND engine=$1 AND available_at<=clock_timestamp()
+        `SELECT j.*,EXISTS(SELECT 1 FROM capture_videos v WHERE v.scan_id=j.scan_id) AS has_video FROM reconstruction_jobs j WHERE state='queued' AND engine IN ($1,$2) AND available_at<=clock_timestamp()
       AND attempts<max_attempts ORDER BY created_at,id LIMIT 100 FOR UPDATE SKIP LOCKED`,
-        [RECONSTRUCTION_ENGINE],
+        [RECONSTRUCTION_ENGINE, ORDERED_RECONSTRUCTION_ENGINE],
       )
     ).rows;
-    const candidate = rows.find((row) =>
-      workerCanRun(capabilities, row.settings as unknown as ReconstructionSettings),
+    const candidate = rows.find(
+      (row) =>
+        workerCanRun(capabilities, row.settings as unknown as ReconstructionSettings) &&
+        (row.engine === RECONSTRUCTION_ENGINE || capabilities.orderedCapture === true) &&
+        (!row.has_video || capabilities.rawVideo === true),
     );
     if (!candidate) return null;
     const token = randomBytes(32).toString('hex');
@@ -342,6 +354,7 @@ export async function claimJob(
       [job.id, workerId, token, job.lease_generation],
     );
     return {
+      engine: String(job.engine),
       id: String(job.id),
       restaurantId: String(job.restaurant_id),
       scanId: String(job.scan_id),

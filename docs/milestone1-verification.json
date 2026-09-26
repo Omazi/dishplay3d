@@ -1,0 +1,61 @@
+{
+  "scope": "Milestone 1; structural regression and decoder validation, not photorealism benchmark",
+  "legacySmoke": {
+    "state": "ready_for_review",
+    "engineId": "legacy-photogrammetry-v1",
+    "inputFrames": 11,
+    "longEdge": 800,
+    "elapsedSeconds": 307.68,
+    "childPeakRssKiB": 317508,
+    "outputs": {
+      "glb": {
+        "bytes": 3220920,
+        "sha256": "f1377f0d569e86537e26d6794a5b54de3952968f3c23580426ebfedc00bc3fe7"
+      },
+      "usdz": {
+        "bytes": 2685568,
+        "sha256": "d5adc2dd656a8688ef6566d3593f91e723703b272033040155b1839a4aded941"
+      }
+    },
+    "limits": {
+      "containerCpu": 1,
+      "containerMemoryMiB": 1536,
+      "engineMemoryMiB": 1024
+    },
+    "qualityVerified": false,
+    "scaleVerified": false
+  },
+  "nodeTests": {
+    "passed": 32,
+    "failed": 0
+  },
+  "pythonTests": {
+    "passed": 31,
+    "failed": 0
+  },
+  "legacyCommandSnapshot": "All 10 commands match the frozen pre-milestone HEAD.",
+  "typecheck": "passed",
+  "productionBuild": {
+    "status": "passed",
+    "peakSampledRssMiB": 735
+  },
+  "httpIntegration": {
+    "status": "passed",
+    "peakSampledRssMiB": 1094,
+    "command": "node scripts/verify-video-api.mjs"
+  },
+  "browserSuite": {
+    "status": "not_fully_verified",
+    "reason": "Bundled browsers missing; installed Chrome combined batch stopped by memory guard after first capture scenario passed."
+  },
+  "githubCi": {
+    "status": "blocked_account_billing",
+    "runId": 36205130522
+  },
+  "dependencyAudit": {
+    "highSeverityThreshold": "passed",
+    "moderateAdvisories": [
+      "GHSA-px8p-9vwx-vf98"
+    ]
+  }
+}

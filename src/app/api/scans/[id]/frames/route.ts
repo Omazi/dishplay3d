@@ -1,3 +1,4 @@
+import { frameMetadataHeader } from '@/lib/server/capture-manifest';
 import { NextResponse } from 'next/server';
 import { api, readBytes } from '@/lib/server/http';
 import { digest, requireUser } from '@/lib/server/auth';
@@ -24,7 +25,14 @@ export const POST = api(async (request, context: { params: Promise<{ id: string 
     await database()
   ).transaction(async (tx) => {
     await lockRestaurant(tx, identity.restaurantId);
-    return appendScanFrame(tx, id, identity.restaurantId, bytes, mime);
+    return appendScanFrame(
+      tx,
+      id,
+      identity.restaurantId,
+      bytes,
+      mime,
+      frameMetadataHeader(request),
+    );
   });
   return NextResponse.json(result, { status: result.duplicate ? 200 : 201 });
 });

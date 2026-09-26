@@ -50,6 +50,13 @@ class WorkerContracts(unittest.TestCase):
         self.assertEqual(json.loads(stdout.getvalue())["state"], "planned_only")
         self.assertFalse(output.exists())
 
+    def test_legacy_commands_match_frozen_pre_milestone_baseline(self):
+        fixture = json.loads((Path(__file__).parent / 'fixtures/legacy_plan.json').read_text())
+        commands = worker.plan_commands(Path('/baseline-output'), fixture['settings'])
+        normalized = json.loads(json.dumps(commands).replace(str(worker.HERE), '<WORKER>'))
+        self.assertEqual(normalized, fixture['commands'])
+        self.assertEqual(worker.PINS, fixture['pins'])
+
     def test_plan_uses_cpu_and_one_thread(self):
         stages = worker.plan_commands(self.root, self.settings)
         self.assertEqual(len(stages), 10)
@@ -90,6 +97,14 @@ class WorkerContracts(unittest.TestCase):
         (self.root / "2.jpg").unlink()
         (self.root / "2.jpg").symlink_to(self.root / "1.jpg")
         with self.assertRaisesRegex(ValueError, "regular file"):
+            worker.input_manifest(self.root)
+
+    def test_ordered_capture_can_retain_identical_pixels_at_distinct_timestamps(self):
+        self.photos()
+        (self.root / "2.jpg").write_bytes((self.root / "1.jpg").read_bytes())
+        frames = worker.input_manifest(self.root, allow_duplicates=True)
+        self.assertEqual(len(frames), 3)
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
             worker.input_manifest(self.root)
 
     def test_too_many_views_are_not_silently_truncated(self):

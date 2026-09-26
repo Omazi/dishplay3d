@@ -1,3 +1,4 @@
+import { captureMetadata } from '@/lib/server/capture-manifest';
 import { NextResponse } from 'next/server';
 import { api, jsonBody } from '@/lib/server/http';
 import { newId, requireUser } from '@/lib/server/auth';
@@ -22,6 +23,10 @@ export const POST = api(async (request) => {
   const identity = await requireUser(request);
   const body = await jsonBody(request);
   const dishId = idField(body.dishId, 'Dish');
+  const sourceType = body.sourceType ?? 'photos';
+  if (typeof sourceType !== 'string' || !['photos', 'video'].includes(sourceType))
+    throw new ApiError(400, 'Invalid sourceType.');
+  const metadata = captureMetadata(body.captureMetadata ?? {});
   const scan = await (
     await database()
   ).transaction(async (tx) => {
@@ -45,8 +50,15 @@ export const POST = api(async (request) => {
       throw new ApiError(400, 'Finish or cancel an existing capture before creating another.');
     const id = newId();
     const { rows } = await tx.query(
-      'INSERT INTO scan_sessions(id,restaurant_id,dish_id) VALUES($1,$2,$3) RETURNING *',
-      [id, identity.restaurantId, dishId],
+      'INSERT INTO scan_sessions(id,restaurant_id,dish_id,source_type,manifest_schema,capture_metadata) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+      [
+        id,
+        identity.restaurantId,
+        dishId,
+        sourceType,
+        sourceType === 'video' ? 2 : 1,
+        JSON.stringify(metadata),
+      ],
     );
     await audit(tx, identity.restaurantId, identity.user.id, 'scan.created', {
       scanId: id,
