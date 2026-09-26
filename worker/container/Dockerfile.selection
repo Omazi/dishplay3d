@@ -1,0 +1,8 @@
+# Optional thin layer over the ALREADY BUILT pinned engine image; no native engine rebuild/upgrade.
+# docker build -f worker/container/Dockerfile.selection -t dishplay-reconstruction:selection worker
+FROM dishplay-reconstruction:1
+COPY requirements.txt requirements-selection.txt /tmp/dishplay-selection/
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && python3 -m pip install --no-cache-dir -r /tmp/dishplay-selection/requirements-selection.txt \
+    && rm -rf /var/lib/apt/lists/* /tmp/dishplay-selection
+# SAM is deliberately a separate optional environment; no implicit checkpoint download.

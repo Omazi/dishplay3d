@@ -1,5 +1,6 @@
 """Real tiny FFmpeg fixtures validate ingestion, not dish reconstruction quality."""
 import hashlib
+import contextlib
 import json
 import shutil
 import subprocess
@@ -10,6 +11,26 @@ from unittest.mock import patch
 
 from worker import reconstruct
 from worker.video import VideoError, validate_container, validate_probe, temporal_indices, extract_video
+
+
+@contextlib.contextmanager
+def tiny_fixture_headroom():
+    """Simulate scheduling admission only; preserve real pressure checks during tiny fixture decoding.
+
+    These tests concern CLI/manifest contracts. Host desktop activity should not
+    determine their result. A separate test verifies the real admission refusal.
+    """
+    checks = reconstruct.doctor()
+    actual = reconstruct.memory_available
+    first = True
+    def available():
+        nonlocal first
+        if first:
+            first = False
+            return 4096*1024*1024
+        return actual()
+    with patch.object(reconstruct,'doctor',return_value=checks), patch.object(reconstruct,'memory_available',side_effect=available):
+        yield
 
 
 class VideoContracts(unittest.TestCase):
@@ -112,7 +133,7 @@ class RealVideoIngest(unittest.TestCase):
     def test_invalid_video_persists_a_machine_readable_failure(self):
         bad=self.root/'invalid.mp4';bad.write_bytes(b'not a container')
         output=self.root/'invalid-output'
-        with patch('sys.argv',['worker','--video',str(bad),'--output',str(output),
+        with tiny_fixture_headroom(), patch('sys.argv',['worker','--video',str(bad),'--output',str(output),
                                '--prepare-video','--memory-mib','512']):
             self.assertEqual(reconstruct.main(),2)
         manifest=json.loads((output/'manifest.json').read_text())
@@ -120,10 +141,18 @@ class RealVideoIngest(unittest.TestCase):
         self.assertEqual(manifest['error_code'],'VIDEO_INVALID')
 
     def test_prepare_only_cli_does_not_require_geometry_engines(self):
-        with patch('sys.argv',['worker','--video',str(self.source),'--output',str(self.root/'prepared'),
+        with tiny_fixture_headroom(), patch('sys.argv',['worker','--video',str(self.source),'--output',str(self.root/'prepared'),
                                '--prepare-video','--max-images','3','--long-edge','320','--memory-mib','512']):
             self.assertEqual(reconstruct.main(),0)
         manifest=json.loads((self.root/'prepared/manifest.json').read_text())
         self.assertEqual(manifest['state'],'prepared_only')
         self.assertEqual(manifest['engine_id'],'legacy-photogrammetry-v1')
         self.assertFalse((self.root/'prepared/model.glb').exists())
+
+
+    def test_insufficient_headroom_refuses_before_creating_output(self):
+        output=self.root/'no-memory'
+        with patch.object(reconstruct,'memory_available',return_value=0), patch('sys.argv',[
+            'worker','--video',str(self.source),'--output',str(output),'--prepare-video','--memory-mib','512']):
+            self.assertEqual(reconstruct.main(),2)
+        self.assertFalse(output.exists())

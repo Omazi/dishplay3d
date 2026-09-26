@@ -459,7 +459,9 @@ def prepare_images(source: Path, output: Path, frames: list[dict], settings: dic
     return prepared
 
 
-def run(source: Path, output: Path, frames: list[dict], settings: dict, restaurant: str, *, video=False, capture_manifest=None, prepare_only=False):
+def run(source: Path, output: Path, frames: list[dict], settings: dict, restaurant: str, *, video=False, capture_manifest=None, prepare_only=False, selection_config=None):
+    if selection_config and not video:
+        raise ValueError("Selection config is video-only; legacy photos remain unchanged")
     checks = doctor()
     missing = [name for name, path in checks["tools"].items() if not path]
     if missing and not prepare_only:
@@ -501,7 +503,23 @@ def run(source: Path, output: Path, frames: list[dict], settings: dict, restaura
                 manifest["active_stage"] = "video_ingestion"
                 write_manifest(output, manifest)
                 expected = capture.get("manifest", {}).get("video", {}).get("sha256") if capture_manifest else None
-                source, frames, extracted = extract_video(source, output, settings, execute_stage, expected)
+                if selection_config:
+                    # Run CV/SAM in a separate bounded process, not in the unbounded coordinator.
+                    request = output / "preprocessing_request.json"
+                    request.write_text(json.dumps({"source":str(source),"output":str(output),"settings":settings,
+                        "config":selection_config,"capture":capture if capture_manifest else {},"expectedSha":expected}))
+                    command = [sys.executable,"-c",f"import sys; sys.path.insert(0, {str(HERE.parent)!r}); from worker.preprocess import main; raise SystemExit(main())",
+                               "--request",str(request)]
+                    try:
+                        manifest["stages"].append(execute_stage({"name":"preprocessing","command":command},output,settings))
+                    except ValueError as error:
+                        report_path = output/"capture_report.json"
+                        report = json.loads(report_path.read_text()) if report_path.exists() else {}
+                        raise VideoError(report.get("failure",{}).get("code","PREPROCESSING_FAILED"),str(error)) from error
+                    extracted = json.loads((output/"input"/"selected_manifest.json").read_text())
+                    frames, source = extracted["frames"],output/"frames"/"selected"
+                else:
+                    source, frames, extracted = extract_video(source, output, settings, execute_stage, expected)
                 manifest["inputs"] = frames
                 manifest["video_ingestion"] = extracted
                 manifest["job_id"] = identity([{"sourceVideo": extracted["sourceVideo"], "captureMetadataHash": manifest.get("source_capture_manifest_sha256"), "extractor": extracted["extractor"], "tools": extracted["tools"]}, *frames], settings, restaurant)
@@ -511,11 +529,36 @@ def run(source: Path, output: Path, frames: list[dict], settings: dict, restaura
                 return
             manifest["engine_binaries"] = verify_versions(settings, output)
             manifest["prepared_images"] = prepare_images(source, output, frames, settings)
-            for stage in plan_commands(output, settings):
+            commands = plan_commands(output, settings)
+            if selection_config and extracted.get("masksAvailable"):
+                from PIL import Image
+                mask_dir = output/"masks"/"colmap"
+                mask_dir.mkdir()
+                for index, frame in enumerate(frames):
+                    mask_path = output/"masks"/"selected"/(Path(frame["name"]).stem+".png")
+                    with Image.open(mask_path) as mask:
+                        prepared = manifest["prepared_images"][index]
+                        mask.convert("L").resize((prepared["width"],prepared["height"]),Image.Resampling.NEAREST).save(mask_dir/f"{index:04d}.jpg.png")
+                if selection_config["experiment"] == "POSE_MASKED__OBJECT_MASKED":
+                    commands[0]["command"].extend(["--ImageReader.mask_path",str(mask_dir)])
+                commands[5]["command"].extend(["--mask-path",str(output/"masks"/"undistorted"),"--ignore-mask-label","0"])
+            for stage in commands:
                 manifest["state"] = "running"
                 manifest["active_stage"] = stage["name"]
                 write_manifest(output, manifest)
                 manifest["stages"].append(execute_stage(stage, output, settings))
+                if selection_config and extracted.get("masksAvailable"):
+                    if stage["name"] == "undistort":
+                        command = [sys.executable,"-c",f"import sys; sys.path.insert(0, {str(HERE.parent)!r}); from worker.segmentation.undistort import prepare; from pathlib import Path; prepare(Path(sys.argv[1]))",str(output)]
+                        manifest["stages"].append(execute_stage({"name":"mask-undistortion","command":command},output,settings))
+                    if stage["name"] in ("features","densification"):
+                        report_path = output/"capture_report.json"
+                        report = json.loads(report_path.read_text())
+                        if stage["name"] == "features":
+                            report["maskApplication"]["colmapMasked"] = selection_config["experiment"] == "POSE_MASKED__OBJECT_MASKED"
+                        else:
+                            report["maskApplication"].update(denseMasksApplied=True,reason="OpenMVS 2.3 --mask-path / --ignore-mask-label 0; calibrated undistorted masks")
+                        report_path.write_text(json.dumps(report,indent=2))
                 write_manifest(output, manifest)
             manifest["outputs"] = validate_outputs(output)
             manifest["state"] = "ready_for_review"
@@ -534,6 +577,14 @@ def run(source: Path, output: Path, frames: list[dict], settings: dict, restaura
             manifest["child_peak_rss_kib"] = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
             manifest.pop("active_stage", None)
             write_manifest(output, manifest)
+            report_path = output/"capture_report.json"
+            if report_path.exists():
+                report = json.loads(report_path.read_text())
+                report["reconstruction"] = {"state":manifest["state"],"errorCode":manifest.get("error_code"),
+                    "engine":ENGINE_ID,"versions":PINS,"binaries":manifest.get("engine_binaries"),
+                    "seconds":sum(stage.get("seconds",0) for stage in manifest["stages"] if stage["name"] != "preprocessing"),
+                    "childPeakRssKiB":manifest["child_peak_rss_kib"]}
+                report_path.write_text(json.dumps(report,indent=2))
 
 
 def main() -> int:
@@ -553,6 +604,7 @@ def main() -> int:
     source_group.add_argument("--input", type=Path)
     source_group.add_argument("--video", type=Path)
     parser.add_argument("--capture-manifest", type=Path)
+    parser.add_argument("--selection-config", type=Path, help="Opt-in M2 JSON; video only; queue identity unchanged")
     parser.add_argument("--engine", choices=list(ENGINES), default=ENGINE_ID)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--restaurant", default="local-private")
@@ -587,6 +639,14 @@ def main() -> int:
         if engine.versions != PINS:
             raise ValueError("Engine registry and toolchain pins differ")
         settings = settings_from(args)
+        selection_config = None
+        if args.selection_config:
+            if not args.video or args.selection_config.stat().st_size > 65536:
+                raise ValueError("Selection config requires video and must be <=64 KiB")
+            sys.path.insert(0,str(HERE.parent))
+            from worker.frame_selection.models import SelectionConfig
+            selection_config = SelectionConfig(**json.loads(args.selection_config.read_text())).document()
+            settings = {**settings,"selection":selection_config}
         capture = None
         if args.capture_manifest:
             if args.capture_manifest.is_symlink() or args.capture_manifest.stat().st_size > MIB:
@@ -610,7 +670,7 @@ def main() -> int:
                               "settings": settings, "commands": plan_commands(output, settings)}, indent=2))
         else:
             run(source, output, frames, settings, args.restaurant, video=bool(args.video),
-                capture_manifest=args.capture_manifest, prepare_only=args.prepare_video)
+                capture_manifest=args.capture_manifest, prepare_only=args.prepare_video, selection_config=selection_config)
             print(f"{'Video prepared; no reconstruction performed' if args.prepare_video else 'Exports ready for human review'}: {output / 'manifest.json'}")
         return 0
     except (ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as error:

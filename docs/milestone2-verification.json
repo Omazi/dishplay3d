@@ -1,0 +1,376 @@
+{
+  "milestone": 2,
+  "status": "IMPLEMENTED_EXPERIMENTAL_ACCEPTANCE_BENCHMARK_INCOMPLETE",
+  "qualityImprovementProven": false,
+  "engineVersionsChanged": false,
+  "productionQueueChanged": false,
+  "nativeUIChanged": false,
+  "pythonTests": {
+    "passed": 58,
+    "failed": 0,
+    "seconds": 47.496,
+    "sampledPeakMiB": 131,
+    "log": ".data/milestone2/python-tests.log"
+  },
+  "nodeTests": {
+    "passed": 32,
+    "failed": 0,
+    "sampledPeakMiB": 747
+  },
+  "syntheticFixture": {
+    "sourceType": "synthetic moving planar texture, NOT a real dish",
+    "reconstructionExecuted": false,
+    "runs": [
+      {
+        "method": "TEMPORAL_BASELINE",
+        "frames": [
+          0,
+          5,
+          11,
+          16,
+          22,
+          27,
+          33,
+          39
+        ],
+        "selection": {
+          "selectedFrameCount": 8,
+          "rejectedFrameCount": 12,
+          "rejectedBlur": 0,
+          "rejectedExposure": 0,
+          "rejectedDuplicate": 0,
+          "rejectedCrop": 0
+        },
+        "continuity": {
+          "meanAdjacentOverlap": 0.5560820306812925,
+          "minimumAdjacentOverlap": 0.5357664233576642,
+          "loopClosureCandidate": {
+            "firstFrameIndex": 0,
+            "lastFrameIndex": 39,
+            "candidate": true,
+            "evidence": {
+              "phashDistance": 32,
+              "exactPixels": false,
+              "featureCountA": 733,
+              "featureCountB": 689,
+              "matches": 276,
+              "inliers": 276,
+              "inlierRatio": 1.0,
+              "overlap": 0.4005805515239477,
+              "medianDisplacement": 0.0656220245361328,
+              "homographyResidual": 0.0017217989265918732,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            "note": "Verified matches suggest closure; they do not prove a complete orbit."
+          },
+          "adjacentPairs": [
+            {
+              "phashDistance": 32,
+              "exactPixels": false,
+              "featureCountA": 733,
+              "featureCountB": 685,
+              "matches": 367,
+              "inliers": 367,
+              "inlierRatio": 1.0,
+              "overlap": 0.5357664233576642,
+              "medianDisplacement": 0.007905694246292115,
+              "homographyResidual": 0.0010500314831733703,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 22,
+              "exactPixels": false,
+              "featureCountA": 685,
+              "featureCountB": 677,
+              "matches": 410,
+              "inliers": 410,
+              "inlierRatio": 1.0,
+              "overlap": 0.6056129985228951,
+              "medianDisplacement": 0.010307763814926147,
+              "homographyResidual": 0.0009276407212018967,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 22,
+              "exactPixels": false,
+              "featureCountA": 677,
+              "featureCountB": 670,
+              "matches": 367,
+              "inliers": 367,
+              "inlierRatio": 1.0,
+              "overlap": 0.5477611940298508,
+              "medianDisplacement": 0.008049824237823487,
+              "homographyResidual": 0.001071387231349945,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 28,
+              "exactPixels": false,
+              "featureCountA": 670,
+              "featureCountB": 650,
+              "matches": 369,
+              "inliers": 368,
+              "inlierRatio": 0.997289972899729,
+              "overlap": 0.5661538461538461,
+              "medianDisplacement": 0.010307763814926147,
+              "homographyResidual": 0.0009394844621419907,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 22,
+              "exactPixels": false,
+              "featureCountA": 650,
+              "featureCountB": 665,
+              "matches": 364,
+              "inliers": 364,
+              "inlierRatio": 1.0,
+              "overlap": 0.56,
+              "medianDisplacement": 0.007905694246292115,
+              "homographyResidual": 0.0012103836983442307,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 30,
+              "exactPixels": false,
+              "featureCountA": 665,
+              "featureCountB": 647,
+              "matches": 350,
+              "inliers": 350,
+              "inlierRatio": 1.0,
+              "overlap": 0.5409582689335394,
+              "medianDisplacement": 0.010307763814926147,
+              "homographyResidual": 0.0007708626985549927,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 18,
+              "exactPixels": false,
+              "featureCountA": 647,
+              "featureCountB": 689,
+              "matches": 347,
+              "inliers": 347,
+              "inlierRatio": 1.0,
+              "overlap": 0.5363214837712519,
+              "medianDisplacement": 0.010307763814926147,
+              "homographyResidual": 0.0009649606794118881,
+              "model": "fundamental",
+              "sufficient": true
+            }
+          ]
+        },
+        "timings": {
+          "probeAndTimelineDecode": 4.052849897001579,
+          "decodeAndCandidateExtraction": 1.0360790290033037,
+          "qualityAnalysis": 0.13739891699515283,
+          "fingerprintingAndFeatureExtraction": 6.060209622002731,
+          "segmentation": 3.7249992601573467e-06,
+          "similarityAndGeometricMatching": 0.017740489998686826,
+          "keyframeSelection": 3.371999991941266e-05,
+          "debugArtifacts": 0.20389698600047268,
+          "note": "FFmpeg decode and PNG extraction are fused; not independently measurable.",
+          "preprocessingTotal": 11.592300099000568
+        },
+        "resources": {
+          "cpuSeconds": 0.4047009629999999,
+          "selfPeakRssKiB": 73684,
+          "childPeakRssKiB": 73684,
+          "gpuUsed": false,
+          "threads": 1
+        }
+      },
+      {
+        "method": "SMART_SELECTION_V1",
+        "frames": [
+          0,
+          6,
+          13,
+          20,
+          27,
+          32,
+          34,
+          39
+        ],
+        "selection": {
+          "selectedFrameCount": 8,
+          "rejectedFrameCount": 12,
+          "rejectedBlur": 0,
+          "rejectedExposure": 0,
+          "rejectedDuplicate": 0,
+          "rejectedCrop": 0
+        },
+        "continuity": {
+          "meanAdjacentOverlap": 0.5294459636145541,
+          "minimumAdjacentOverlap": 0.4857142857142857,
+          "loopClosureCandidate": {
+            "firstFrameIndex": 0,
+            "lastFrameIndex": 39,
+            "candidate": true,
+            "evidence": {
+              "phashDistance": 32,
+              "exactPixels": false,
+              "featureCountA": 733,
+              "featureCountB": 689,
+              "matches": 276,
+              "inliers": 276,
+              "inlierRatio": 1.0,
+              "overlap": 0.4005805515239477,
+              "medianDisplacement": 0.0656220245361328,
+              "homographyResidual": 0.0017217989265918732,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            "note": "Verified matches suggest closure; they do not prove a complete orbit."
+          },
+          "adjacentPairs": [
+            {
+              "phashDistance": 30,
+              "exactPixels": false,
+              "featureCountA": 733,
+              "featureCountB": 659,
+              "matches": 360,
+              "inliers": 359,
+              "inlierRatio": 0.9972222222222222,
+              "overlap": 0.5447647951441578,
+              "medianDisplacement": 0.010307763814926147,
+              "homographyResidual": 0.0007977636903524399,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 26,
+              "exactPixels": false,
+              "featureCountA": 659,
+              "featureCountB": 640,
+              "matches": 318,
+              "inliers": 317,
+              "inlierRatio": 0.9968553459119497,
+              "overlap": 0.4953125,
+              "medianDisplacement": 0.01138421893119812,
+              "homographyResidual": 0.0015394599735736847,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 24,
+              "exactPixels": false,
+              "featureCountA": 640,
+              "featureCountB": 676,
+              "matches": 351,
+              "inliers": 351,
+              "inlierRatio": 1.0,
+              "overlap": 0.5484375,
+              "medianDisplacement": 0.012369325160980224,
+              "homographyResidual": 0.0010415174812078475,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 26,
+              "exactPixels": false,
+              "featureCountA": 676,
+              "featureCountB": 665,
+              "matches": 323,
+              "inliers": 323,
+              "inlierRatio": 1.0,
+              "overlap": 0.4857142857142857,
+              "medianDisplacement": 0.01138421893119812,
+              "homographyResidual": 0.0015008370578289032,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 28,
+              "exactPixels": false,
+              "featureCountA": 665,
+              "featureCountB": 655,
+              "matches": 358,
+              "inliers": 358,
+              "inlierRatio": 1.0,
+              "overlap": 0.5465648854961832,
+              "medianDisplacement": 0.009486808776855468,
+              "homographyResidual": 0.00124411940574646,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 18,
+              "exactPixels": false,
+              "featureCountA": 655,
+              "featureCountB": 694,
+              "matches": 362,
+              "inliers": 362,
+              "inlierRatio": 1.0,
+              "overlap": 0.5526717557251909,
+              "medianDisplacement": 0.003535533845424652,
+              "homographyResidual": 0.0009912723302841187,
+              "model": "fundamental",
+              "sufficient": true
+            },
+            {
+              "phashDistance": 22,
+              "exactPixels": false,
+              "featureCountA": 694,
+              "featureCountB": 689,
+              "matches": 367,
+              "inliers": 367,
+              "inlierRatio": 1.0,
+              "overlap": 0.532656023222061,
+              "medianDisplacement": 0.008049840927124024,
+              "homographyResidual": 0.0010362523794174195,
+              "model": "fundamental",
+              "sufficient": true
+            }
+          ]
+        },
+        "timings": {
+          "probeAndTimelineDecode": 4.055699735999951,
+          "decodeAndCandidateExtraction": 1.033729258000676,
+          "qualityAnalysis": 0.09645849400112638,
+          "fingerprintingAndFeatureExtraction": 0.08166798499951256,
+          "segmentation": 4.843001079279929e-06,
+          "similarityAndGeometricMatching": 1.953920095016656,
+          "keyframeSelection": 0.009591048983565997,
+          "debugArtifacts": 0.18588030799946864,
+          "note": "FFmpeg decode and PNG extraction are fused; not independently measurable.",
+          "preprocessingTotal": 7.4244580720005615
+        },
+        "resources": {
+          "cpuSeconds": 2.1969995669999998,
+          "selfPeakRssKiB": 73684,
+          "childPeakRssKiB": 73684,
+          "gpuUsed": false,
+          "threads": 1
+        }
+      }
+    ]
+  },
+  "supervisedFixture": {
+    "state": "prepared_only",
+    "sampledPeakMiB": 99,
+    "initialAdmissionHeadroomSimulated": true,
+    "runtimeMemoryGuardEnabled": true
+  },
+  "actualDishBenchmark": {
+    "state": "NOT_RUN",
+    "reason": "Original dish video not identified/provided; reconstruction RAM admission requirement not met during session",
+    "temporal": null,
+    "smart": null,
+    "sideBySideRenders": null
+  },
+  "sam21": {
+    "adapterProtocolTested": true,
+    "realCheckpointInferenceTested": false,
+    "sourceRevision": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+    "checkpointSha256": null
+  },
+  "openmvsMaskOptionsVerifiedInInstalledBinary": true,
+  "fullMaskedReconstructionTested": false,
+  "nextMilestoneAllowed": false
+}

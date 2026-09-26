@@ -1,0 +1,5 @@
+# Optional M2 CPU preprocessing environment; engines and Pillow remain pinned separately.
+# Python 3.10–3.12. Use a venv, never upgrade the user's global Python packages.
+-r requirements.txt
+numpy==1.26.4
+opencv-python-headless==4.10.0.84

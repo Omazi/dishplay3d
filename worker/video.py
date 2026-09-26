@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import shutil
 import struct
+import time
 from fractions import Fraction
 
 MAX_BYTES = 256 * 1024 * 1024
@@ -104,12 +105,13 @@ def temporal_indices(timestamps, budget):
     return [(i*(len(timestamps)-1))//(count-1) for i in range(count)]
 
 
-def extract_video(source, output, settings, execute, expected_sha256=None):
+def extract_video(source, output, settings, execute, expected_sha256=None, *, candidate_budget=None, extra_indices_count=None):
     from PIL import Image
     identity = validate_container(source, expected_sha256)
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         raise VideoError('VIDEO_TOOLS_UNAVAILABLE', 'Install FFmpeg/ffprobe on the video worker')
-    input_dir, selected = output/'input', output/'frames'/'selected'
+    started = time.monotonic()
+    input_dir, selected = output/'input', output/'frames'/('candidates' if candidate_budget else 'selected')
     input_dir.mkdir(exist_ok=True)
     selected.mkdir(parents=True)
     original = input_dir/'source.video'
@@ -143,10 +145,22 @@ def extract_video(source, output, settings, execute, expected_sha256=None):
         raise
     except (ValueError, OSError) as error:
         raise VideoError('VIDEO_INVALID', str(error)) from error
-    indexes = temporal_indices(metadata['timestampsMs'],settings['max_images'])
+    probe_seconds = time.monotonic()-started
+    if candidate_budget is None:
+        indexes = temporal_indices(metadata['timestampsMs'],settings['max_images'])
+    else:
+        if not 3 <= candidate_budget <= 200 or not 3 <= (extra_indices_count or 3) <= 80:
+            raise VideoError('VIDEO_INVALID', 'Candidate/frame budget exceeded')
+        # No extra dependency for the milestone-1 path.
+        count = len(metadata['timestampsMs'])
+        def sample(budget):
+            n = min(count, budget)
+            return [i*(count-1)//(n-1) for i in range(n)]
+        indexes = sorted(set(sample(candidate_budget)+sample(extra_indices_count or 3)))
     expression = '+'.join(f'eq(n\\,{index})' for index in indexes)
     edge = settings['long_edge']
     filters = f"select={expression},scale=w='min({edge},iw)':h='min({edge},ih)':force_original_aspect_ratio=decrease"
+    decode_started = time.monotonic()
     try:
         # Decode the ENTIRE video, including frames after the last selected one.
         # xerror/err_detect explode prevent success on tolerant partial decodes.
@@ -169,6 +183,11 @@ def extract_video(source, output, settings, execute, expected_sha256=None):
                        'sourceVideoSha256':identity['sha256'],'orientationApplied':True})
     manifest = {'schema':2,'sourceType':'video','extractor':EXTRACTOR_ID,'tools':tools,
                 'sourceVideo':identity,'frames':frames}
+    if candidate_budget is not None:
+        manifest.update(extractor='ffmpeg-candidates-v1', sourceFrameCount=len(metadata['timestampsMs']),
+                        durationMs=metadata['durationSeconds']*1000,
+                        timings={'probeAndTimelineDecode':probe_seconds, 'decodeAndCandidateExtraction':time.monotonic()-decode_started,
+                                 'note':'FFmpeg decode and PNG extraction are fused; not independently measurable.'})
     (input_dir/'video_metadata.json').write_text(json.dumps(metadata,indent=2))
     (input_dir/'frames_manifest.json').write_text(json.dumps(manifest,indent=2))
     return selected,frames,manifest

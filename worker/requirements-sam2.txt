@@ -1,0 +1,7 @@
+# Optional isolated Python 3.10–3.12 environment. CPU wheels avoid installing CUDA runtimes.
+# Install torch==2.5.1 torchvision==0.20.1 from https://download.pytorch.org/whl/cpu first.
+# Then: SAM2_BUILD_CUDA=0 pip install --no-build-isolation -r worker/requirements-sam2.txt
+-r requirements-selection.txt
+torch==2.5.1
+torchvision==0.20.1
+SAM-2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4
