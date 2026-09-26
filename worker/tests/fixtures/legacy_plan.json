@@ -1,0 +1,198 @@
+{
+  "baselineCommit": "966d27ff0dd71eb9b1913a75f4622124bb68ad42",
+  "engineId": "legacy-photogrammetry-v1",
+  "pins": {
+    "colmap": "3.11.1",
+    "openmvs": "2.3.0",
+    "blender": "4.5.13",
+    "pillow": "12.3.0",
+    "execution_verified": false,
+    "sources": {
+      "colmap": "https://github.com/colmap/colmap/releases/tag/3.11.1",
+      "openmvs": "https://github.com/cdcseacave/openMVS/releases/tag/v2.3.0",
+      "blender": "https://www.blender.org/releases/4-5/",
+      "pillow": "https://pillow.readthedocs.io/en/stable/releasenotes/12.3.0.html"
+    }
+  },
+  "settings": {
+    "max_images": 24,
+    "long_edge": 1600,
+    "memory_mib": 1024,
+    "disk_mib": 2048,
+    "stage_seconds": 900,
+    "threads": 1,
+    "gpu": false,
+    "scale_m_per_unit": null,
+    "scale_reference": null,
+    "openmvs_cuda_build": false
+  },
+  "commands": [
+    {
+      "name": "features",
+      "command": [
+        "colmap",
+        "feature_extractor",
+        "--database_path",
+        "/baseline-output/database.db",
+        "--image_path",
+        "/baseline-output/images",
+        "--ImageReader.camera_model",
+        "SIMPLE_RADIAL",
+        "--SiftExtraction.use_gpu",
+        "0",
+        "--SiftExtraction.num_threads",
+        "1",
+        "--SiftExtraction.max_image_size",
+        "1600",
+        "--SiftExtraction.max_num_features",
+        "4096"
+      ]
+    },
+    {
+      "name": "matching",
+      "command": [
+        "colmap",
+        "exhaustive_matcher",
+        "--database_path",
+        "/baseline-output/database.db",
+        "--SiftMatching.use_gpu",
+        "0",
+        "--SiftMatching.num_threads",
+        "1"
+      ]
+    },
+    {
+      "name": "calibration",
+      "command": [
+        "colmap",
+        "mapper",
+        "--database_path",
+        "/baseline-output/database.db",
+        "--image_path",
+        "/baseline-output/images",
+        "--output_path",
+        "/baseline-output/sparse",
+        "--Mapper.num_threads",
+        "1",
+        "--Mapper.multiple_models",
+        "0"
+      ]
+    },
+    {
+      "name": "undistort",
+      "command": [
+        "colmap",
+        "image_undistorter",
+        "--image_path",
+        "/baseline-output/images",
+        "--input_path",
+        "/baseline-output/sparse/0",
+        "--output_path",
+        "/baseline-output/dense",
+        "--output_type",
+        "COLMAP",
+        "--max_image_size",
+        "1600"
+      ]
+    },
+    {
+      "name": "import",
+      "command": [
+        "InterfaceCOLMAP",
+        "-i",
+        "/baseline-output/dense",
+        "-o",
+        "/baseline-output/scene.mvs",
+        "--image-folder",
+        "/baseline-output/dense/images",
+        "--max-threads",
+        "1"
+      ]
+    },
+    {
+      "name": "densification",
+      "command": [
+        "DensifyPointCloud",
+        "-i",
+        "/baseline-output/scene.mvs",
+        "-o",
+        "/baseline-output/dense.mvs",
+        "--resolution-level",
+        "1",
+        "--max-resolution",
+        "1600",
+        "--min-resolution",
+        "320",
+        "--max-threads",
+        "1"
+      ]
+    },
+    {
+      "name": "mesh",
+      "command": [
+        "ReconstructMesh",
+        "-i",
+        "/baseline-output/dense.mvs",
+        "-p",
+        "/baseline-output/dense.ply",
+        "-o",
+        "/baseline-output/mesh.mvs",
+        "--max-threads",
+        "1"
+      ]
+    },
+    {
+      "name": "refinement",
+      "command": [
+        "RefineMesh",
+        "-i",
+        "/baseline-output/dense.mvs",
+        "-m",
+        "/baseline-output/mesh.ply",
+        "-o",
+        "/baseline-output/refined.mvs",
+        "--resolution-level",
+        "1",
+        "--max-threads",
+        "1"
+      ]
+    },
+    {
+      "name": "texture",
+      "command": [
+        "TextureMesh",
+        "-i",
+        "/baseline-output/dense.mvs",
+        "-m",
+        "/baseline-output/refined.ply",
+        "-o",
+        "/baseline-output/textured.mvs",
+        "--export-type",
+        "glb",
+        "--max-texture-size",
+        "2048",
+        "--max-threads",
+        "1"
+      ]
+    },
+    {
+      "name": "exports",
+      "command": [
+        "blender",
+        "--background",
+        "--factory-startup",
+        "--threads",
+        "1",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "<WORKER>/export_blender.py",
+        "--",
+        "/baseline-output/textured.glb",
+        "/baseline-output/model.glb",
+        "/baseline-output/model.usdz",
+        "1"
+      ]
+    }
+  ]
+}

@@ -194,3 +194,83 @@ test('missing Origin is allowed only on native-capability routes, foreign origin
   assert.equal((await browser(request({ Origin: 'http://localhost:3000' }))).status, 200);
   await assert.rejects(() => withNativeCapture(db, null, captureSnapshot), status(401));
 });
+
+test('ordered frames keep duplicate pixels at different times; metadata survives retries and finalize', async () => {
+  const { scanInputs } = await import('../src/lib/server/capture-manifest');
+  const f = await fixture();
+  const link = await issueCaptureLink(db, f.identity, f.dishId);
+  const paired = await claimCaptureLink(db, link.code, secret());
+  const scanId = paired.scan.id;
+  const bytes = await readFile('public/images/burger.jpg');
+  // Arrival is deliberately out of order; database order must use the frame index.
+  for (const index of [2, 0, 1]) {
+    const result = await db.transaction((tx) =>
+      appendScanFrame(tx, scanId, f.identity.restaurantId, bytes, 'image/jpeg', {
+        frameIndex: index,
+        timestampMs: index * 200,
+        intrinsics: {
+          fx: 1000,
+          fy: 1000,
+          cx: 320,
+          cy: 240,
+          referenceWidth: 640,
+          referenceHeight: 480,
+        },
+      }),
+    );
+    assert.equal(result.duplicate, false);
+  }
+  const repeated = await db.transaction((tx) =>
+    appendScanFrame(tx, scanId, f.identity.restaurantId, bytes, 'image/jpeg', {
+      frameIndex: 1,
+      timestampMs: 200,
+      intrinsics: {
+        fx: 1000,
+        fy: 1000,
+        cx: 320,
+        cy: 240,
+        referenceWidth: 640,
+        referenceHeight: 480,
+      },
+    }),
+  );
+  assert.equal(repeated.duplicate, true);
+  await assert.rejects(
+    () =>
+      db.transaction((tx) =>
+        appendScanFrame(tx, scanId, f.identity.restaurantId, bytes, 'image/jpeg', {
+          frameIndex: 1,
+          timestampMs: 201,
+        }),
+      ),
+    status(409),
+  );
+  await assert.rejects(
+    () =>
+      db.transaction((tx) =>
+        appendScanFrame(tx, scanId, f.identity.restaurantId, bytes, 'image/jpeg'),
+      ),
+    status(409),
+  );
+  const final = await db.transaction((tx) =>
+    finalizeScan(tx, scanId, f.identity.restaurantId, f.identity.user.id),
+  );
+  const inputs = await scanInputs(
+    db,
+    (await db.query('SELECT * FROM scan_sessions WHERE id=$1', [scanId])).rows[0],
+  );
+  assert.deepEqual(
+    inputs.frames.map((f) => f.frame_index),
+    [0, 1, 2],
+  );
+  assert.equal(final.manifestHash, inputs.hash);
+  await db.query(
+    'UPDATE scan_frames SET timestamp_ms=timestamp_ms+1 WHERE scan_id=$1 AND frame_index=1',
+    [scanId],
+  );
+  const mutated = await scanInputs(
+    db,
+    (await db.query('SELECT * FROM scan_sessions WHERE id=$1', [scanId])).rows[0],
+  );
+  assert.notEqual(mutated.hash, final.manifestHash);
+});

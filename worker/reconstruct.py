@@ -24,6 +24,14 @@ HERE = Path(__file__).resolve().parent
 PINS = json.loads((HERE / "toolchain.json").read_text())
 TOOLS = ("colmap", "InterfaceCOLMAP", "DensifyPointCloud", "ReconstructMesh", "RefineMesh", "TextureMesh", "blender")
 MIB = 1024 * 1024
+ENGINE_ID = "legacy-photogrammetry-v1"
+# Both script execution and unittest package import are supported.
+if __package__:
+    from .video import extract_video, validate_container, VideoError
+    from .engines import ENGINES, engine_for
+else:
+    from video import extract_video, validate_container, VideoError
+    from engines import ENGINES, engine_for
 
 
 def digest(path: Path) -> str:
@@ -51,6 +59,7 @@ def doctor() -> dict:
     return {
         "tools": {name: shutil.which(name) for name in TOOLS},
         "pillow_installed": pillow,
+        "video_tools": {name: shutil.which(name) for name in ("ffmpeg", "ffprobe")},
         "required_versions": {key: PINS[key] for key in ("colmap", "openmvs", "blender", "pillow")},
         "available_memory_mib": round(memory_available() / MIB) if memory_available() else None,
         "run_supported_platform": sys.platform == "linux",
@@ -59,7 +68,7 @@ def doctor() -> dict:
     }
 
 
-def input_manifest(source: Path, max_images: int = 24) -> list[dict]:
+def input_manifest(source: Path, max_images: int = 24, allow_duplicates: bool = False) -> list[dict]:
     if not 3 <= max_images <= 40:
         raise ValueError("max-images must be between 3 and 40; default is 24")
     if not source.is_dir():
@@ -82,7 +91,7 @@ def input_manifest(source: Path, max_images: int = 24) -> list[dict]:
         if not (magic.startswith(b"\xff\xd8\xff") or magic == b"\x89PNG\r\n\x1a\n"):
             raise ValueError(f"Not a JPEG/PNG signature: {path.name}")
         frames.append({"name": path.name, "bytes": size, "sha256": digest(path)})
-    if len({frame["sha256"] for frame in frames}) != len(frames):
+    if not allow_duplicates and len({frame["sha256"] for frame in frames}) != len(frames):
         raise ValueError("Duplicate photos detected; use distinct views")
     return frames
 
@@ -100,6 +109,8 @@ def settings_from(args: argparse.Namespace) -> dict:
         raise ValueError("scale-m-per-unit must be a finite positive number no greater than 1000")
     if bool(args.scale_reference) != (args.scale_m_per_unit is not None):
         raise ValueError("Supply scale-m-per-unit and scale-reference together, or neither")
+    if not 3 <= args.max_images <= 40:
+        raise ValueError("max-images must be between 3 and 40")
     return {"max_images": args.max_images, "long_edge": args.long_edge, "memory_mib": args.memory_mib,
             "disk_mib": args.disk_mib, "stage_seconds": args.stage_seconds, "threads": 1, "gpu": False,
             "scale_m_per_unit": args.scale_m_per_unit, "scale_reference": args.scale_reference,
@@ -376,8 +387,10 @@ def execute_stage(stage: dict, output: Path, settings: dict) -> dict:
     record = {**stage, "state": "running", "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     log = output / f"{stage['name']}.log"
     parent_pid = os.getpid()
-    with log.open("wb") as stream:
-        process = subprocess.Popen(stage["command"], cwd=output, stdout=stream, stderr=subprocess.STDOUT,
+    with contextlib.ExitStack() as stack:
+        stream = stack.enter_context(log.open("wb"))
+        stdout = stack.enter_context((output / stage["stdout_file"]).open("wb")) if stage.get("stdout_file") else stream
+        process = subprocess.Popen(stage["command"], cwd=output, stdout=stdout, stderr=stream,
                                    env=environment(), start_new_session=True,
                                    preexec_fn=lambda: process_limits(settings, parent_pid))
         try:
@@ -446,14 +459,14 @@ def prepare_images(source: Path, output: Path, frames: list[dict], settings: dic
     return prepared
 
 
-def run(source: Path, output: Path, frames: list[dict], settings: dict, restaurant: str):
+def run(source: Path, output: Path, frames: list[dict], settings: dict, restaurant: str, *, video=False, capture_manifest=None, prepare_only=False):
     checks = doctor()
     missing = [name for name, path in checks["tools"].items() if not path]
-    if missing:
+    if missing and not prepare_only:
         raise ValueError("Missing engines: " + ", ".join(missing) + ". Nothing was installed or launched.")
     if sys.platform != "linux":
         raise ValueError("This bounded runner requires Linux resource limits; plan/doctor work elsewhere")
-    if checks["pillow_installed"] != PINS["pillow"]:
+    if not prepare_only and checks["pillow_installed"] != PINS["pillow"]:
         raise ValueError(f"Run needs Pillow {PINS['pillow']}; install worker/requirements.txt in an isolated environment")
     available = memory_available()
     if available is None or available < (settings["memory_mib"] + 1024) * MIB:
@@ -465,13 +478,37 @@ def run(source: Path, output: Path, frames: list[dict], settings: dict, restaura
         for name in ("images", "sparse", "dense"):
             (output / name).mkdir()
         manifest = {"schema": 1, "job_id": identity(frames, settings, restaurant), "restaurant": restaurant,
-                    "state": "preflight", "inputs": frames, "settings": settings, "stages": [],
+                    "state": "preflight", "engine_id": ENGINE_ID, "engine_versions": PINS, "inputs": frames, "settings": settings, "stages": [],
                     "originals_preserved": True, "published": False, "physical_device_tests": [],
                     "scale_verified": False, "quality_verified": False}
         started = time.monotonic()
         write_manifest(output, manifest)
         try:
             resource_guard(output, settings)
+            if capture_manifest:
+                if capture_manifest.is_symlink() or capture_manifest.stat().st_size > MIB:
+                    raise ValueError("Invalid capture metadata sidecar")
+                manifest["source_capture_manifest_sha256"] = digest(capture_manifest)
+                capture = json.loads(capture_manifest.read_text())
+                (output / "input").mkdir(exist_ok=True)
+                shutil.copyfile(capture_manifest, output / "input" / "capture_manifest.json")
+                # Raw camera metadata remains in its ORIGINAL pixel/orientation coordinates.
+                # No implicit calibration is fabricated or fed to the unchanged legacy engine.
+                (output / "input" / "camera_metadata.json").write_text(json.dumps({
+                    "capture": capture.get("captureMetadata", {}), "frames": capture.get("frames", []),
+                    "appliedToLegacyGeometry": False}, indent=2))
+            if video:
+                manifest["active_stage"] = "video_ingestion"
+                write_manifest(output, manifest)
+                expected = capture.get("manifest", {}).get("video", {}).get("sha256") if capture_manifest else None
+                source, frames, extracted = extract_video(source, output, settings, execute_stage, expected)
+                manifest["inputs"] = frames
+                manifest["video_ingestion"] = extracted
+                manifest["job_id"] = identity([{"sourceVideo": extracted["sourceVideo"], "captureMetadataHash": manifest.get("source_capture_manifest_sha256"), "extractor": extracted["extractor"], "tools": extracted["tools"]}, *frames], settings, restaurant)
+            if prepare_only:
+                manifest["state"] = "prepared_only"
+                manifest["reconstruction_verified"] = False
+                return
             manifest["engine_binaries"] = verify_versions(settings, output)
             manifest["prepared_images"] = prepare_images(source, output, frames, settings)
             for stage in plan_commands(output, settings):
@@ -487,6 +524,7 @@ def run(source: Path, output: Path, frames: list[dict], settings: dict, restaura
         except BaseException as error:
             manifest["state"] = "cancelled" if isinstance(error, KeyboardInterrupt) else "failed"
             manifest["error"] = str(error) or type(error).__name__
+            manifest["error_code"] = getattr(error, "code", "ENGINE_FAILED")
             if "active_stage" in manifest:
                 manifest["stages"].append({"name": manifest["active_stage"], "state": manifest["state"], "error": manifest["error"]})
             raise
@@ -506,11 +544,16 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, interrupt)
     parser = argparse.ArgumentParser(description=__doc__)
-    mode = parser.add_mutually_exclusive_group(required=True)
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument("--doctor", action="store_true")
     mode.add_argument("--plan", action="store_true")
     mode.add_argument("--run", action="store_true")
-    parser.add_argument("--input", type=Path)
+    mode.add_argument("--prepare-video", action="store_true", help="Validate/decode only; does not claim a reconstructed model")
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument("--input", type=Path)
+    source_group.add_argument("--video", type=Path)
+    parser.add_argument("--capture-manifest", type=Path)
+    parser.add_argument("--engine", choices=list(ENGINES), default=ENGINE_ID)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--restaurant", default="local-private")
     parser.add_argument("--supervisor-pid", type=int,
@@ -532,18 +575,43 @@ def main() -> int:
         if args.doctor:
             print(json.dumps(doctor(), indent=2))
             return 0
-        if args.input is None or args.output is None:
-            parser.error("--input and --output are required for --plan/--run")
-        source, output = args.input.resolve(), args.output.resolve()
+        if (args.input is None and args.video is None) or args.output is None:
+            parser.error("--input or --video, plus --output are required")
+        if args.prepare_video and not args.video:
+            parser.error("--prepare-video requires --video")
+        source_arg = args.video or args.input
+        if source_arg.is_symlink():
+            raise ValueError("Input cannot be a symbolic link")
+        source, output = source_arg.resolve(), args.output.resolve()
+        engine = engine_for(args.engine)
+        if engine.versions != PINS:
+            raise ValueError("Engine registry and toolchain pins differ")
         settings = settings_from(args)
-        frames = input_manifest(source, args.max_images)
+        capture = None
+        if args.capture_manifest:
+            if args.capture_manifest.is_symlink() or args.capture_manifest.stat().st_size > MIB:
+                raise ValueError("Invalid capture metadata sidecar")
+            capture = json.loads(args.capture_manifest.read_text())
+        ordered = bool(capture and capture.get("manifest", {}).get("schema") == 2)
+        frames = [] if args.video else input_manifest(source, args.max_images, allow_duplicates=ordered)
+        if ordered and not args.video:
+            supplied = capture.get("frames", [])
+            if len(supplied) != len(frames) or any(a["sha256"] != b.get("sha256") for a,b in zip(frames,supplied)):
+                raise ValueError("Ordered image inputs differ from capture manifest")
+            frames = [{**frame, "frameIndex":meta["frameIndex"], "timestampMs":meta["timestampMs"],
+                       "width":meta["width"], "height":meta["height"], "metadata":meta.get("metadata", {})}
+                      for frame,meta in zip(frames,supplied)]
+        source_video_identity = validate_container(source) if args.video and args.plan else None
         if args.plan:
             print(json.dumps({"state": "planned_only", "engines_executed": False,
-                              "job_id": identity(frames, settings, args.restaurant), "inputs": frames,
+                              "job_id": identity([source_video_identity] if source_video_identity else frames, settings, args.restaurant), "inputs": frames,
+                              "engine_id":args.engine, "video":str(source) if args.video else None,
+                              "videoValidation":"pending_decode" if args.video else None,
                               "settings": settings, "commands": plan_commands(output, settings)}, indent=2))
         else:
-            run(source, output, frames, settings, args.restaurant)
-            print(f"Exports ready for human review: {output / 'manifest.json'}")
+            run(source, output, frames, settings, args.restaurant, video=bool(args.video),
+                capture_manifest=args.capture_manifest, prepare_only=args.prepare_video)
+            print(f"{'Video prepared; no reconstruction performed' if args.prepare_video else 'Exports ready for human review'}: {output / 'manifest.json'}")
         return 0
     except (ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as error:
         print(f"Reconstruction stopped: {error}", file=sys.stderr)

@@ -8,8 +8,8 @@ case "${1:-status}" in
     test -f .data/worker.env || { echo 'Missing .data/worker.env; configure the private database connection first.'; exit 1; }
     test "$(stat -c %a .data/worker.env)" = 600 || { echo 'Set .data/worker.env permissions to 600.'; exit 1; }
     docker image inspect dishplay-reconstruction:1 >/dev/null
-    mkdir -p .data/worker
-    chmod 700 .data/worker
+    mkdir -p .data/worker .data/capture-videos
+    chmod 700 .data/worker .data/capture-videos
     if docker container inspect "$TASK_NAME" >/dev/null 2>&1; then
       docker start "$TASK_NAME"
     else
@@ -20,6 +20,7 @@ case "${1:-status}" in
         --user "$(id -u):$(id -g)" --env-file .data/worker.env \
         -e NODE_OPTIONS=--max-old-space-size=256 -e WORKER_MAX_IMAGES=40 \
         -e WORKER_MEMORY_MIB=1024 -e WORKER_DATA_DIR=/project/.data/worker \
+        -e CAPTURE_VIDEO_DIR=/project/.data/capture-videos \
         -e WORKER_PYTHON=/usr/bin/python3 -e WORKER_JOB_SECONDS=3600 \
         -v "$(command -v node):/usr/bin/node:ro" \
         -v "$TASK_ROOT/node_modules:/project/node_modules:ro" \
@@ -28,6 +29,7 @@ case "${1:-status}" in
         -v "$TASK_ROOT/migrations:/project/migrations:ro" \
         -v "$TASK_ROOT/worker:/project/worker:ro" \
         -v "$TASK_ROOT/.data/worker:/project/.data/worker:rw" \
+        -v "$TASK_ROOT/.data/capture-videos:/project/.data/capture-videos:ro" \
         -w /project --entrypoint /usr/bin/node dishplay-reconstruction:1 --import tsx scripts/worker.ts
     fi
     ;;

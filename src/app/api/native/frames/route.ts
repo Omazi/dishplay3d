@@ -1,3 +1,4 @@
+import { frameMetadataHeader } from '@/lib/server/capture-manifest';
 import { NextResponse } from 'next/server';
 import { api, readBytes } from '@/lib/server/http';
 import { database } from '@/lib/server/db';
@@ -22,7 +23,14 @@ export const POST = api(
       await database(),
       request.headers.get('authorization'),
       (tx, grant) =>
-        appendScanFrame(tx, String(grant.scan_id), String(grant.restaurant_id), bytes, mime),
+        appendScanFrame(
+          tx,
+          String(grant.scan_id),
+          String(grant.restaurant_id),
+          bytes,
+          mime,
+          frameMetadataHeader(request),
+        ),
     );
     return NextResponse.json(
       { sha256: result.frame.sha256, duplicate: result.duplicate },

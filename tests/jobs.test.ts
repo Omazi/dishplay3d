@@ -40,6 +40,7 @@ before(async () => {
   await memory.exec(await readFile('migrations/001_initial.sql', 'utf8'));
   await memory.exec(await readFile('migrations/002_reconstruction_queue.sql', 'utf8'));
   await memory.exec(await readFile('migrations/004_reconstruction_artifacts.sql', 'utf8'));
+  await memory.exec(await readFile('migrations/005_ordered_video.sql', 'utf8'));
   db = {
     query: async <T extends Row>(sql: string, params: unknown[] = []) => ({
       rows: (await memory.query<T>(sql, params)).rows,
@@ -355,4 +356,58 @@ test('model parts are private until fenced completion and inaccessible to other 
   await assert.rejects(() => artifactPart(db, a.restaurant, queued.id, 'glb', '1'));
   await assert.rejects(() => artifactPart(db, a.restaurant, queued.id, '../secret', '0'));
   await assert.rejects(() => storeArtifactPart(db, lease, 'glb', 1, bytes), /lease expired/);
+});
+
+test('raw-video jobs preserve leases and cannot be claimed by a legacy worker', async () => {
+  const { attachVideo } = await import('../src/lib/server/capture-video');
+  const { finalizeScan } = await import('../src/lib/server/scans');
+  const { ORDERED_RECONSTRUCTION_ENGINE } = await import('../src/lib/server/jobs');
+  const f = await fixture(0, 'capturing');
+  await db.transaction((tx) =>
+    attachVideo(
+      tx,
+      f.scan,
+      f.restaurant,
+      { backend: 'local-v1', key: randomUUID() + '.video', sha256: hash('video'), bytes: 100 },
+      'video/mp4',
+    ),
+  );
+  const finalized = await db.transaction((tx) => finalizeScan(tx, f.scan, f.restaurant, f.user));
+  assert.equal(finalized.manifestSchema, 2);
+  const queued = await enqueueReconstruction(db, f.restaurant, f.user, f.scan, {}, true);
+  assert.equal(
+    (await db.query('SELECT engine FROM reconstruction_jobs WHERE id=$1', [queued.id])).rows[0]
+      .engine,
+    ORDERED_RECONSTRUCTION_ENGINE,
+  );
+  const oldWorker = await readyWorker();
+  assert.equal(await claimJob(db, oldWorker, capabilities), null);
+  const worker = randomUUID(),
+    videoCapabilities = { ...capabilities, orderedCapture: true, rawVideo: true };
+  await workerHeartbeat(db, worker, videoCapabilities, true);
+  const lease = await claimJob(db, worker, videoCapabilities);
+  assert.equal(lease?.id, queued.id);
+  assert.equal(await renewLease(db, lease!, 'video_decode'), true);
+  assert.equal(await failJob(db, lease!, 'VIDEO_DECODE_FAILED'), true);
+  assert.equal((await listJobs(db, f.restaurant))[0].errorCode, 'VIDEO_DECODE_FAILED');
+});
+test('frozen raw video mutation invalidates admission identity', async () => {
+  const { attachVideo } = await import('../src/lib/server/capture-video');
+  const { finalizeScan } = await import('../src/lib/server/scans');
+  const f = await fixture(0, 'capturing');
+  await db.transaction((tx) =>
+    attachVideo(
+      tx,
+      f.scan,
+      f.restaurant,
+      { backend: 'local-v1', key: randomUUID() + '.video', sha256: hash('video'), bytes: 100 },
+      'video/mp4',
+    ),
+  );
+  await db.transaction((tx) => finalizeScan(tx, f.scan, f.restaurant, f.user));
+  await db.query('UPDATE capture_videos SET sha256=$1 WHERE scan_id=$2', [hash('changed'), f.scan]);
+  await assert.rejects(
+    () => enqueueReconstruction(db, f.restaurant, f.user, f.scan, {}, true),
+    (e: unknown) => e instanceof ApiError && e.code === 'INPUT_CHANGED',
+  );
 });

@@ -26,7 +26,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
     QT_QPA_PLATFORM=offscreen CUDA_VISIBLE_DEVICES=-1 PYTHONDONTWRITEBYTECODE=1 \
     PATH=/usr/local/bin/OpenMVS:/opt/blender:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates ffmpeg \
     libboost-program-options1.74.0 libboost-graph1.74.0 libboost-system1.74.0 libboost-iostreams1.74.0 libboost-serialization1.74.0 \
     libfreeimage3 libmetis5 libgoogle-glog0v5 libsqlite3-0 libglew2.2 libceres2 libopencv-core4.5d libopencv-imgcodecs4.5d \
     libopencv-imgproc4.5d libopencv-highgui4.5d libopencv-calib3d4.5d libgomp1 libgl1 libegl1 libxrender1 libxi6 libxfixes3 libxkbcommon0 libsm6 \

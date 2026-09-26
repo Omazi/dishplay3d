@@ -23,6 +23,7 @@ import {
   claimJob,
   completeJob,
   ENGINE_PINS,
+  RECONSTRUCTION_ENGINE_ID,
   failJob,
   leaseIsCurrent,
   normalizeSettings,
@@ -33,6 +34,8 @@ import {
   type WorkerCapabilities,
 } from '../src/lib/server/jobs';
 import { ARTIFACT_PART_BYTES, storeArtifactPart } from '../src/lib/server/reconstruction-artifacts';
+import { scanInputs } from '../src/lib/server/capture-manifest';
+import { captureBlobStore } from '../src/lib/server/capture-blob-store';
 import { validateImageBytes } from '../src/lib/image-validation';
 
 const exec = promisify(execFile);
@@ -42,14 +45,18 @@ const python = process.env.WORKER_PYTHON || 'python3';
 const workerId = randomUUID();
 const root = path.resolve(process.env.WORKER_DATA_DIR || '.data/worker');
 const workerScript = path.join(project, 'worker/reconstruct.py');
-const capabilities: WorkerCapabilities = normalizeSettings({
-  maxImages: Number(process.env.WORKER_MAX_IMAGES || 24),
-  longEdge: Number(process.env.WORKER_LONG_EDGE || 1600),
-  memoryMiB: Number(process.env.WORKER_MEMORY_MIB || 1024),
-  diskMiB: Number(process.env.WORKER_DISK_MIB || 2048),
-  stageSeconds: Number(process.env.WORKER_STAGE_SECONDS || 900),
-  openMvsCudaBuild: process.env.WORKER_OPENMVS_CUDA_BUILD === 'true',
-});
+const capabilities: WorkerCapabilities = {
+  ...normalizeSettings({
+    maxImages: Number(process.env.WORKER_MAX_IMAGES || 24),
+    longEdge: Number(process.env.WORKER_LONG_EDGE || 1600),
+    memoryMiB: Number(process.env.WORKER_MEMORY_MIB || 1024),
+    diskMiB: Number(process.env.WORKER_DISK_MIB || 2048),
+    stageSeconds: Number(process.env.WORKER_STAGE_SECONDS || 900),
+    openMvsCudaBuild: process.env.WORKER_OPENMVS_CUDA_BUILD === 'true',
+  }),
+  orderedCapture: true,
+  rawVideo: false,
+};
 const maxJobSeconds = Number(process.env.WORKER_JOB_SECONDS || 3600);
 let stopping = false;
 let active: ChildProcess | null = null;
@@ -169,6 +176,7 @@ async function preflight(): Promise<void> {
   });
   const doctor = JSON.parse(stdout) as {
     tools: Record<string, string | null>;
+    video_tools?: Record<string, string | null>;
     pillow_installed: string | null;
     required_versions: Record<string, string>;
     run_supported_platform: boolean;
@@ -188,6 +196,9 @@ async function preflight(): Promise<void> {
       'ENGINE_CONFIGURATION_CHANGED',
       'The Python toolchain pins differ from the queue engine identity. Update and review both together.',
     );
+  capabilities.rawVideo = Boolean(
+    doctor.video_tools?.ffmpeg && doctor.video_tools?.ffprobe && process.env.CAPTURE_VIDEO_DIR,
+  );
   await privateDirectory(root);
 }
 async function fileDigest(filename: string): Promise<string> {
@@ -205,27 +216,81 @@ async function readManifest(output: string): Promise<Record<string, unknown>> {
     );
   return JSON.parse(await readFile(filename, 'utf8')) as Record<string, unknown>;
 }
-async function materialize(db: Database, lease: JobLease, directory: string): Promise<string[]> {
-  const rows = (
+type MaterializedInput = {
+  hashes: string[];
+  video: boolean;
+  input: string;
+  sidecar: string;
+  sidecarHash: string;
+  videoHash?: string;
+};
+async function materialize(
+  db: Database,
+  lease: JobLease,
+  directory: string,
+): Promise<MaterializedInput> {
+  const scan = (
     await db.query(
-      `SELECT f.id,f.sha256,a.id AS media_id,a.mime_type,a.byte_size FROM scan_frames f
-    JOIN media_assets a ON a.id=f.media_id JOIN scan_sessions s ON s.id=f.scan_id
-    WHERE s.id=$1 AND s.restaurant_id=$2 AND s.state='finalized' AND a.restaurant_id=$2 ORDER BY f.sha256`,
+      "SELECT * FROM scan_sessions WHERE id=$1 AND restaurant_id=$2 AND state='finalized'",
       [lease.scanId, lease.restaurantId],
     )
-  ).rows;
+  ).rows[0];
+  if (!scan) throw new WorkerFailure('INPUT_MISSING', 'Finalized capture is missing.');
+  const { frames: rows, video, manifest, hash: manifestHash } = await scanInputs(db, scan);
+  if (
+    manifestHash !== scan.manifest_hash ||
+    queueIdentity(manifestHash, lease.settings, lease.engine) !== lease.inputHash
+  )
+    throw new WorkerFailure('INPUT_CHANGED', 'Finalized inputs differ from queued identity.');
+  const sidecar = path.join(path.dirname(directory), 'capture-manifest.json');
+  const sidecarBytes = JSON.stringify({
+    manifest,
+    captureMetadata: scan.capture_metadata,
+    frames: rows.map((row) => ({
+      frameIndex: row.frame_index,
+      timestampMs: row.timestamp_ms,
+      width: row.width,
+      height: row.height,
+      sha256: row.sha256,
+      metadata: row.metadata,
+    })),
+  });
+  await writeFile(sidecar, sidecarBytes, { flag: 'wx', mode: 0o600 });
+  if (video) {
+    const store = captureBlobStore(String(video.storage_backend));
+    const target = path.join(directory, 'source.video');
+    const handle = await open(target, 'wx', 0o600);
+    let bytes = 0;
+    const checksum = createHash('sha256');
+    try {
+      for await (const chunk of store.read(String(video.storage_key))) {
+        if (stopping || !(await leaseIsCurrent(db, lease)))
+          throw new WorkerFailure('LEASE_LOST', 'Video materialization cancelled.');
+        bytes += chunk.byteLength;
+        if (bytes > Number(video.byte_size))
+          throw new WorkerFailure('INPUT_CHECKSUM_MISMATCH', 'Video size differs.');
+        checksum.update(chunk);
+        let offset = 0;
+        while (offset < chunk.byteLength)
+          offset += (await handle.write(chunk, offset, chunk.byteLength - offset)).bytesWritten;
+      }
+    } finally {
+      await handle.close();
+    }
+    if (bytes !== Number(video.byte_size) || checksum.digest('hex') !== video.sha256)
+      throw new WorkerFailure('INPUT_CHECKSUM_MISMATCH', 'Video integrity check failed.');
+    return {
+      hashes: [],
+      video: true,
+      input: target,
+      sidecar,
+      sidecarHash: digest(sidecarBytes),
+      videoHash: String(video.sha256),
+    };
+  }
   if (rows.length < 3 || rows.length > lease.settings.maxImages)
-    throw new WorkerFailure(
-      'FRAME_BUDGET_EXCEEDED',
-      'The capture exceeds its exact image budget; no views were discarded.',
-    );
+    throw new WorkerFailure('FRAME_BUDGET_EXCEEDED', 'Capture exceeds its exact image budget.');
   const hashes = rows.map((row) => String(row.sha256)).sort();
-  const manifestHash = digest(JSON.stringify({ schema: 1, frames: hashes }));
-  if (queueIdentity(manifestHash, lease.settings) !== lease.inputHash)
-    throw new WorkerFailure(
-      'INPUT_CHANGED',
-      'Finalized capture inputs differ from the queued identity.',
-    );
   let total = 0;
   for (const [index, row] of rows.entries()) {
     if (stopping || !(await leaseIsCurrent(db, lease)))
@@ -258,7 +323,7 @@ async function materialize(db: Database, lease: JobLease, directory: string): Pr
     const name = `${String(index).padStart(4, '0')}-${row.sha256}.${row.mime_type === 'image/jpeg' ? 'jpg' : 'png'}`;
     await writeFile(path.join(directory, name), bytes, { flag: 'wx', mode: 0o600 });
   }
-  return hashes;
+  return { hashes, video: false, input: directory, sidecar, sidecarHash: digest(sidecarBytes) };
 }
 async function descendantMemory(pid: number): Promise<{ rssMiB: number; pids: number[] }> {
   const { stdout } = await exec('ps', ['-eo', 'pid=,ppid=,rss='], {
@@ -298,15 +363,19 @@ async function stopTree(child: ChildProcess): Promise<void> {
     child.kill('SIGKILL');
   }
 }
-function pythonArguments(lease: JobLease, input: string, output: string): string[] {
+function pythonArguments(lease: JobLease, input: MaterializedInput, output: string): string[] {
   const settings = lease.settings;
   const args = [
     workerScript,
     '--run',
     '--supervisor-pid',
     String(process.pid),
-    '--input',
-    input,
+    input.video ? '--video' : '--input',
+    input.input,
+    '--capture-manifest',
+    input.sidecar,
+    '--engine',
+    RECONSTRUCTION_ENGINE_ID,
     '--output',
     output,
     '--restaurant',
@@ -335,7 +404,7 @@ function pythonArguments(lease: JobLease, input: string, output: string): string
 async function verifyResult(
   lease: JobLease,
   output: string,
-  hashes: string[],
+  source: MaterializedInput,
 ): Promise<Record<string, unknown>> {
   const manifest = await readManifest(output);
   if (
@@ -347,10 +416,23 @@ async function verifyResult(
       'OUTPUT_NOT_REVIEWABLE',
       'The real reconstruction has not produced an unpublished reviewable result.',
     );
+  if (
+    manifest.source_capture_manifest_sha256 !== source.sidecarHash ||
+    manifest.engine_id !== RECONSTRUCTION_ENGINE_ID
+  )
+    throw new WorkerFailure(
+      'OUTPUT_INPUT_MISMATCH',
+      'Output capture metadata or engine identity differs.',
+    );
+  const videoIngestion = manifest.video_ingestion as
+    { sourceVideo?: { sha256: string } } | undefined;
+  if (source.video && videoIngestion?.sourceVideo?.sha256 !== source.videoHash)
+    throw new WorkerFailure('OUTPUT_INPUT_MISMATCH', 'Output is not from the uploaded video.');
   const inputs = manifest.inputs as Array<{ sha256: string }>;
   if (
     !Array.isArray(inputs) ||
-    JSON.stringify(inputs.map((input) => input.sha256).sort()) !== JSON.stringify(hashes)
+    (!source.video &&
+      JSON.stringify(inputs.map((input) => input.sha256).sort()) !== JSON.stringify(source.hashes))
   )
     throw new WorkerFailure(
       'OUTPUT_INPUT_MISMATCH',
@@ -485,7 +567,7 @@ async function runJob(db: Database, lease: JobLease): Promise<void> {
         'DISK_HEADROOM',
         'Not enough free disk space for the configured job plus 1 GiB headroom.',
       );
-    const hashes = await materialize(db, lease, input);
+    const materialized = await materialize(db, lease, input);
     if (stopping || lostLease)
       throw new WorkerFailure('LEASE_LOST', 'The job was cancelled before engine startup.');
     stage = 'preflight';
@@ -493,7 +575,7 @@ async function runJob(db: Database, lease: JobLease): Promise<void> {
     let exitCode: number | null;
     try {
       // No shell: every executable argument is generated from bounded settings and local paths.
-      active = spawn(python, pythonArguments(lease, input, output), {
+      active = spawn(python, pythonArguments(lease, materialized, output), {
         cwd: project,
         stdio: ['ignore', log.fd, log.fd],
         detached: true,
@@ -514,13 +596,22 @@ async function runJob(db: Database, lease: JobLease): Promise<void> {
       );
     if (stopping) throw new WorkerFailure('WORKER_STOPPED', 'The worker was stopped.');
     if (guardError) throw guardError;
-    if (exitCode !== 0)
+    if (exitCode !== 0) {
+      let code = 'ENGINE_FAILED';
+      try {
+        const failed = await readManifest(output);
+        if (typeof failed.error_code === 'string' && /^[A-Z_]{1,80}$/.test(failed.error_code))
+          code = failed.error_code;
+      } catch {
+        /* Preflight can fail before creating an output manifest. */
+      }
       throw new WorkerFailure(
-        'ENGINE_FAILED',
-        'The reconstruction engine failed; inspect the private supervisor and stage logs.',
+        code,
+        'The engine failed; inspect private supervisor and stage logs.',
       );
+    }
     stage = 'validating_exports';
-    const result = await verifyResult(lease, output, hashes);
+    const result = await verifyResult(lease, output, materialized);
     stage = 'uploading_model';
     for (const kind of ['glb', 'usdz'] as const) {
       let part = 0;
