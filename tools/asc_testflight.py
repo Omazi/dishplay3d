@@ -26,6 +26,7 @@ def main():
     ap.add_argument("--build", help="build number (CFBundleVersion), default: latest uploaded")
     ap.add_argument("--notes", default=str(Path(__file__).resolve().parents[1] / "ios" / "RELEASE_NOTES.txt"))
     ap.add_argument("--wait-min", type=float, default=40)
+    ap.add_argument("--max-age-h", type=float, default=3, help="with --build: ignore uploads older than this")
     a = ap.parse_args()
     env = os.environ
     for k in ("APPLE_KEY_ID", "APPLE_ISSUER_ID", "APP_STORE_CONNECT_API_KEY"):
@@ -51,6 +52,19 @@ def main():
         res = asc.call("GET", q)
         versions = {i["id"]: i["attributes"].get("version") for i in res.get("included", []) if i["type"] == "preReleaseVersions"}
         builds = res.get("data", [])
+        if a.build:
+            # Old versions reused the same build numbers (e.g. 0.6.0 (10.1)): only accept a recent upload.
+            import datetime as dt
+            recent = []
+            for b in builds:
+                up = b["attributes"].get("uploadedDate")
+                try:
+                    age = dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(up)
+                except (TypeError, ValueError):
+                    continue
+                if age < dt.timedelta(hours=a.max_age_h):
+                    recent.append(b)
+            builds = recent
         if builds:
             build = builds[0]
             at = build["attributes"]
