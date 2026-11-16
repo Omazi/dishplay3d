@@ -209,6 +209,19 @@ Sorties ajoutées au dossier `final/` : `splat.ply`, `turntable.mp4`, `neural_co
   processeur avec un rendu factice à la place de la carte graphique.
 - **Non vérifié : le rendu réel sur carte graphique** (aucune disponible) ; l'app n'affiche pas encore ces fichiers.
 
+## Mise à jour du 16 novembre — la table autour du plat n'est plus dans le modèle (moteur `p1-0.3.0`)
+
+La boîte de scan est rectangulaire, une assiette est ronde : les coins de la boîte contiennent de la table nue.
+`mesh_preview.DishFootprint` repère l'emprise du plat (zone où le modèle s'élève au-dessus de la table, table ajustée
+comme un plan à partir des données) et retire la couche de table en dehors, ainsi qu'un liseré de 1 cm sous le bord.
+Appliqué à l'aperçu en direct, au modèle final (`model.glb` = plat seul ; `model_avec_table.glb` gardé à côté) et à
+l'étape neurale (masques et découpe suivent l'emprise). Rien n'est ajouté ni refermé.
+- Vérifié : 43 tests (dont table décalée de −6 à +7 mm par rapport à la base de la boîte, contour qui suit
+  l'assiette ronde) ; assiette de synthèse (`docs/evidence/table_retiree_assiette.png`) ; trois vraies captures
+  iPhone du jeu public (triangles gardés : 34 %, 34 % et 16 % du maillage, le reste étant de la table).
+- Limites : un aliment plat de moins de 6 mm posé directement sur la table serait pris pour la table ; pas vérifié
+  sur un vrai plat scanné par l'utilisateur.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

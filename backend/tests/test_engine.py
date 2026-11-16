@@ -223,7 +223,7 @@ def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     eng, _ = run(session, limit=45)
     rep = finish_session(eng, tmp_path / "final")
     assert rep["texture"]["status"] == "ok"
-    assert (tmp_path / "final" / "apercu.png").exists() and (tmp_path / "final" / "plat_seul.glb").exists()
+    assert (tmp_path / "final" / "apercu.png").exists() and (tmp_path / "final" / "model_avec_table.glb").exists()
     assert "applied" in rep["pose_refinement"]
     js, b = read_glb(tmp_path / "final" / "model.glb")
     at = js["meshes"][0]["primitives"][0]["attributes"]

@@ -18,7 +18,7 @@ from .coordinates import invert_rigid
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply
 from .fusion import FusionConfig
-from .mesh_preview import ESTIMATED, INTERPOLATED, MEASURED, MeshConfig, isolate_dish, supported_mesh, surface_area
+from .mesh_preview import ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, supported_mesh, surface_area
 from .preview_format import encode_geometry
 
 
@@ -73,7 +73,8 @@ def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_
 
 
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
-                   texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True) -> dict:
+                   texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True,
+                   remove_table: bool = True) -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -136,12 +137,33 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     mcfg = MeshConfig(support_radius_m=0.003, interp_radius_m=0.006, min_component_triangles=150, max_triangles=250000)
     V, C, N, cls, T = supported_mesh(fusion.extract_mesh(), engine.box.size_m, xyz, nframes, mcfg, weak)
     timings["mesh_s"] = time.perf_counter() - t1
+    glb_extras = {"frame": "object", "units": "m", "up": "+y", "provenance_classes": {"0": "measured", "1": "interpolated", "2": "estimated"}}
+    # The box is rectangular, the dish is not: the bare table caught in the corners is not part of the
+    # delivered model. The version with the table is kept beside it; nothing is added or closed.
+    dish_info = {"status": "no_mesh"}
+    if len(T):
+        dish_info = {"status": "nothing_to_remove"}
+        try:
+            fp = DishFootprint.from_vertices(V) if remove_table else None
+            keep_t = fp.keep(V)[T].all(1) if fp is not None else None
+            if keep_t is not None and 0 < keep_t.sum() < len(T):
+                write_glb(out_dir / "model_avec_table.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
+                removed = int((~keep_t).sum())
+                V, C, N, cls, T = crop_mesh(V, C, N, cls, T, keep_t)
+                kp = fp.keep(xyz)
+                xyz, rgb, pcls, nframes, weak = xyz[kp], rgb[kp], pcls[kp], nframes[kp], weak[kp]
+                glb_extras = {**glb_extras, "table_removed": True}
+                hull = fp.hull_xz()
+                (out_dir / "dish_footprint.json").write_text(json.dumps({
+                    "frame": "object", "units": "m", "table_y": fp.table_y, "top_y": float(V[:, 1].max()),
+                    "hull_xz": hull.tolist()}))
+                dish_info = {"status": "ok", "triangles": int(len(T)), "removed_triangles": removed, "table_y_m": fp.table_y}
+        except Exception as exc:
+            dish_info = {"status": "failed", "error": repr(exc)}
     completion = NoCompletion().propose(V, T, cls, engine.box.size_m)
     write_points_ply(out_dir / "points.ply", xyz, rgb, pcls, nframes)
     write_mesh_ply(out_dir / "mesh.ply", V, C, N, cls, T)
     tex_info = {"status": "not_requested"}
-    dish_info = {"status": "no_mesh"}
-    glb_extras = {"frame": "object", "units": "m", "up": "+y", "provenance_classes": {"0": "measured", "1": "interpolated", "2": "estimated"}}
     if len(T):
         if texture:
             emit({"type": "finish_progress", "step": "texture", "done": 0, "total": 1})
@@ -162,20 +184,6 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
         if tex_info["status"] != "ok":
             write_glb(out_dir / "model.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
         write_glb(out_dir / "model_vertexcolor.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
-        # Presentation variant: the dish alone, table removed. Same measured geometry, nothing added.
-        try:
-            keep_t = isolate_dish(V, T)
-            if 0 < keep_t.sum() < len(T):
-                used = np.unique(T[keep_t])
-                remap = -np.ones(len(V), np.int64)
-                remap[used] = np.arange(len(used))
-                write_glb(out_dir / "plat_seul.glb", V[used], remap[T[keep_t]].astype(np.uint32), N[used], colors=C[used],
-                          provenance=cls[used].astype(np.float32), extras={**glb_extras, "table_removed": True})
-                dish_info = {"status": "ok", "triangles": int(keep_t.sum()), "removed_triangles": int((~keep_t).sum())}
-            else:
-                dish_info = {"status": "nothing_to_remove"}
-        except Exception as exc:
-            dish_info = {"status": "failed", "error": repr(exc)}
     # Final inspectable geometry for the phone (decimated if needed).
     disp = (V, C, N, cls, T)
     if len(T) > 150000:

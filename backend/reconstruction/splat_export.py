@@ -60,9 +60,11 @@ def read_points_ply(path: Path):
     return xyz, rgb
 
 
-def box_mask(K, T_cam_from_obj, size, shape, grow_px):
+def box_mask(K, T_cam_from_obj, size, shape, grow_px, prism=None):
+    """White = part of the image that can show the scanned volume: the box, or, when the finishing step
+    found where the dish stands, the upright prism over its footprint (no bare table in the corners)."""
     h, w = shape
-    C = box_corners(size)
+    C = box_corners(size) if prism is None else prism
     pc = C @ T_cam_from_obj[:3, :3].T + T_cam_from_obj[:3, 3]
     mask = np.zeros((h, w), np.uint8)
     if (pc[:, 2] <= 0.02).any():   # a corner behind the camera: no reliable outline, keep the whole image
@@ -85,6 +87,12 @@ def export(sdir: Path, out: Path, max_width: int = 1280, final_dir: Path | None 
     refined = {}
     if (final_dir / "poses.json").exists():
         refined = {int(k): np.array(v, float).reshape(4, 4) for k, v in json.loads((final_dir / "poses.json").read_text())["T_object_from_cameraCV"].items()}
+    prism, footprint = None, None
+    if (final_dir / "dish_footprint.json").exists():
+        footprint = json.loads((final_dir / "dish_footprint.json").read_text())
+        hull = np.array(footprint["hull_xz"], float)
+        y0, y1 = footprint["table_y"] - 0.004, max(footprint["top_y"] + 0.01, footprint["table_y"] + 0.02)
+        prism = np.concatenate([np.stack([hull[:, 0], np.full(len(hull), y), hull[:, 1]], 1) for y in (y0, y1)])
     (out / "images").mkdir(parents=True, exist_ok=True)
     if masks:
         (out / "masks").mkdir(exist_ok=True)
@@ -114,7 +122,7 @@ def export(sdir: Path, out: Path, max_width: int = 1280, final_dir: Path | None 
         name = f"{fid:06d}"
         cv2.imwrite(str(out / "images" / f"{name}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
         if masks:
-            cv2.imwrite(str(out / "masks" / f"{name}.png"), box_mask(K, invert_rigid(T_o_cv), size, (h, w), int(mask_grow * w)))
+            cv2.imwrite(str(out / "masks" / f"{name}.png"), box_mask(K, invert_rigid(T_o_cv), size, (h, w), int(mask_grow * w), prism))
         frames.append({"file_path": f"images/{name}.jpg", "w": w, "h": h, "fl_x": float(K[0, 0]), "fl_y": float(K[1, 1]),
                        "cx": float(K[0, 2] + 0.5), "cy": float(K[1, 2] + 0.5),
                        "transform_matrix": (T_o_cv @ C_GL_FROM_CV).tolist()})
@@ -122,7 +130,8 @@ def export(sdir: Path, out: Path, max_width: int = 1280, final_dir: Path | None 
     if not frames:
         raise ValueError(f"No usable view in {sdir}")
     scene = {"camera_model": "OPENCV", "frames": frames,
-             "dishplay": {"frame": "object", "units": "m", "up": "+y", "box_size_m": list(size), "refined_poses": len(refined)}}
+             "dishplay": {"frame": "object", "units": "m", "up": "+y", "box_size_m": list(size), "refined_poses": len(refined),
+                          "footprint": footprint}}
     n_init = 0
     pts = final_dir / "points.ply"
     if pts.exists():

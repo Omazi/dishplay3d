@@ -19,13 +19,13 @@ from .coordinates import (inside_box, intrinsics_matrix, invert_rigid, mat4_from
                           scale_intrinsics, transform_points)
 from .consistency import DepthView, confirmed_depth, depth_scale_from_views, pick_neighbours
 from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
-from .mesh_preview import INTERPOLATED, MEASURED, MeshConfig, supported_mesh, surface_area
+from .mesh_preview import INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, supported_mesh, surface_area
 from .pair_selector import PairLimits, select_partners
 from .preview_format import encode_geometry
 from .stereo_depth import StereoParams, View, combine_depths, compute_pair_depth
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.2.0"
+ENGINE_VERSION = "p1-0.3.0"
 
 
 @dataclass
@@ -50,6 +50,7 @@ class EngineConfig:
     confirm_neighbours: int = 5
     # Baseline-length correction: each depth map is rescaled (one number) to agree with the views
     # already accepted, see consistency.depth_scale_from_views.
+    hide_table: bool = True      # the box is rectangular, a plate is not: bare table in the corners is not shown
     scale_to_views: bool = True
     scale_max_dev: float = 0.06
     scale_gain: float = 0.8
@@ -388,6 +389,16 @@ class SessionEngine:
         if want_mesh:
             mcfg = MeshConfig(**{**asdict(self.cfg.mesh), "max_triangles": self.cfg.max_snapshot_triangles})
             V, Cv, N, cls, T = supported_mesh(self.fusion.extract_mesh(), self.box.size_m, xyz, nframes, mcfg, weak)
+            table_hidden = False
+            if len(T) and self.cfg.hide_table:
+                fp = DishFootprint.from_vertices(V)
+                if fp is not None:
+                    keep_t = fp.keep(V)[T].all(1)
+                    if 0 < keep_t.sum() < len(T):
+                        V, Cv, N, cls, T = crop_mesh(V, Cv, N, cls, T, keep_t)
+                        kp = fp.keep(xyz)
+                        xyz, rgb, nframes, sup, pcls, weak = xyz[kp], rgb[kp], nframes[kp], sup[kp], pcls[kp], weak[kp]
+                        table_hidden = True
             if len(T):
                 verts, normals, tris = V, N, T
                 vrgbc = np.concatenate([Cv, cls[:, None]], 1)
@@ -418,6 +429,7 @@ class SessionEngine:
             "confirmed_points": int((pcls == MEASURED).sum()), "hidden_inconsistent_points": hidden, "surface": areas, "coverage": self.coverage(),
             "classes": {"0": "measured", "1": "interpolated", "2": "estimated", "3": "tracking", "4": "provisional_single_view"},
         }
+        header["table_hidden"] = bool(want_mesh and locals().get("table_hidden", False))
         header["compute_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         header.update(point_count=int(len(p_rgbc)), vertex_count=0 if verts is None else int(len(verts)),
                       triangle_count=0 if tris is None else int(len(tris)))

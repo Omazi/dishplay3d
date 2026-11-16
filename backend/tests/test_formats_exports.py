@@ -114,6 +114,23 @@ def test_isolate_dish_removes_table_keeps_low_plate_floor():
     assert not keep[rc > 0.125].any(), "the table around the plate is removed"
 
 
+def test_table_is_found_when_the_box_sits_a_few_millimetres_off():
+    """The box base is rarely exactly on the table: the table height is read from the data."""
+    from reconstruction.mesh_preview import DishFootprint
+    g = np.linspace(-0.15, 0.15, 61)
+    X, Z = np.meshgrid(g, g)
+    r = np.hypot(X, Z)
+    for offset in (-0.006, 0.0, 0.007):
+        Y = np.where((r > 0.08) & (r < 0.10), 0.02, np.where(r <= 0.08, 0.004, 0.0)) + offset
+        V = np.stack([X.ravel(), Y.ravel(), Z.ravel()], 1)
+        fp = DishFootprint.from_vertices(V)
+        assert fp is not None and abs(fp.table_y - offset) < 0.002
+        keep = fp.keep(V)
+        assert keep[r.ravel() < 0.07].all() and not keep[r.ravel() > 0.125].any()
+        hull = fp.hull_xz()
+        assert 0.09 < np.abs(hull).max() < 0.125, "the outline follows the round plate, not the square box"
+
+
 def test_splat_dataset_cameras_match_the_engine(tmp_path):
     """The Nerfstudio-format export, read back with the OpenGL convention, sees the box where the engine does."""
     import json

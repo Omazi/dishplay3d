@@ -95,7 +95,8 @@ def main():
     bj = box_json(size=BOX)
     (out / "session.json").write_text(json.dumps({"id": "bench", "box": bj, "device": {"platform": "synthetic", "model": "bench"}, "settings": {}}))
     clock = {"t": 0.0}
-    eng = SessionEngine(out, Box.from_json(bj), EngineConfig(), clock=lambda: clock["t"])
+    # The bench scores the table too (it is part of the ground truth): keep it in the output.
+    eng = SessionEngine(out, Box.from_json(bj), EngineConfig(hide_table=False), clock=lambda: clock["t"])
     t0 = time.perf_counter()
     last = None
     for i, (Tr, Tt) in enumerate(zip(rep, true)):
@@ -128,7 +129,7 @@ def main():
         from reconstruction.refinement import finish_session
         import open3d as o3d
         t1 = time.perf_counter()
-        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine)
+        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine, remove_table=False)
         res["pose_refinement"] = rep_final["pose_refinement"]
         gf = decode_geometry((out / "final" / "final_preview.dpg").read_bytes())
         res["final"] = metrics(sc, gf["verts"].astype(np.float64), gf["tris"], vis_pts, vis_mat, gf["vert_rgbc"][:, 3])

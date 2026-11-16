@@ -68,7 +68,8 @@ def load_dataset(path: Path, work: Path):
     if scene.get("ply_file_path") and (path / scene["ply_file_path"]).exists():
         init = read_point_ply(path / scene["ply_file_path"])
     box = scene.get("dishplay", {}).get("box_size_m")
-    return {"images": np.stack(images), "masks": np.stack(masks), "Ks": np.stack(Ks), "c2w": np.stack(c2ws).astype(np.float32),
+    footprint = scene.get("dishplay", {}).get("footprint")
+    return {"footprint": footprint, "images": np.stack(images), "masks": np.stack(masks), "Ks": np.stack(Ks), "c2w": np.stack(c2ws).astype(np.float32),
             "names": names, "box": box, "init": init}
 
 
@@ -294,16 +295,30 @@ def evaluate(data, params, c2w, Ks, poses, test_idx, sh_degree, rasterize, out: 
     return res
 
 
-def box_keep(means: torch.Tensor, box, margin: float = 0.01) -> torch.Tensor:
-    if not box:
-        return torch.ones(len(means), dtype=torch.bool, device=means.device)
-    return ((means[:, 0].abs() <= box[0] / 2 + margin) & (means[:, 2].abs() <= box[2] / 2 + margin)
-            & (means[:, 1] >= -margin) & (means[:, 1] <= box[1] + margin))
+def box_keep(means: torch.Tensor, box, margin: float = 0.01, footprint=None) -> torch.Tensor:
+    """Gaussians kept in the exported model: inside the scan box and, when the dish footprint is known,
+    inside the upright prism over it (the bare table in the corners of the box is left out)."""
+    keep = torch.ones(len(means), dtype=torch.bool, device=means.device)
+    if box:
+        keep &= ((means[:, 0].abs() <= box[0] / 2 + margin) & (means[:, 2].abs() <= box[2] / 2 + margin)
+                 & (means[:, 1] >= -margin) & (means[:, 1] <= box[1] + margin))
+    if footprint and len(footprint.get("hull_xz", [])) >= 3:
+        hull = torch.tensor(footprint["hull_xz"], dtype=means.dtype, device=means.device)
+        centre = hull.mean(0)
+        p = means[:, [0, 2]]
+        nxt = torch.roll(hull, -1, 0)
+        edge = nxt - hull                                             # [H,2]
+        rel = p[:, None, :] - hull[None]                              # [N,H,2]
+        cross = edge[None, :, 0] * rel[..., 1] - edge[None, :, 1] * rel[..., 0]
+        ref = edge[:, 0] * (centre - hull)[:, 1] - edge[:, 1] * (centre - hull)[:, 0]
+        inside = ((cross * torch.sign(ref)[None]) >= -margin * edge.norm(dim=1)[None]).all(1)
+        keep &= inside & (means[:, 1] >= footprint["table_y"] - 0.004)
+    return keep
 
 
 def export(data, params, sh_degree, rasterize, out: Path, device) -> dict:
     from gsplat import export_splats
-    keep = box_keep(params["means"], data["box"])
+    keep = box_keep(params["means"], data["box"], footprint=data.get("footprint"))
     p = {k: v[keep] for k, v in params.items()}
     export_splats(p["means"], p["scales"], p["quats"], p["opacities"], p["sh0"], p["shN"], format="ply", save_to=str(out / "splat.ply"))
     box = data["box"] or [0.3, 0.12, 0.3]
