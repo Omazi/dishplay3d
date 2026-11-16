@@ -29,21 +29,24 @@ struct ScannerView: View {
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: 0) {
-                ZStack(alignment: .top) {
+                ZStack {
                     ARViewContainer(arView: controller.ar.arView).ignoresSafeArea(edges: .top)
-                    VStack(spacing: 6) {
+                    VStack(spacing: 8) {
                         statusBar
                         if let g = guidanceText { banner(g) }
                         if let e = controller.errorText { banner(e, color: .red.opacity(0.85)) }
-                        Spacer()
+                        Spacer(minLength: 0)
                         controls
                     }
-                    .padding(8)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                 }
-                .frame(height: expanded ? geo.size.height * 0.25 : geo.size.height * 0.64)
+                .frame(height: expanded ? geo.size.height * 0.28 : geo.size.height * 0.62)
+                .clipped()
                 previewPanel.frame(maxHeight: .infinity)
             }
+            .background(Color.black)
         }
+        .preferredColorScheme(.dark)
         .onReceive(ticker) { now = $0 }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
     }
@@ -58,23 +61,35 @@ struct ScannerView: View {
         }
     }
 
+    private var calculatorLabel: (String, Color) {
+        if !controller.calculatorOnline { return ("PC injoignable", .red) }
+        return (controller.serverSessionID == nil ? "PC prêt" : "PC connecté", .green)
+    }
+
     private var statusBar: some View {
         let s = controller.status
         let t = trackingLabel
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                chip(t.0, t.1)
-                chip(controller.calculatorOnline ? "Calculateur connecté" : "Calculateur déconnecté",
-                     controller.calculatorOnline ? .green : .red)
-                if ar.lidarActive { chip("LiDAR", .blue) } else { chip("Stéréo", .purple) }
-            }
-            HStack(spacing: 6) {
-                chip("Vues : \(controller.savedFrames) (envoyées \(controller.sentFrames))", .gray)
-                chip("Angles : \(controller.scheduler.ring.visitedBins)/36", .gray)
-                if s.dropped > 0 { chip("Ignorées : \(s.dropped)", .gray) }
+        let c = calculatorLabel
+        return HStack(spacing: 10) {
+            dot(t.0, t.1)
+            dot(c.0, c.1)
+            Spacer(minLength: 4)
+            Text(ar.lidarActive ? "LiDAR" : "Stéréo").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            if controller.phase != .placing {
+                Label("\(controller.savedFrames)", systemImage: "camera.fill").font(.caption.monospacedDigit())
+                Label("\(controller.scheduler.ring.visitedBins)/36", systemImage: "circle.dashed").font(.caption.monospacedDigit())
+                if s.dropped > 0 { Label("\(s.dropped)", systemImage: "forward.fill").font(.caption.monospacedDigit()) }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private func dot(_ text: String, _ color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(text).font(.caption.weight(.semibold)).lineLimit(1)
+        }
     }
 
     private var guidanceText: String? {
@@ -88,7 +103,7 @@ struct ScannerView: View {
         case .finishing: return controller.finishText
         case .done: return controller.finishText
         case .scanning:
-            if !controller.calculatorOnline { return "Calculateur déconnecté : les vues restent sur l’iPhone et seront envoyées au retour du réseau. L’aperçu est figé." }
+            if !controller.calculatorOnline { return "PC injoignable : les vues restent sur l’iPhone et seront envoyées au retour du réseau. L’aperçu est figé." }
             switch controller.status.guidance {
             case .trackingLost?: return "Suivi perdu : reviens vers le plat lentement."
             case .trackingLimited?: return "Suivi limité : ralentis, garde la table dans l’image."
@@ -107,48 +122,64 @@ struct ScannerView: View {
     // MARK: controls
 
     @ViewBuilder private var controls: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             if box.placed && !box.locked {
-                VStack(spacing: 2) {
+                VStack(spacing: 4) {
                     dimSlider("Largeur", value: $box.width, range: 0.05...0.8)
                     dimSlider("Profondeur", value: $box.depth, range: 0.05...0.8)
                     dimSlider("Hauteur", value: $box.height, range: 0.01...0.4)
                 }
-                .padding(6).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
             }
-            HStack {
-                Button { model.screen = .connect } label: { Image(systemName: "chevron.left") }
-                    .buttonStyle(.bordered)
-                    .disabled(controller.phase == .scanning || controller.phase == .finishing)
+            HStack(spacing: 10) {
+                Button { model.screen = .connect } label: {
+                    Image(systemName: "chevron.left").font(.headline).frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .disabled(controller.phase == .scanning || controller.phase == .finishing)
                 Spacer()
                 switch controller.phase {
                 case .placing:
-                    Button("Démarrer") { controller.start() }.buttonStyle(.borderedProminent).disabled(!box.placed)
+                    primary("Démarrer", "record.circle") { controller.start() }.disabled(!box.placed).opacity(box.placed ? 1 : 0.45)
                 case .scanning:
-                    Button("Pause") { controller.pause() }.buttonStyle(.bordered)
-                    Button("Terminer") { controller.finish() }.buttonStyle(.borderedProminent)
+                    secondary("Pause", "pause.fill") { controller.pause() }
+                    primary("Terminer", "checkmark") { controller.finish() }
                 case .paused:
                     if box.locked {
-                        Button("Réviser la boîte") { controller.reviseBox() }.buttonStyle(.bordered)
-                        Button("Reprendre") { controller.resume() }.buttonStyle(.bordered)
-                        Button("Terminer") { controller.finish() }.buttonStyle(.borderedProminent)
+                        secondary("Boîte", "cube") { controller.reviseBox() }
+                        secondary("Reprendre", "play.fill") { controller.resume() }
+                        primary("Terminer", "checkmark") { controller.finish() }
                     } else {
-                        Button("Appliquer (recalcul)") { controller.applyBoxRevision() }.buttonStyle(.borderedProminent)
+                        primary("Appliquer (recalcul)", "arrow.triangle.2.circlepath") { controller.applyBoxRevision() }
                     }
                 case .needsNewBox:
-                    Button("Appliquer la nouvelle boîte") { controller.applyBoxRevision() }.buttonStyle(.borderedProminent).disabled(!box.placed)
+                    primary("Appliquer la nouvelle boîte", "cube") { controller.applyBoxRevision() }.disabled(!box.placed)
                 case .uploadingRest, .finishing:
-                    ProgressView()
+                    ProgressView().tint(.white).frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
                 case .done:
-                    Button("Exporter") { shareURL = controller.exportZip() }.buttonStyle(.borderedProminent)
+                    primary("Exporter", "square.and.arrow.up") { shareURL = controller.exportZip() }
                 }
             }
         }
     }
 
+    private func primary(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon).font(.headline).padding(.horizontal, 18).frame(height: 44)
+                .background(Color.accentColor, in: Capsule()).foregroundStyle(.white)
+        }
+    }
+
+    private func secondary(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon).font(.subheadline.weight(.semibold)).padding(.horizontal, 14).frame(height: 44)
+                .background(.ultraThinMaterial, in: Capsule()).foregroundStyle(.white)
+        }
+    }
+
     private func dimSlider(_ label: String, value: Binding<Float>, range: ClosedRange<Float>) -> some View {
         HStack {
-            Text(label).font(.caption).frame(width: 78, alignment: .leading)
+            Text(label).font(.caption.weight(.medium)).frame(width: 78, alignment: .leading)
             Slider(value: value, in: range)
             Text(String(format: "%.1f cm", value.wrappedValue * 100)).font(.caption.monospacedDigit()).frame(width: 60)
         }
@@ -157,33 +188,56 @@ struct ScannerView: View {
     // MARK: preview
 
     private var previewPanel: some View {
-        ZStack(alignment: .topLeading) {
-            PreviewView(renderer: controller.preview)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reconstructionLabel).font(.caption.bold())
-                Text(geometryLine).font(.caption2.monospacedDigit())
-                Text("Gris = suivi ARKit (non reconstruit) · terne = vue unique · bleuté = interpolé").font(.caption2).foregroundStyle(.secondary)
-            }
-            .padding(6).background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(.white).padding(6)
-            VStack {
-                HStack {
-                    Spacer()
-                    Picker("", selection: $mode) { ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) } }
-                        .pickerStyle(.segmented).frame(width: 210)
-                        .onChange(of: mode) { _, m in controller.preview.mode = m }
-                    Button { expanded.toggle() } label: { Image(systemName: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") }
-                        .buttonStyle(.bordered)
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reconstructionLabel).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                    if controller.lastGeometry != nil {
+                        Text(geometryLine).font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(2)
+                    }
                 }
-                Spacer()
+                Spacer(minLength: 4)
+                Button { withAnimation { expanded.toggle() } } label: {
+                    Image(systemName: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        .font(.subheadline.weight(.semibold)).frame(width: 36, height: 36).background(Color.white.opacity(0.1), in: Circle())
+                }
             }
-            .padding(6)
+            .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
+            ZStack {
+                PreviewView(renderer: controller.preview)
+                if controller.lastGeometry == nil {
+                    VStack(spacing: 8) {
+                        Image(systemName: "circle.hexagongrid").font(.system(size: 34)).foregroundStyle(.secondary)
+                        Text(emptyPreviewText).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 30).allowsHitTesting(false)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, 10)
+            VStack(spacing: 6) {
+                Picker("", selection: $mode) { ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) } }
+                    .pickerStyle(.segmented)
+                    .onChange(of: mode) { _, m in controller.preview.mode = m }
+                Text("Gris : repères de suivi (non reconstruits) · terne : vu une seule fois · bleuté : interpolé")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
         }
-        .background(Color(white: 0.13))
+        .background(Color(white: 0.09))
+    }
+
+    private var emptyPreviewText: String {
+        switch controller.phase {
+        case .placing: return "Le nuage de points du plat apparaîtra ici, puis sa surface, pendant que tu tournes autour."
+        default: return controller.calculatorOnline ? "Calcul des premières vues… continue de tourner lentement."
+            : "PC injoignable : les vues sont gardées sur l’iPhone et l’aperçu reprendra au retour du réseau."
+        }
     }
 
     private var reconstructionLabel: String {
         guard let g = controller.lastGeometry else {
-            return controller.phase == .placing ? "Aperçu : points de suivi seulement" : "En attente du premier nuage reconstruit…"
+            return controller.phase == .placing ? "Aperçu 3D" : "En attente du premier nuage…"
         }
         switch g.kind {
         case "points": return "Nuage reconstruit (provisoire) v\(g.version)"
@@ -209,8 +263,9 @@ struct ScannerView: View {
     }
 
     private func banner(_ text: String, color: Color = .black.opacity(0.6)) -> some View {
-        Text(text).font(.callout).multilineTextAlignment(.center).padding(8).frame(maxWidth: .infinity)
-            .background(color, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
+        Text(text).font(.subheadline.weight(.medium)).multilineTextAlignment(.center)
+            .padding(.horizontal, 14).padding(.vertical, 10).frame(maxWidth: .infinity)
+            .background(color, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.white)
     }
 }
 

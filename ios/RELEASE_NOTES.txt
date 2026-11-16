@@ -1,4 +1,4 @@
-DishPlay Scan 1.0.1
-- Jumelage : étape en cours visible (contact du calculateur, envoi du code), erreur affichée en rouge avec son code exact, bouton vers Réglages › Réseau local.
-- Délai d'attente du jumelage ramené à 8 s.
-Rappel : démarrer le calculateur sur le PC (même Wi‑Fi), puis scanner son QR avec l'appareil photo.
+DishPlay Scan 1.0.2
+- Écran du scanner refait : barre d'état compacte, boutons plus lisibles, panneau d'aperçu sans chevauchement de texte.
+- L'état du PC est vérifié avant « Démarrer » (« PC prêt » / « PC injoignable ») au lieu d'afficher « déconnecté » à tort.
+- Jumelage : étape en cours visible et erreurs explicites (1.0.1).

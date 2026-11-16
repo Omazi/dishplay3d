@@ -46,6 +46,20 @@ final class ScanController: ObservableObject {
         transport.onEvent = { [weak self] ev in Task { @MainActor in self?.handle(ev) } }
         transport.onSocketState = { [weak self] up in Task { @MainActor in self?.calculatorOnline = up } }
         ar.start(useLidar: useLidar)
+        startReachabilityLoop()
+    }
+
+    /// Before a session exists there is no event socket: ping the calculator so the status chip is truthful.
+    private func startReachabilityLoop() {
+        Task { [weak self] in
+            while let self, !Task.isCancelled {
+                if self.serverSessionID == nil {
+                    let ok = (try? await self.transport.health()) != nil
+                    if self.serverSessionID == nil { self.calculatorOnline = ok }
+                }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
     }
 
     var lidarActive: Bool { ar.lidarActive }
