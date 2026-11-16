@@ -29,7 +29,7 @@ struct LibraryView: View {
                         LazyVGrid(columns: columns, spacing: 14) {
                             ForEach(dishes) { dish in
                                 NavigationLink(value: dish) {
-                                    DishCard(dish: dish)
+                                    DishCard(dish: dish, progress: model.dishProgress[dish.id])
                                 }
                                 .buttonStyle(PressableStyle())
                                 .modifier(ZoomSource(id: dish.id, namespace: zoom))
@@ -38,7 +38,7 @@ struct LibraryView: View {
                         .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
                     }
                     .refreshable {
-                        _ = await model.collectResults()
+                        _ = await model.refreshDishProgress()
                         reload()
                     }
                 }
@@ -58,7 +58,11 @@ struct LibraryView: View {
         }
         .onAppear(perform: reload)
         .task {
-            if await model.collectResults() { reload() }
+            // While this tab is on screen, keep asking the calculator where the unfinished dishes stand.
+            while !Task.isCancelled {
+                if await model.refreshDishProgress() { reload() }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+            }
         }
     }
 
@@ -68,6 +72,7 @@ struct LibraryView: View {
 /// One dish in a grid or a carousel.
 struct DishCard: View {
     let dish: DishRecord
+    var progress: AppModel.DishProgress?
     @State private var picture: UIImage?
 
     var body: some View {
@@ -88,7 +93,11 @@ struct DishCard: View {
                 Text(dish.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
                 HStack(spacing: 6) {
                     Circle().fill(stateColour).frame(width: 7, height: 7)
-                    Text(stateText).font(.caption).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    Text(progress?.text ?? stateText).font(.caption).foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+                if let fraction = progress?.fraction {
+                    ProgressView(value: fraction).tint(Theme.accent)
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
@@ -97,12 +106,12 @@ struct DishCard: View {
         .background(Color.white.opacity(0.07))
         .clipShape(.rect(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.white.opacity(0.09)))
-        .task(id: dish.id) {
+        .task(id: dish.id + (dish.state == .ready ? "-ready" : "")) {
             let d = dish
             picture = await Task.detached(priority: .utility) { DishLibrary.thumbnail(for: d) }.value
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(dish.name), \(stateText)")
+        .accessibilityLabel("\(dish.name), \(progress?.text ?? stateText)")
     }
 
     private var stateText: String {

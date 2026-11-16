@@ -13,7 +13,6 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         computerCard
-                        if model.pendingScan != nil || model.pendingText != nil { PendingScanCard() }
                         if model.lidarSupported || !model.trackingSupported { deviceCard }
                         measureCard
                         Text("DishPlay Scan \(version)")

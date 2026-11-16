@@ -91,6 +91,11 @@ class ScanClient:
         r.raise_for_status()
         return decode_geometry(r.content)
 
+    def session(self, sid) -> dict:
+        r = self.http.get(f"/sessions/{sid}", headers=self._h())
+        r.raise_for_status()
+        return r.json()
+
     def download(self, sid, name, dest: Path):
         r = self.http.get(f"/sessions/{sid}/artifacts/{name}", headers=self._h())
         r.raise_for_status()

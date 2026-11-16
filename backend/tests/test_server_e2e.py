@@ -138,6 +138,8 @@ def test_full_loop_progressive_then_finish(server, tmp_path):
     art = lis.of("artifacts")[0]
     for name in ("model.glb", "points.ply", "mesh.ply", "report.json", "manifest.json", "final_preview.dpg"):
         assert name in art["files"]
+    info = cl.session(sid)
+    assert info["ready"] is True and info["busy_with_other"] is False
     cl.download(sid, "report.json", tmp_path / "report.json")
     rep = json.loads((tmp_path / "report.json").read_text())
     assert abs(rep["scale_check"]["error_pct"]) < 5.0

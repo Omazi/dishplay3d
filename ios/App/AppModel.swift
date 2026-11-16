@@ -76,24 +76,95 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Dishes whose calculation was started but whose model is not on the iPhone yet (the scanner screen
-    /// was closed, or the app was): ask the calculator and download what is ready. Returns true if
-    /// at least one dish received its model.
-    func collectResults() async -> Bool {
-        guard let t = transport else { return false }
+    /// Where an unfinished dish stands, in words for the library.
+    struct DishProgress: Equatable {
+        var text: String
+        var fraction: Double?
+        var canComplete: Bool
+    }
+
+    @Published private(set) var dishProgress: [String: DishProgress] = [:]
+    @Published private(set) var completingDish: String?
+
+    /// Ask the calculator about every dish without a model. Returns true when a model was downloaded.
+    func refreshDishProgress() async -> Bool {
         var received = false
-        for dish in DishLibrary.all() where dish.state == .processing {
-            guard let data = try? Data(contentsOf: dish.root.appendingPathComponent("server_session.txt")),
-                  let sid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !sid.isEmpty,
-                  let files = try? await t.artifacts(sessionID: sid), files.contains("manifest.json"),
-                  let store = try? SessionStore(resuming: dish.id) else { continue }
-            for name in ["final_preview.dpg", "apercu.png", "model.glb", "report.json"] where files.contains(name) {
-                if let d = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: d)) != nil {
-                    received = true
+        var next: [String: DishProgress] = [:]
+        for dish in DishLibrary.all() where dish.state != .ready {
+            if completingDish == dish.id, let current = dishProgress[dish.id] { next[dish.id] = current; continue }
+            guard let sid = dish.serverSessionID else {
+                next[dish.id] = DishProgress(text: "Jamais envoyé au calculateur", fraction: nil, canComplete: false)
+                continue
+            }
+            guard let t = transport else {
+                next[dish.id] = DishProgress(text: "Calculateur non relié", fraction: nil, canComplete: false)
+                continue
+            }
+            do {
+                let info = try await t.sessionInfo(sessionID: sid)
+                if info.ready {
+                    if await download(dish: dish, sessionID: sid, transport: t) { received = true }
+                } else if let done = info.done, let total = info.total, total > 1 {
+                    let names = ["poses": "Recalage des vues", "depth": "Calcul du modèle", "neural": "Rendu neuronal"]
+                    let stepKey = info.step ?? "depth"
+                    let stepName = names[stepKey] ?? "Calcul du modèle"
+                    next[dish.id] = DishProgress(text: "\(stepName) · \(done)/\(total)",
+                                                 fraction: min(1, Double(done) / Double(total)), canComplete: false)
+                } else if info.active && info.state == "finishing" {
+                    next[dish.id] = DishProgress(text: "Calcul du modèle en cours…", fraction: nil, canComplete: false)
+                } else if info.busyWithOther {
+                    next[dish.id] = DishProgress(text: "En attente : un autre plat est en cours de calcul", fraction: nil, canComplete: false)
+                } else if dish.pendingViews > 0 {
+                    next[dish.id] = DishProgress(text: "\(dish.pendingViews) vues à envoyer", fraction: nil, canComplete: true)
+                } else {
+                    next[dish.id] = DishProgress(text: "Calcul arrêté", fraction: nil, canComplete: true)
                 }
+            } catch let TransportError.http(code, _) where code == 404 {
+                next[dish.id] = DishProgress(text: "Inconnu du calculateur", fraction: nil, canComplete: false)
+            } catch {
+                next[dish.id] = DishProgress(text: "Calculateur injoignable", fraction: nil, canComplete: false)
             }
         }
+        if next != dishProgress { dishProgress = next }
         return received
+    }
+
+    /// Send the views still on the iPhone, then start (or restart) the final calculation for this dish.
+    func complete(_ dish: DishRecord) async {
+        guard completingDish == nil, let t = transport, let sid = dish.serverSessionID else { return }
+        completingDish = dish.id
+        defer { completingDish = nil }
+        func say(_ text: String, _ fraction: Double? = nil) { dishProgress[dish.id] = DishProgress(text: text, fraction: fraction, canComplete: false) }
+        do {
+            let store = try SessionStore(resuming: dish.id)
+            say("Réouverture du scan sur le calculateur…")
+            try await t.post("sessions/\(sid)/resume_worker")
+            let total = store.pendingCount
+            var sent = 0
+            while let fid = store.nextPending() {
+                let env = try store.envelope(frameID: fid, serverSessionID: sid)
+                try await t.putFrame(sessionID: sid, frameID: fid, envelope: env)
+                store.markSent(fid)
+                sent += 1
+                say("Envoi des vues \(sent)/\(total)", Double(sent) / Double(max(total, 1)))
+            }
+            try await t.post("sessions/\(sid)/finish")
+            store.markFinishRequested()
+            say("Calcul du modèle lancé…")
+        } catch let TransportError.http(code, _) where code == 409 {
+            dishProgress[dish.id] = DishProgress(text: "Un autre plat est en cours de calcul. Réessayez quand il sera terminé.", fraction: nil, canComplete: true)
+        } catch {
+            dishProgress[dish.id] = DishProgress(text: Self.explain(error), fraction: nil, canComplete: true)
+        }
+    }
+
+    private func download(dish: DishRecord, sessionID sid: String, transport t: ScanTransport) async -> Bool {
+        guard let files = try? await t.artifacts(sessionID: sid), let store = try? SessionStore(resuming: dish.id) else { return false }
+        var got = false
+        for name in ["final_preview.dpg", "apercu.png", "model.glb", "report.json"] where files.contains(name) {
+            if let d = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: d)) != nil { got = true }
+        }
+        return got
     }
 
     var lidarSupported: Bool { ARSessionController.lidarSupported }

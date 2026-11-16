@@ -108,6 +108,26 @@ final class ScanTransport: NSObject, @unchecked Sendable {
         try await send(request(path.hasPrefix("/") ? String(path.dropFirst()) : path))
     }
 
+    /// What the calculator says about one session: finished, being calculated (and how far), or stopped.
+    struct SessionInfo {
+        var state: String
+        var active: Bool
+        var ready: Bool
+        var busyWithOther: Bool
+        var step: String?
+        var done: Int?
+        var total: Int?
+    }
+
+    func sessionInfo(sessionID: String) async throws -> SessionInfo {
+        let d = try await send(request("sessions/\(sessionID)"))
+        let o = (try JSONSerialization.jsonObject(with: d) as? [String: Any]) ?? [:]
+        let p = o["progress"] as? [String: Any]
+        return SessionInfo(state: o["state"] as? String ?? "", active: o["active"] as? Bool ?? false,
+                           ready: o["ready"] as? Bool ?? false, busyWithOther: o["busy_with_other"] as? Bool ?? false,
+                           step: p?["step"] as? String, done: p?["done"] as? Int, total: p?["total"] as? Int)
+    }
+
     func artifacts(sessionID: String) async throws -> [String] {
         let d = try await send(request("sessions/\(sessionID)/artifacts"))
         return (try JSONSerialization.jsonObject(with: d) as? [String: Any])?["files"] as? [String] ?? []

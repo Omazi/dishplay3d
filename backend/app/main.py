@@ -80,6 +80,7 @@ class ActiveSession:
         self.sockets: set[WebSocket] = set()
         self.last_geometry: dict | None = None
         self.last_status: dict | None = None
+        self.last_progress: dict | None = None   # latest finish_progress: where the final calculation stands
         self.state = "capturing"
 
 
@@ -142,6 +143,8 @@ class Server:
                     a.last_geometry = ev
                 if ev["type"] == "status":
                     a.last_status, a.state = ev, ev["state"]
+                if ev["type"] == "finish_progress":
+                    a.last_progress = {k: ev.get(k) for k in ("step", "done", "total")}
                 if self.loop:
                     asyncio.run_coroutine_threadsafe(self._broadcast(a, ev), self.loop)
 
@@ -222,11 +225,21 @@ def create_app(server: Server) -> FastAPI:
         for f in frames:
             counts[f[4]] = counts.get(f[4], 0) + 1
         a = server.active if server.active and server.active.sid == sid else None
-        return {**s, "frames": counts, "active": a is not None, "last_geometry": a.last_geometry if a else None}
+        ready = (server.store.session_dir(s["id"]) / "final" / "manifest.json").exists()
+        # `progress` and `busy_with_other` let the phone say where a calculation stands, or why it is not moving.
+        other = server.active is not None and server.active.sid != sid and server.active.state == "finishing"
+        return {**s, "frames": counts, "active": a is not None, "last_geometry": a.last_geometry if a else None,
+                "ready": ready, "progress": a.last_progress if a and a.state == "finishing" else None, "busy_with_other": other}
 
     @app.post("/sessions/{sid}/resume_worker")
     def resume_worker(sid: str, _=Depends(auth)):
         s = require_session(sid)
+        a = server.active
+        if a is not None and a.sid == sid and a.proc.is_alive():
+            return {"ok": True, "note": "already active"}
+        if a is not None and a.sid != sid and a.state == "finishing" and a.proc.is_alive():
+            # One calculation at a time: reopening another session would kill the one being finished.
+            raise HTTPException(409, "another session is being finished")
         server.start_worker(sid, s["box"], s["settings"], resume=True)
         return {"ok": True}
 

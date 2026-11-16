@@ -15,6 +15,12 @@ struct DishRecord: Identifiable, Hashable {
     let model: URL?
     /// The final model in the app's own format, shown turning in the dish screen.
     let geometry: URL?
+    /// One of the captured views, so that a dish always has a face, even before its model exists.
+    let photo: URL?
+    /// Views not yet received by the calculator.
+    let pendingViews: Int
+    /// The calculator's name for this scan; nil when the scan never reached it.
+    let serverSessionID: String?
 }
 
 /// Reads the dishes from the session folders. Several dishes can be scanned one after another; each keeps
@@ -34,7 +40,12 @@ enum DishLibrary {
             let hasPicture = fm.fileExists(atPath: picture.path)
             let hasModel = fm.fileExists(atPath: model.path)
             let frameNames = (try? fm.contentsOfDirectory(atPath: root.appendingPathComponent("frames").path)) ?? []
-            let frames = frameNames.filter { $0.hasSuffix(".jpg") }.count
+            let jpegs = frameNames.filter { $0.hasSuffix(".jpg") }.sorted()
+            let frames = jpegs.count
+            let sent = frameNames.filter { $0.hasSuffix(".sent") }.count
+            let photo = jpegs.isEmpty ? nil : root.appendingPathComponent("frames").appendingPathComponent(jpegs[jpegs.count / 3])
+            let sid = (try? String(contentsOf: root.appendingPathComponent("server_session.txt"), encoding: .utf8))?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let abandoned = fm.fileExists(atPath: root.appendingPathComponent("abandoned").path)
             let ready = hasPicture || hasModel
             if !ready && (abandoned || frames == 0) { continue }
@@ -52,7 +63,8 @@ enum DishLibrary {
             let name = (stored?.isEmpty == false) ? stored! : defaultName(date)
             out.append(DishRecord(id: id, root: root, name: name, date: date, state: state, frames: frames,
                                   picture: hasPicture ? picture : nil, model: hasModel ? model : nil,
-                                  geometry: hasGeometry ? geometry : nil))
+                                  geometry: hasGeometry ? geometry : nil, photo: photo, pendingViews: max(0, frames - sent),
+                                  serverSessionID: (sid?.isEmpty == false) ? sid : nil))
         }
         return out
     }
@@ -87,10 +99,22 @@ enum DishLibrary {
 
     private static let cache = NSCache<NSString, UIImage>()
 
-    /// The result picture holds four views of the model; the card shows the first one.
+    /// A captured view, turned upright (the camera sensor is landscape while the phone is held upright).
+    static func photo(for dish: DishRecord, maxSide: CGFloat = 900) -> UIImage? {
+        guard let url = dish.photo, let image = UIImage(contentsOfFile: url.path), let cg = image.cgImage else { return nil }
+        let upright = UIImage(cgImage: cg, scale: 1, orientation: .right)
+        let scale = min(1, maxSide / max(upright.size.width, upright.size.height))
+        let size = CGSize(width: upright.size.width * scale, height: upright.size.height * scale)
+        return UIGraphicsImageRenderer(size: size).image { _ in upright.draw(in: CGRect(origin: .zero, size: size)) }
+    }
+
+    /// The result picture holds four views of the model; the card shows the first one. Without a result
+    /// yet, the card shows one of the captured views.
     static func thumbnail(for dish: DishRecord) -> UIImage? {
         if let hit = cache.object(forKey: dish.id as NSString) { return hit }
-        guard let url = dish.picture, let image = UIImage(contentsOfFile: url.path), let cg = image.cgImage else { return nil }
+        guard let url = dish.picture, let image = UIImage(contentsOfFile: url.path), let cg = image.cgImage else {
+            return photo(for: dish, maxSide: 420)   // not cached: replaced by the model picture when it arrives
+        }
         let w = cg.width / 2, h = cg.height / 2
         let top = min(24, h / 8)   // skip the caption line at the top of the sheet
         guard w > 8, h > 8, let cropped = cg.cropping(to: CGRect(x: 0, y: top, width: w, height: h - top)) else { return image }

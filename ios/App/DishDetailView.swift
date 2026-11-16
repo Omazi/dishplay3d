@@ -5,6 +5,7 @@ import SwiftUI
 struct DishDetailView: View {
     let dish: DishRecord
     let changed: () -> Void
+    @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var picture: UIImage?
@@ -27,6 +28,7 @@ struct DishDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     preview
+                    if dish.state != .ready && !modelShown { unfinished }
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Nom du plat").font(.footnote).foregroundStyle(.white.opacity(0.6))
                         TextField("Nom du plat", text: $name)
@@ -50,15 +52,12 @@ struct DishDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear(perform: save)
         .task {
-            if let url = dish.geometry, let data = try? Data(contentsOf: url), let geometry = try? PreviewGeometry.decode(data) {
-                renderer.followPhone = false
-                renderer.mode = mode
-                renderer.show(geometry)
-                modelShown = true
-                return
-            }
-            let url = dish.picture
-            picture = await Task.detached(priority: .userInitiated) { url.flatMap { UIImage(contentsOfFile: $0.path) } }.value
+            if showModel(of: dish) { return }
+            let d = dish
+            picture = await Task.detached(priority: .userInitiated) {
+                d.picture.flatMap { UIImage(contentsOfFile: $0.path) } ?? DishLibrary.photo(for: d)
+            }.value
+            _ = await model.refreshDishProgress()
         }
         .sheet(item: $exportURL) { url in ShareSheet(items: [url]) }
         .confirmationDialog("Supprimer ce plat de l’iPhone ?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -87,8 +86,9 @@ struct DishDetailView: View {
             }
         } else if let picture {
             Image(uiImage: picture).resizable().scaledToFit()
+                .frame(maxWidth: .infinity).frame(maxHeight: 420)
                 .clipShape(.rect(cornerRadius: 22))
-                .accessibilityLabel("Quatre vues du modèle 3D")
+                .accessibilityLabel(dish.state == .ready ? "Quatre vues du modèle 3D" : "Une des vues prises pendant le scan")
         } else {
             VStack(spacing: 10) {
                 Image(systemName: dish.state == .ready ? "cube" : "hourglass").font(.system(size: 44)).foregroundStyle(.white.opacity(0.4))
@@ -98,6 +98,41 @@ struct DishDetailView: View {
             }
             .frame(maxWidth: .infinity).frame(height: 220)
             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22))
+        }
+    }
+
+    /// A dish without its model yet: where it stands, and the button that finishes it.
+    private var unfinished: some View {
+        let progress = model.dishProgress[dish.id]
+        return VStack(alignment: .leading, spacing: 12) {
+            Label(progress?.text ?? "Vérification auprès du calculateur…", systemImage: "hourglass")
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            if let fraction = progress?.fraction {
+                ProgressView(value: fraction).tint(Theme.accent)
+            }
+            if progress?.canComplete == true {
+                PrimaryButton(title: "Terminer ce plat", icon: "checkmark", enabled: model.completingDish == nil) {
+                    Task {
+                        await model.complete(dish)
+                        changed()
+                    }
+                }
+                Text("Les vues restantes sont envoyées, puis le calculateur construit le modèle.")
+                    .font(.footnote).foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        .task {
+            while !Task.isCancelled {
+                if await model.refreshDishProgress() {
+                    changed()
+                    // The model has just arrived: show it here without leaving the screen.
+                    if let fresh = DishLibrary.all().first(where: { $0.id == dish.id }) { showModel(of: fresh) }
+                }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+            }
         }
     }
 
@@ -134,6 +169,16 @@ struct DishDetailView: View {
             }
         }
         .buttonStyle(PressableStyle())
+    }
+
+    /// Put the dish's final model in the 3D viewer, if it is on the iPhone.
+    @discardableResult private func showModel(of record: DishRecord) -> Bool {
+        guard let url = record.geometry, let data = try? Data(contentsOf: url), let geometry = try? PreviewGeometry.decode(data) else { return false }
+        renderer.followPhone = false
+        renderer.mode = mode
+        renderer.show(geometry)
+        modelShown = true
+        return true
     }
 
     private func save() {
