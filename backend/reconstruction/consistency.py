@@ -109,3 +109,51 @@ def pick_neighbours(ref: DepthView, cache: list[DepthView], max_n: int = 5, min_
             cand.append((b, o))
     cand.sort(key=lambda t: (t[0], t[1].frame_id))
     return [o for _, o in cand[:max_n]]
+
+
+def depth_scale_from_views(ref: DepthView, others: list[DepthView], max_dev: float = 0.06, min_samples: int = 1500,
+                           step: int = 3) -> tuple[float, int] | None:
+    """Scale of the reference depth map that best agrees with already accepted views.
+
+    The depth of a stereo pair is proportional to the length of its baseline, and that length comes
+    from the tracker: an error of 1 mm on a 35 mm baseline moves the whole depth map by 3 %, i.e.
+    about a centimetre at arm's length. The direction of the rays is not affected. So the surfaces
+    seen by the other views are projected into the reference view and the median ratio
+    (their depth along the reference rays) / (reference depth) is returned, with the sample count.
+    One number per view: nothing can slide along a plane or around a round dish, unlike a full ICP.
+    """
+    if not others:
+        return None
+    Tinv = invert_rigid(ref.T_obj_from_cam)
+    h, w = ref.depth.shape
+    K = ref.K
+    ratios = []
+    for o in others:
+        sub = o.depth[::step, ::step]
+        vs, us = np.nonzero(sub > 0)
+        if len(vs) == 0:
+            continue
+        z = sub[vs, us].astype(np.float64)
+        vs, us = vs * step, us * step
+        pc = np.stack([(us - o.K[0, 2]) / o.K[0, 0] * z, (vs - o.K[1, 2]) / o.K[1, 1] * z, z], 1)
+        po = pc @ o.T_obj_from_cam[:3, :3].T + o.T_obj_from_cam[:3, 3]
+        q = po @ Tinv[:3, :3].T + Tinv[:3, 3]
+        zq = q[:, 2]
+        ok = zq > 0.03
+        ui = np.round(q[ok, 0] / zq[ok] * K[0, 0] + K[0, 2]).astype(np.int64)
+        vi = np.round(q[ok, 1] / zq[ok] * K[1, 1] + K[1, 2]).astype(np.int64)
+        zq = zq[ok]
+        inside = (ui >= 0) & (ui < w) & (vi >= 0) & (vi < h)
+        d = ref.depth[vi[inside], ui[inside]].astype(np.float64)
+        seen = d > 0
+        ratios.append(zq[inside][seen] / d[seen])
+    if not ratios:
+        return None
+    r = np.concatenate(ratios)
+    centre = 1.0
+    for dev in (max_dev, max_dev / 2):   # second pass re-centred: a large error is not pulled back towards 1
+        sel = r[np.abs(r - centre) <= dev]
+        if len(sel) < min_samples:
+            return None
+        centre = float(np.median(sel))
+    return centre, int(len(sel))

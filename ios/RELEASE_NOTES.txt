@@ -1,6 +1,6 @@
-DishPlay Scan 1.4.0 — finition de l'interface
-- Boîte redessinée : coins lumineux, arêtes fines, poignées blanches identiques.
-- Pendant le placement, l'aperçu 3D se replie pour laisser la place à la caméra ; il s'ouvre au démarrage du scan.
-- Vibrations légères : boîte posée, poignée saisie, nouveau côté couvert, tour complet, modèle prêt.
-- Le bouton « Terminer » devient vert quand le tour est complet.
-- Barre de progression pendant la finition.
+DishPlay Scan 1.4.1 — pause plus claire
+- Modifier la boîte en pause : nouveau bouton « Annuler » (rien n'est recalculé).
+- Boutons de pause plus lisibles : « Boîte », reprendre, « Terminer ».
+- Aperçu 3D agrandi : la carte de consignes se retire pour laisser voir la caméra.
+- Bouton « Démarrer le scan » lisible sur une table claire.
+- Côté calculateur (mettre le PC à jour) : surface moins froissée, moins de points flottants.

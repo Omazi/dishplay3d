@@ -27,6 +27,7 @@ final class ScanController: ObservableObject {
     /// Every side seen and enough high views: the user may finish.
     @Published private(set) var tourComplete = false
     private var lastVisitedBins = 0
+    private var revisionBackup: BoundingBoxController.Saved?
 
     let ar = ARSessionController()
     let box = BoundingBoxController()
@@ -150,13 +151,23 @@ final class ScanController: ObservableObject {
             box.adopt(anchorTransform: a)
         }
         ar.setBoxAnchor(nil)
+        revisionBackup = box.save()
         box.locked = false
+    }
+
+    /// Leave the box edit without changing anything: same box, no recalculation.
+    func cancelBoxRevision() {
+        guard phase == .paused, !box.locked, let saved = revisionBackup else { return }
+        box.restore(saved)
+        lockBox()   // frozenFromLive was set by reviseBox, so the frozen box is exactly the previous one
+        revisionBackup = nil
     }
 
     func applyBoxRevision() {
         guard box.placed else { return }
         if phase == .needsNewBox { frozenFromLive = .identity }  // new tracking world: nothing to keep aligned
         boxRevision += 1
+        revisionBackup = nil
         lockBox()
         let spec = boxSpec()
         if let sid = serverSessionID { Task { try? await transport.postBox(sessionID: sid, box: spec) } }

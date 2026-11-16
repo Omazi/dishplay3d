@@ -125,6 +125,46 @@ Rien de ceci n'est vérifié sur un vrai plat.
 | 6 | Texture finale jamais vérifiée | **2 défauts trouvés et corrigés** | (a) la texture était retournée verticalement dans le GLB (convention glTF) ; (b) ~30 % de la surface restait noire. Désormais 36 vues projetées, zones non couvertes remplies par la couleur fusionnée ; contrôle automatique : < 0,1 % de noir, erreur de couleur moyenne ≈ 11/255 lue comme un visualiseur glTF. |
 | 7 | Aucun réglage sur données réelles | **outillé, en attente** | `tools/pack_session.py` produit un zip compact (≈ 6 Mo pour 110 vues) rejouable tel quel ; `final/apercu.png` écrit à chaque finition. |
 
+## Mise à jour du 16 novembre (après le deuxième scan réel) — surface froissée, points flottants
+
+Constat sur les captures d'écran de l'utilisateur (assiette à motifs sur parquet, aperçu en direct, 120 vues) :
+forme reconnaissable (rebord, creux, tache de sauce) mais surface froissée partout, y compris sur le parquet pourtant
+bien texturé, et points bleus flottants au-dessus du plat. Je n'ai pas les données de cette session, seulement les images.
+
+Hypothèse testée : un petit bruit indépendant d'une vue à l'autre sur les positions données par le suivi
+(`tools/bench_quality.py --jitter-mm 0.6 --jitter-deg 0.06`). Il reproduit le défaut sur le banc. Cause mesurée : la
+profondeur d'une paire est proportionnelle à la longueur de sa base ; 0,85 mm d'erreur sur 35 mm déplace toute la carte
+de profondeur de ~2,4 %, soit ~8 mm à 33 cm. **L'amplitude réelle du bruit ARKit n'est pas connue** : ce niveau est un
+choix qui reproduit l'aspect observé, pas une mesure sur l'iPhone.
+
+Corrections (moteur `p1-0.2.0`, 40 tests passés) :
+1. `consistency.depth_scale_from_views` : chaque carte de profondeur est remise à l'échelle (un seul nombre) pour
+   s'accorder avec les vues voisines déjà acceptées, à 80 % seulement pour que l'échelle moyenne reste celle du suivi.
+2. Lissage de Taubin (10 itérations, positions seulement) du maillage d'aperçu et du maillage final.
+3. Les points affichés à plus de 3 mm de la surface fusionnée sont masqués (comptés dans `hidden_inconsistent_points`,
+   conservés dans `points.ply`).
+
+| Banc, bol synthétique, 110 vues | Avant | Après |
+|---|---|---|
+| **Aperçu en direct, avec bruit de pose** — surface couverte | 61,9 % | 71,2 % |
+| — bord du bol reconstruit | 26,2 % | 81,6 % |
+| — parois du bol | 38,5 % | 50,9 % |
+| — erreur P90 / fragments > 6 mm | 3,4 mm / 3,2 % | 3,9 mm / 2,5 % |
+| — rugosité (angle médian face/sommet) | 11,8° | 7,2° |
+| — points affichés à > 6 mm de la vraie surface | 18,3 % | 2,3 % |
+| Aperçu en direct, sans bruit — surface / bord / parois | 75,2 / 99,7 / 55,9 % | 76,4 / 98,6 / 60,4 % |
+| **Modèle final, avec bruit** — surface / bord / parois | 77,7 / 99,3 / 65,5 % | 77,9 / 99,3 / 65,7 % |
+| — erreur médiane / P90 | 1,13 / 4,45 mm | 0,94 / 4,38 mm |
+| Modèle final, sans bruit — surface / parois / P90 | 83,1 / 75,3 % / 4,35 mm | 81,6 / 72,9 % / 4,20 mm |
+| Coût de l'aperçu (110 vues, une exécution seule) | 69,8 s | 73,9 s |
+
+Lecture honnête : le gain est net sur l'aperçu en direct quand les poses tremblent ; le modèle final, déjà protégé par
+le recalage global, ne change presque pas (léger recul de couverture sans bruit, −1,5 point). L'erreur P90 de l'aperçu
+monte de 0,5 mm parce que la surface reconstruite est plus étendue. Image : `docs/evidence/tremblement_avant_apres.png`.
+
+Non traité dans cette passe : motifs fins de l'assiette absents de l'aperçu en direct (couleur par voxel de 2,5 mm ; la
+texture n'est calculée qu'à la finition), trous sur la sauce brillante, table affichée avec le plat dans l'aperçu.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

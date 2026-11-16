@@ -177,6 +177,41 @@ def test_confirmation_rejects_a_contradicted_depth():
     assert st["confirmed"] == 0 and st["violated"] > 0.8 * st["valid"]
 
 
+def test_depth_scale_is_recovered_from_neighbouring_views():
+    """A depth map 3 % too far (baseline length error) is measured as such against accepted views."""
+    from reconstruction.consistency import DepthView, depth_scale_from_views
+    K = np.array([[500.0, 0, 320], [0, 500.0, 240], [0, 0, 1]])
+
+    def view(i, x, z):
+        T = np.eye(4)
+        T[0, 3] = x
+        return DepthView(i, np.full((480, 640), z, np.float32), K, T)
+
+    others = [view(1, 0.03, 0.40), view(2, -0.03, 0.40)]
+    est = depth_scale_from_views(view(0, 0.0, 0.40 * 1.03), others)
+    assert est is not None and abs(est[0] - 1 / 1.03) < 0.002
+    est = depth_scale_from_views(view(0, 0.0, 0.40), others)
+    assert est is not None and abs(est[0] - 1.0) < 0.001
+    # too far off to be a baseline error: no estimate rather than a wrong one
+    assert depth_scale_from_views(view(0, 0.0, 0.40 * 1.25), others) is None
+
+
+def test_preview_points_stay_close_to_the_surface(session):
+    """Displayed points are consistent with the fused surface; the hidden ones are counted."""
+    eng, snaps = run(session)
+    header, blob = snaps[-1]
+    g = decode_geometry(blob)
+    assert len(g["tris"]) > 0 and len(g["points"]) > 1000
+    import open3d as o3d
+    from reconstruction.engine import point_to_mesh_distance
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(g["verts"].astype(np.float64)),
+                                  o3d.utility.Vector3iVector(g["tris"].astype(np.int32)))
+    d = point_to_mesh_distance(m, g["points"])
+    assert d.max() <= eng.cfg.outlier_dist_m + 1e-4
+    assert header["hidden_inconsistent_points"] > 0
+    assert eng.metrics()["depth_scale"]["applied"] > 0
+
+
 def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     """The exported GLB, read with the glTF convention (v from the top), shows the real colours and has
     no black patches; the dish-only variant and the result picture are written; poses were refined."""

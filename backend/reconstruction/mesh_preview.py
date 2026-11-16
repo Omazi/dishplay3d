@@ -27,6 +27,9 @@ class MeshConfig:
     min_component_triangles: int = 40
     min_component_fraction: float = 0.004
     max_triangles: int = 60000
+    # Taubin smoothing of the vertex positions (colours untouched). It removes the millimetre-scale
+    # crumpling left by view-to-view depth noise without shrinking the shape or closing concavities.
+    smooth_iterations: int = 10
 
 
 def classify_vertices(vertices: np.ndarray, pts: np.ndarray, nframes: np.ndarray, cfg: MeshConfig,
@@ -74,6 +77,9 @@ def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: M
     limit = max(cfg.min_component_triangles, int(cfg.min_component_fraction * len(tri_clusters)))
     mesh.remove_triangles_by_mask(n_tri[tri_clusters] < limit)
     mesh.remove_unreferenced_vertices()
+    if cfg.smooth_iterations > 0 and len(mesh.triangles):
+        mesh = mesh.filter_smooth_taubin(number_of_iterations=cfg.smooth_iterations,
+                                         filter_scope=o3d.geometry.FilterScope.Vertex)
     if len(mesh.triangles) > cfg.max_triangles:
         mesh = mesh.simplify_quadric_decimation(cfg.max_triangles)
     if len(mesh.triangles) == 0:

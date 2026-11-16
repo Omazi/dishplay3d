@@ -13,10 +13,11 @@ from typing import Callable
 
 import cv2
 import numpy as np
+import open3d as o3d
 
 from .coordinates import (inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
                           scale_intrinsics, transform_points)
-from .consistency import DepthView, confirmed_depth, pick_neighbours
+from .consistency import DepthView, confirmed_depth, depth_scale_from_views, pick_neighbours
 from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
 from .mesh_preview import INTERPOLATED, MEASURED, MeshConfig, supported_mesh, surface_area
 from .pair_selector import PairLimits, select_partners
@@ -24,7 +25,7 @@ from .preview_format import encode_geometry
 from .stereo_depth import StereoParams, View, combine_depths, compute_pair_depth
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.1.0"
+ENGINE_VERSION = "p1-0.2.0"
 
 
 @dataclass
@@ -40,13 +41,18 @@ class EngineConfig:
     use_lidar: bool = False
     lidar_min_confidence: int = 2
     blur_ratio: float = 0.35
-    outlier_dist_m: float = 0.008
+    outlier_dist_m: float = 0.003   # displayed points farther than this from the fused surface are hidden
     # Multi-view confirmation (see consistency.py): a frame is fused `confirm_lag` keyframes after it
     # arrives, so that views taken before AND after it can confirm or contradict its depth.
     confirm_min_views: int = 1
     confirm_lag: int = 2
     confirm_window: int = 12
     confirm_neighbours: int = 5
+    # Baseline-length correction: each depth map is rescaled (one number) to agree with the views
+    # already accepted, see consistency.depth_scale_from_views.
+    scale_to_views: bool = True
+    scale_max_dev: float = 0.06
+    scale_gain: float = 0.8
     align_to_model: bool = False  # experimental: measured worse on synthetic data, see docs/TEST_REPORT.md
     max_backlog_live: int = 12  # beyond this, older frames are stored but deferred to finishing
     fusion: FusionConfig = field(default_factory=FusionConfig)
@@ -116,6 +122,8 @@ class SessionEngine:
         self._depth_cache: list[DepthView] = []     # recent raw depth maps (bounded window)
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
         self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
+        self.scale_stats = {"applied": 0, "skipped": 0, "abs_dev_sum": 0.0}
+        self._scale_raw: list[float] = []
         self.latencies: list[float] = []
         self.snapshot_log: list[dict] = []
         self.paused = False
@@ -129,6 +137,7 @@ class SessionEngine:
         self._model_mesh = None
         self._depth_cache = []
         self._awaiting = []
+        self._scale_raw = []
         self.views.clear()
         if reprocess:
             for rec in self.frames.values():
@@ -254,6 +263,8 @@ class SessionEngine:
             self._frame_event(rec, reports)
             return 0
         depth, support = combine_depths(depths)
+        if self.cfg.scale_to_views:
+            depth = self._rescale(fid, depth, ref)
         # Not fused yet: wait for neighbouring views so the depth can be confirmed or contradicted.
         self._depth_cache.append(DepthView(fid, depth, ref.K, ref.T_obj_from_cam, cv2.GaussianBlur(ref.image, (5, 5), 0)))
         if len(self._depth_cache) > self.cfg.confirm_window:
@@ -261,6 +272,23 @@ class SessionEngine:
         self._awaiting.append((fid, support))
         rec.status, rec.reason = "depth_ready", ""
         return self._fuse_ready(flush=False)
+
+    def _rescale(self, fid: int, depth: np.ndarray, ref: View) -> np.ndarray:
+        probe = DepthView(fid, depth, ref.K, ref.T_obj_from_cam)
+        est = depth_scale_from_views(probe, pick_neighbours(probe, self._depth_cache, self.cfg.confirm_neighbours),
+                                     self.cfg.scale_max_dev)
+        if est is None:
+            self.scale_stats["skipped"] += 1
+            return depth
+        raw = est[0]
+        # The accepted views are a consensus, not the truth. Only part of the difference is applied:
+        # each view keeps a share of its own tracker-given scale, so the consensus cannot wander away
+        # from the tracker's average scale while the view-to-view scatter is divided by five.
+        self._scale_raw.append(raw)
+        s = float(np.clip(raw ** self.cfg.scale_gain, 1 - self.cfg.scale_max_dev, 1 + self.cfg.scale_max_dev))
+        self.scale_stats["applied"] += 1
+        self.scale_stats["abs_dev_sum"] += abs(s - 1)
+        return (depth * np.float32(s)).astype(np.float32)
 
     def _fuse_ready(self, flush: bool) -> int:
         """Fuse frames whose depth can now be judged by enough later views (all of them when flushing)."""
@@ -351,37 +379,33 @@ class SessionEngine:
         weak = self.fusion.weak_cells()
         pcls = np.where((nframes >= 2) | (sup >= 2), MEASURED, PROVISIONAL).astype(np.uint8)
         pcls[weak] = INTERPOLATED  # confirmed by several views, but the matcher interpolated there
-        raw_mesh = None
         n_integrated = len(self.fusion.integrated_frames)
         hidden = 0
-        if n_integrated >= self.cfg.mesh_min_frames:
-            # Single-view samples that disagree with the fused surface (free-space carving by other
-            # views) are hidden; confirmed samples are always kept.
-            raw_mesh = self.fusion.extract_mesh()
-            if len(raw_mesh.triangles):
-                dist = point_to_mesh_distance(raw_mesh, xyz)
-                drop = (pcls == PROVISIONAL) & (dist > self.cfg.outlier_dist_m)
-                hidden = int(drop.sum())
-                keep = ~drop
-                xyz, rgb, nframes, sup, pcls, weak = xyz[keep], rgb[keep], nframes[keep], sup[keep], pcls[keep], weak[keep]
-        if len(xyz) > self.cfg.max_snapshot_points:
-            sel = np.linspace(0, len(xyz) - 1, self.cfg.max_snapshot_points).astype(np.int64)
-        else:
-            sel = slice(None)
-        p_rgbc = np.concatenate([rgb, pcls[:, None]], 1)[sel]
         want_mesh = n_integrated >= self.cfg.mesh_min_frames if force_mesh is None else force_mesh
         verts = vrgbc = normals = tris = None
         kind = "points"
         areas = {"measured_m2": 0.0, "interpolated_m2": 0.0}
         if want_mesh:
             mcfg = MeshConfig(**{**asdict(self.cfg.mesh), "max_triangles": self.cfg.max_snapshot_triangles})
-            V, Cv, N, cls, T = supported_mesh(raw_mesh if raw_mesh is not None else self.fusion.extract_mesh(),
-                                              self.box.size_m, xyz, nframes, mcfg, weak)
+            V, Cv, N, cls, T = supported_mesh(self.fusion.extract_mesh(), self.box.size_m, xyz, nframes, mcfg, weak)
             if len(T):
                 verts, normals, tris = V, N, T
                 vrgbc = np.concatenate([Cv, cls[:, None]], 1)
                 kind = "points+mesh"
                 areas = {"measured_m2": surface_area(V, T, cls, MEASURED), "interpolated_m2": surface_area(V, T, cls, INTERPOLATED)}
+                # The surface is the consensus of all views. Samples that it contradicts (a view that
+                # was slightly off, a guess on a uniform area) are hidden from the point display; they
+                # stay in the store and in the exported points.ply.
+                clean = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(V.astype(np.float64)),
+                                                  o3d.utility.Vector3iVector(T.astype(np.int32)))
+                keep = point_to_mesh_distance(clean, xyz) <= self.cfg.outlier_dist_m
+                hidden = int((~keep).sum())
+                xyz, rgb, nframes, sup, pcls, weak = xyz[keep], rgb[keep], nframes[keep], sup[keep], pcls[keep], weak[keep]
+        if len(xyz) > self.cfg.max_snapshot_points:
+            sel = np.linspace(0, len(xyz) - 1, self.cfg.max_snapshot_points).astype(np.int64)
+        else:
+            sel = slice(None)
+        p_rgbc = np.concatenate([rgb, pcls[:, None]], 1)[sel]
         self.version += 1
         now = self.clock()
         integrated_ids = list(self.fusion.integrated_frames)
@@ -428,6 +452,8 @@ class SessionEngine:
                           "median_shift_mm": float(np.median([a["shift_m"] for a in self.alignments if a.get("applied")]) * 1000)
                           if any(a.get("applied") for a in self.alignments) else None},
             "confirmation": dict(self.confirm_stats),
+            "depth_scale": {"applied": self.scale_stats["applied"], "skipped": self.scale_stats["skipped"],
+                            "mean_abs_correction_pct": round(100 * self.scale_stats["abs_dev_sum"] / max(1, self.scale_stats["applied"]), 3)},
             "pairs": {"total": len(pr), "ok": sum(p["status"] == "ok" for p in pr),
                       "corrected_pose": sum(p["pose_source"] == "corrected" for p in pr),
                       "median_residual_px": float(np.nanmedian([p["residual_used_px"] for p in pr])) if pr else None},

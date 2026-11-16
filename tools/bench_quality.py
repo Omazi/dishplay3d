@@ -67,6 +67,9 @@ def main():
     ap.add_argument("--no-finish", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-refine", action="store_true", help="skip the global pose refinement when finishing")
+    ap.add_argument("--jitter-mm", type=float, default=0.0, help="independent per-frame position noise on reported poses")
+    ap.add_argument("--jitter-deg", type=float, default=0.0, help="independent per-frame rotation noise on reported poses")
+    ap.add_argument("--dump", action="store_true", help="save the raw fused mesh and the point store for offline experiments")
     a = ap.parse_args()
     from reconstruction.engine import Box, EngineConfig, SessionEngine
     from reconstruction.preview_format import decode_geometry
@@ -78,6 +81,17 @@ def main():
     sc = BowlScene()
     rep, true = handheld_poses(a.frames, a.seed)
     rng = np.random.default_rng(a.seed)
+    if a.jitter_mm or a.jitter_deg:
+        # Frame-to-frame tracking noise (not drift): each reported pose is off by a small independent amount.
+        jr = np.random.default_rng(a.seed + 1000)
+        out_rep = []
+        for T in rep:
+            w = jr.normal(scale=np.radians(a.jitter_deg), size=3)
+            J = np.eye(4)
+            J[:3, :3] = cv2.Rodrigues(w)[0]
+            J[:3, 3] = jr.normal(scale=a.jitter_mm / 1000.0, size=3)
+            out_rep.append(J @ T)
+        rep = out_rep
     bj = box_json(size=BOX)
     (out / "session.json").write_text(json.dumps({"id": "bench", "box": bj, "device": {"platform": "synthetic", "model": "bench"}, "settings": {}}))
     clock = {"t": 0.0}
@@ -102,6 +116,12 @@ def main():
     vis_pts, vis_mat = sc.visible_samples(true[::3])
     g = decode_geometry(last[1])
     (out / "live.dpg").write_bytes(last[1])
+    if a.dump:
+        import open3d as o3d
+        xyz, rgb, nfr, sup, src = eng.fusion.measured_points()
+        np.savez(out / "store.npz", xyz=xyz, rgb=rgb, nframes=nfr, sup=sup, weak=eng.fusion.weak_cells(),
+                 vis_pts=vis_pts, vis_mat=vis_mat)
+        o3d.io.write_triangle_mesh(str(out / "raw_mesh.ply"), eng.fusion.extract_mesh())
     res = {"frames": a.frames, "live_seconds": live_s, "engine_metrics": eng.metrics(),
            "live": metrics(sc, g["verts"].astype(np.float64), g["tris"], vis_pts, vis_mat, g["vert_rgbc"][:, 3])}
     if not a.no_finish:

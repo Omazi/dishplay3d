@@ -38,7 +38,7 @@ struct ScannerView: View {
                         ARViewContainer(arView: controller.ar.arView).ignoresSafeArea(edges: .top)
                         VStack(spacing: 12) {
                             topBar
-                            instructionCard
+                            if !expanded { instructionCard }
                             Spacer(minLength: 0)
                             if box.placed && !box.locked && !expanded { dimensions }
                             actionBar
@@ -116,7 +116,9 @@ struct ScannerView: View {
         case .needsNewBox:
             return ("Replace la boîte", "Le suivi a redémarré : touche la table au pied du plat.", Theme.warn)
         case .paused:
-            return ("En pause", box.locked ? "Ta session est conservée." : "Modifie la boîte puis applique : le modèle sera recalculé.", .white)
+            return box.locked
+                ? ("En pause", "Ta session est conservée.", .white)
+                : ("Modifie la boîte", "« Recalculer » refait le modèle avec la nouvelle boîte. « Annuler » ne change rien.", .white)
         case .uploadingRest:
             return ("Envoi des dernières vues", "\(controller.store?.pendingCount ?? 0) restantes…", .white)
         case .finishing:
@@ -144,7 +146,7 @@ struct ScannerView: View {
     /// Compact on purpose: it sits on top of the camera image and must not hide the dish.
     private var instructionCard: some View {
         let i = instruction
-        let scanning = controller.phase == .scanning || controller.phase == .paused
+        let scanning = controller.phase == .scanning || (controller.phase == .paused && box.locked)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 ForEach(0..<4, id: \.self) { k in
@@ -155,7 +157,8 @@ struct ScannerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(i.title).font(.headline).foregroundStyle(i.color).lineLimit(1).minimumScaleFactor(0.8)
                     if scanning, i.color == .white, let hint = sideHint {
-                        Text(hint).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).lineLimit(1).minimumScaleFactor(0.8)
+                        Text(hint).font(.subheadline.weight(.semibold))
+                            .foregroundStyle(controller.tourComplete ? Theme.good : Theme.accent).lineLimit(1).minimumScaleFactor(0.8)
                     } else if let d = i.detail, !d.isEmpty {
                         Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85)).lineLimit(2).minimumScaleFactor(0.85)
                     }
@@ -255,11 +258,13 @@ struct ScannerView: View {
                               tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
             case .paused:
                 if box.locked {
-                    GlassIconButton(icon: "cube") { controller.reviseBox() }
-                    GlassIconButton(icon: "play.fill", label: "Reprendre") { controller.resume() }
-                    PrimaryButton(title: "Terminer", icon: "checkmark") { controller.finish() }
+                    GlassIconButton(icon: "cube", label: "Boîte") { controller.reviseBox() }
+                    GlassIconButton(icon: "play.fill") { controller.resume() }
+                    PrimaryButton(title: "Terminer", icon: "checkmark",
+                                  tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
                 } else {
-                    PrimaryButton(title: "Appliquer et recalculer", icon: "arrow.triangle.2.circlepath") { controller.applyBoxRevision() }
+                    GlassIconButton(icon: "xmark", label: "Annuler") { controller.cancelBoxRevision() }
+                    PrimaryButton(title: "Recalculer", icon: "arrow.triangle.2.circlepath") { controller.applyBoxRevision() }
                 }
             case .needsNewBox:
                 PrimaryButton(title: "Valider la boîte", icon: "cube", enabled: box.placed) { controller.applyBoxRevision() }

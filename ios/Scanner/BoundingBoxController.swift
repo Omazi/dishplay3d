@@ -165,6 +165,21 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         anchor.transform = Transform(matrix: t)
     }
 
+    /// Geometry of the box at one moment, to undo an edit.
+    struct Saved { let centre: SIMD3<Float>; let yaw: Float; let placedYaw: Float; let width: Float; let depth: Float; let height: Float }
+
+    func save() -> Saved { Saved(centre: centre, yaw: yaw, placedYaw: placedYaw, width: width, depth: depth, height: height) }
+
+    func restore(_ s: Saved) {
+        centre = s.centre
+        yaw = s.yaw
+        placedYaw = s.placedYaw
+        width = s.width
+        depth = s.depth
+        height = s.height
+        rebuild()
+    }
+
     /// When unlocking for a revision, continue from where the anchored box is drawn now.
     func adopt(anchorTransform t: simd_float4x4) {
         centre = SIMD3(t.columns.3.x, t.columns.3.y, t.columns.3.z)
