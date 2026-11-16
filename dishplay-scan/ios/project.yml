@@ -30,7 +30,7 @@ targets:
       - package: ScanCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.dishplay.scan
+        PRODUCT_BUNDLE_IDENTIFIER: app.dishplay.capture  # existing App Store Connect record 6814221035 (DishPlay Capture)
         PRODUCT_NAME: DishPlayScan
         INFOPLIST_FILE: App/Info.plist
         GENERATE_INFOPLIST_FILE: NO

@@ -4,7 +4,7 @@ through the App Store Connect API. Runs on Linux, Windows or the CI runner: no M
 
   APPLE_KEY_ID=... APPLE_ISSUER_ID=... APP_STORE_CONNECT_API_KEY="$(cat AuthKey_XXXX.p8)" \
   IOS_DISTRIBUTION_P12_BASE64=... IOS_DISTRIBUTION_P12_PASSWORD=... \
-  python tools/asc_profile.py --bundle app.dishplay.scan --name "DishPlay Scan" --out profile.mobileprovision
+  python tools/asc_profile.py --bundle app.dishplay.capture --out profile.mobileprovision
 
 Requirements: an App Store Connect TEAM API key allowed to manage certificates/identifiers/profiles
 (Admin), and the existing Apple Distribution identity (.p12) whose certificate will be put in the
@@ -69,8 +69,8 @@ def p12_certificate_sha1(p12_b64: str, password: str) -> tuple[str, str]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bundle", default="app.dishplay.scan")
-    ap.add_argument("--name", default="DishPlay Scan")
+    ap.add_argument("--bundle", default="app.dishplay.capture")
+    ap.add_argument("--name", default="DishPlay Capture")
     ap.add_argument("--out", required=True)
     ap.add_argument("--github-env", action="store_true", help="also export IOS_PROVISION_PROFILE_BASE64 to $GITHUB_ENV (masked)")
     a = ap.parse_args()

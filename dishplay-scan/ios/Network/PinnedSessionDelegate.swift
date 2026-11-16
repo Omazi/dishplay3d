@@ -40,7 +40,7 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskD
 
 /// Minimal Keychain storage for the pairing token.
 enum Keychain {
-    static let service = "app.dishplay.scan.token"
+    static let service = "app.dishplay.capture.scan-token"
 
     static func save(_ value: String, account: String) {
         let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,

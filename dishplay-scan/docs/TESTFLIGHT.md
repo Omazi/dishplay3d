@@ -8,41 +8,40 @@ Le workflow **DishPlay Scan — checks** (`.github/workflows/ios-check.yml`) se 
 (SHA‑256 vérifié) et compilation **non signée** pour iPhone, avec contrôle du bundle (metallib, manifeste de
 confidentialité, `NSLocalNetworkUsageDescription`). Résultat réel : voir `TEST_REPORT.md`.
 
-## 2. Réutilisation de la configuration Apple existante
-Le dépôt a déjà publié DishPlay Capture 0.6.0 sur TestFlight avec ces paramètres GitHub (environnement
-`testflight` ou dépôt) — ils sont réutilisés tels quels :
+## 2. Fiche et signature : celles qui existent déjà
+DishPlay Scan est publiée comme **nouvelle version (1.0.0) de la fiche existante « DishPlay Capture »**
+(App Store Connect ID `6814221035`, bundle `app.dishplay.capture`, équipe `XQGND2V48C`), qui a déjà reçu les builds
+0.1.0 à 0.6.0 par GitHub Actions. Aucune nouvelle fiche, aucun nouvel identifiant, aucun nouveau profil :
+le workflow réutilise les paramètres déjà configurés dans l'environnement GitHub `testflight` (ou le dépôt) :
 
 | Type | Nom |
 | --- | --- |
-| Variable | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_ISSUER_ID` |
-| Secret | `APP_STORE_CONNECT_API_KEY` (texte du .p8), `IOS_DISTRIBUTION_P12_BASE64`, `IOS_DISTRIBUTION_P12_PASSWORD` |
+| Variable | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_ISSUER_ID`, `IOS_BUNDLE_ID` (défaut `app.dishplay.capture`) |
+| Secret | `APP_STORE_CONNECT_API_KEY`, `IOS_DISTRIBUTION_P12_BASE64`, `IOS_DISTRIBUTION_P12_PASSWORD`, `IOS_PROVISION_PROFILE_BASE64` |
 
-DishPlay Scan est une **nouvelle app** (`app.dishplay.scan`), l'ancienne `app.dishplay.capture` n'est pas touchée.
-Le certificat Apple Distribution est commun à l'équipe ; seul un **profil App Store** propre au nouvel identifiant
-est nécessaire. Le workflow le crée/réutilise automatiquement via l'API (`tools/asc_profile.py`) si la clé API a le
-rôle **Admin** (gestion des identifiants et profils). Sinon : exécuter ce script depuis Windows/Linux avec une clé
-Admin, puis enregistrer le fichier en secret `SCAN_PROVISION_PROFILE_BASE64` (`base64 -w0 profile.mobileprovision`).
+Le script existant `scripts/apple/install-signing.py` (inchangé) refuse un profil expiré, d'une autre équipe, d'un
+autre bundle ou non « App Store ». Si le profil a expiré, `tools/asc_profile.py` (Windows/Linux, clé API Admin) en
+recrée un pour `app.dishplay.capture` ; le workflow l'appelle automatiquement si le secret de profil est absent.
 
-## 3. Une seule étape manuelle dans App Store Connect (navigateur)
-Apple ne permet pas de créer la fiche d'app par API. Une fois (après le premier passage du workflow qui enregistre
-l'identifiant, ou après `tools/asc_profile.py`) :
-App Store Connect › Apps › **+** › Nouvelle app › iOS, nom **DishPlay Scan**, langue français, Bundle ID
-**app.dishplay.scan**, SKU `dishplay-scan-ios`. Sans cette fiche, l'envoi échoue avec une erreur explicite d'Apple.
+Conséquence sur l'iPhone : la mise à jour TestFlight **remplace** l'app DishPlay Capture 0.6 par DishPlay Scan
+(même bundle). Les anciens builds restent consultables dans App Store Connect ; l'ancien code reste dans
+`native/ios/`.
 
-## 4. Lancer le build TestFlight
-GitHub › Actions › **DishPlay Scan — TestFlight** › Run workflow (branche contenant le code) › `upload = true`.
-Le job réexécute les vérifications, crée/réutilise le profil, installe la signature dans un trousseau temporaire
-(script existant `scripts/apple/install-signing.py`, qui refuse un profil d'un autre Team/Bundle ou non App Store),
-archive, exporte l'IPA, la valide puis l'envoie (`altool`), et nettoie le trousseau. Numéro de build :
-`run_number.run_attempt`.
+## 3. Lancer le build TestFlight
+GitHub ne propose « Run workflow » que pour les workflows présents sur la branche par défaut, et l'environnement
+`testflight` était utilisé depuis `main`. Il faut donc d'abord fusionner cette branche dans `main` (pull request).
+Ensuite : Actions › **DishPlay Scan — TestFlight** › Run workflow › `main` › `upload = true`.
+Le job réexécute les vérifications, installe la signature dans un trousseau temporaire, archive, exporte l'IPA, la
+valide puis l'envoie (`altool`), et nettoie le trousseau. Numéro de build : `run_number.run_attempt` (version 1.0.0,
+supérieure à 0.6.x).
 
-## 5. Sur l'iPhone
-App Store Connect › DishPlay Scan › TestFlight › Tests internes : créer un groupe, s'y ajouter, ajouter le build
-une fois « Prêt à tester » (traitement Apple : de quelques minutes à une heure). Installer depuis l'app TestFlight.
+## 4. Sur l'iPhone
+Une fois le build « Prêt à tester » (traitement Apple : quelques minutes à une heure), l'ajouter au groupe interne
+existant **DishPlay - Tests iPhone** ([TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios)),
+puis ouvrir TestFlight sur l'iPhone et toucher **Mettre à jour**. Le nom affiché sous l'icône sera « DishPlay Scan ».
 
 ## Limites honnêtes
-- Ce workflow de distribution **n'a pas été exécuté** dans cette livraison : il nécessite vos secrets et la fiche
-  d'app. Le précédent pipeline équivalent (mêmes scripts de signature) avait réussi pour 0.6.0.
+- Ce workflow de distribution **n'a pas été exécuté** dans cette livraison : il tourne avec vos secrets depuis `main`. Le précédent pipeline équivalent (mêmes scripts de signature) avait réussi pour 0.6.0.
 - Un historique du dépôt mentionne un refus de démarrage de job macOS pour plafond de dépenses GitHub ; si cela se
   reproduit, il faut ajuster la facturation Actions ou attendre la remise à zéro mensuelle.
 - La compilation et les tests sur runner ne valident ni la caméra, ni le suivi AR, ni la qualité : seul l'essai sur
