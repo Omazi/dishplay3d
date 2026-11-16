@@ -30,3 +30,9 @@ Outils de build (non distribués) : XcodeGen 2.46.0 (MIT), Xcode (Apple).
   objet pour P1. Si le calculateur est un jour redistribué en binaire, construire OpenCV minimal sans videoio
   (modules core, imgproc, imgcodecs, features2d, calib3d) et sans nonfree.
 - Cet inventaire repose sur les métadonnées déclarées par les paquets ; ce n'est pas un avis juridique.
+
+## Skills de développement (`.claude/skills/`)
+
+Fichiers d'instructions pour l'assistant de développement, non distribués avec l'app ni avec le calculateur.
+Sources, révisions et licences : `.claude/skills/SOURCES.md` (MIT : twostraws/SwiftUI-Agent-Skill,
+rshankras/claude-code-apple-skills, emilkowalski/skills, obra/superpowers ; Apache-2.0 : anthropics/skills).

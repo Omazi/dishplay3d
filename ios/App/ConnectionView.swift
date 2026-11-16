@@ -35,7 +35,7 @@ struct ConnectionView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "cube.transparent").font(.system(size: 40, weight: .medium)).foregroundStyle(Theme.accent)
+            Image(systemName: "cube.transparent").font(.system(size: 40, weight: .medium)).foregroundStyle(Theme.accent).accessibilityHidden(true)
             Text("DishPlay Scan").font(.system(size: 34, weight: .bold, design: .rounded))
             Text("Tourne autour d’un plat, sa forme 3D se construit en direct.")
                 .font(.body).foregroundStyle(.secondary)
@@ -46,7 +46,7 @@ struct ConnectionView: View {
         card {
             if model.paired {
                 HStack(spacing: 14) {
-                    Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(Theme.good)
+                    Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(Theme.good).accessibilityHidden(true)
                         .frame(width: 48, height: 48).background(Theme.good.opacity(0.15), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Ordinateur relié").font(.headline)

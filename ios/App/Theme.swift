@@ -76,6 +76,8 @@ struct PrimaryButton: View {
 struct GlassIconButton: View {
     let icon: String
     var label: String?
+    /// What VoiceOver says when the button shows an icon only.
+    var name: String = ""
     let action: () -> Void
 
     var body: some View {
@@ -90,6 +92,7 @@ struct GlassIconButton: View {
             .glass(Capsule())
         }
         .buttonStyle(PressableStyle())
+        .accessibilityLabel(label ?? name)
     }
 }
 

@@ -1,6 +1,6 @@
-DishPlay Scan 1.4.1 — pause plus claire
-- Modifier la boîte en pause : nouveau bouton « Annuler » (rien n'est recalculé).
-- Boutons de pause plus lisibles : « Boîte », reprendre, « Terminer ».
-- Aperçu 3D agrandi : la carte de consignes se retire pour laisser voir la caméra.
-- Bouton « Démarrer le scan » lisible sur une table claire.
-- Côté calculateur (mettre le PC à jour) : surface moins froissée, moins de points flottants, beaucoup plus de vues utilisées.
+DishPlay Scan 1.4.2 — accessibilité
+- VoiceOver : tous les boutons à icône ont maintenant un nom (pause, reprendre, quitter, agrandir l'aperçu).
+- Curseurs de la boîte lus avec leur nom et leur valeur en centimètres.
+- Zones tactiles agrandies à 44 points (fermer, agrandir l'aperçu, replacer la boîte).
+- Réglage « Réduire les animations » respecté.
+- Petits textes un peu plus grands.

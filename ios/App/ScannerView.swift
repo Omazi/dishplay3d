@@ -20,6 +20,7 @@ struct ScannerView: View {
     @State private var mode: PreviewMode = .both
     @State private var shareURL: URL?
     @State private var now = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(controller: ScanController) {
@@ -51,9 +52,10 @@ struct ScannerView: View {
             }
             .background(Color.black)
             .ignoresSafeArea(edges: .bottom)
-            .animation(.spring(duration: 0.35), value: expanded)
-            .animation(.spring(duration: 0.45), value: controller.phase)
-            .animation(.spring(duration: 0.3), value: showSliders)
+            // Reduce Motion: the panels change size without the sliding spring.
+            .animation(reduceMotion ? nil : .spring(duration: 0.35), value: expanded)
+            .animation(reduceMotion ? nil : .spring(duration: 0.45), value: controller.phase)
+            .animation(reduceMotion ? nil : .spring(duration: 0.3), value: showSliders)
         }
         .preferredColorScheme(.dark)
         .onReceive(ticker) { now = $0 }
@@ -68,8 +70,9 @@ struct ScannerView: View {
         HStack(spacing: 10) {
             Button { controller.abandonIfUnfinished(); model.refreshPending(); model.screen = .connect } label: {
                 Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(.white)
-                    .frame(width: 40, height: 40).glass(Circle())
+                    .frame(width: 44, height: 44).glass(Circle())
             }
+            .accessibilityLabel("Quitter le scan")
             .disabled(controller.phase == .scanning || controller.phase == .finishing || controller.phase == .uploadingRest)
             HStack(spacing: 14) {
                 StatusDot(text: trackingText.0, color: trackingText.1)
@@ -79,7 +82,7 @@ struct ScannerView: View {
                     Label("\(controller.savedFrames)", systemImage: "photo.stack").font(.footnote.weight(.semibold).monospacedDigit())
                 }
             }
-            .padding(.horizontal, 14).frame(height: 40).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14).frame(height: 44).frame(maxWidth: .infinity, alignment: .leading)
             .glass(Capsule())
         }
     }
@@ -206,19 +209,23 @@ struct ScannerView: View {
                 }
                 .foregroundStyle(.white)
             }
+            .accessibilityLabel("Dimensions de la boîte")
+            .accessibilityHint(showSliders ? "Masque les réglages" : "Affiche les réglages")
             if showSliders {
                 Button { box.replace() } label: {
                     Label("Replacer la boîte ailleurs", systemImage: "arrow.uturn.backward").font(.footnote.weight(.semibold))
-                        .frame(maxWidth: .infinity).frame(height: 34).background(Color.white.opacity(0.12), in: Capsule()).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(height: 44).background(Color.white.opacity(0.12), in: Capsule()).foregroundStyle(.white)
                 }
             }
             if showSliders {
-                dimSlider("L", value: $box.width, range: 0.05...0.8)
-                dimSlider("P", value: $box.depth, range: 0.05...0.8)
-                dimSlider("H", value: $box.height, range: 0.01...0.4)
+                dimSlider("L", name: "Largeur", value: $box.width, range: 0.05...0.8)
+                dimSlider("P", name: "Profondeur", value: $box.depth, range: 0.05...0.8)
+                dimSlider("H", name: "Hauteur", value: $box.height, range: 0.01...0.4)
                 HStack(spacing: 10) {
-                    Image(systemName: "rotate.right").font(.footnote.weight(.bold)).frame(width: 16)
+                    Image(systemName: "rotate.right").font(.footnote.weight(.bold)).frame(width: 16).accessibilityHidden(true)
                     Slider(value: Binding(get: { box.yawDegrees }, set: { box.yawDegrees = $0 }), in: -90...90).tint(Theme.accent)
+                        .accessibilityLabel("Rotation de la boîte")
+                        .accessibilityValue("\(Int(box.yawDegrees.rounded())) degrés")
                 }
             }
         }
@@ -230,15 +237,17 @@ struct ScannerView: View {
         VStack(spacing: 2) {
             Text(String(format: "%.0f cm", value * 100)).font(.system(.headline, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText()).animation(.snappy, value: value)
-            Text(label).font(.caption2).foregroundStyle(.white.opacity(0.7))
+            Text(label).font(.caption).foregroundStyle(.white.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func dimSlider(_ label: String, value: Binding<Float>, range: ClosedRange<Float>) -> some View {
+    private func dimSlider(_ label: String, name: String, value: Binding<Float>, range: ClosedRange<Float>) -> some View {
         HStack(spacing: 10) {
-            Text(label).font(.footnote.weight(.bold)).frame(width: 16)
+            Text(label).font(.footnote.weight(.bold)).frame(width: 16).accessibilityHidden(true)
             Slider(value: value, in: range).tint(Theme.accent)
+                .accessibilityLabel(name)
+                .accessibilityValue("\(Int((value.wrappedValue * 100).rounded())) centimètres")
         }
     }
 
@@ -253,13 +262,13 @@ struct ScannerView: View {
                     controller.start()
                 }
             case .scanning:
-                GlassIconButton(icon: "pause.fill") { Haptics.tap(); controller.pause() }
+                GlassIconButton(icon: "pause.fill", name: "Mettre en pause") { Haptics.tap(); controller.pause() }
                 PrimaryButton(title: controller.tourComplete ? "Terminer le scan" : "Terminer", icon: "checkmark",
                               tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
             case .paused:
                 if box.locked {
                     GlassIconButton(icon: "cube", label: "Boîte") { controller.reviseBox() }
-                    GlassIconButton(icon: "play.fill") { controller.resume() }
+                    GlassIconButton(icon: "play.fill", name: "Reprendre le scan") { controller.resume() }
                     PrimaryButton(title: "Terminer", icon: "checkmark",
                                   tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
                 } else {
@@ -269,7 +278,7 @@ struct ScannerView: View {
             case .needsNewBox:
                 PrimaryButton(title: "Valider la boîte", icon: "cube", enabled: box.placed) { controller.applyBoxRevision() }
             case .uploadingRest:
-                GlassIconButton(icon: "xmark") { controller.cancelFinish() }
+                GlassIconButton(icon: "xmark", name: "Annuler l'envoi") { controller.cancelFinish() }
                 HStack(spacing: 10) { ProgressView().tint(.white); Text("Envoi des vues…").font(.subheadline.weight(.semibold)) }
                     .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
             case .finishing:
@@ -304,7 +313,7 @@ struct ScannerView: View {
 
     private var compactPreview: some View {
         HStack(spacing: 14) {
-            Image(systemName: "circle.hexagongrid.fill").font(.title2).foregroundStyle(Theme.accent)
+            Image(systemName: "circle.hexagongrid.fill").font(.title2).foregroundStyle(Theme.accent).accessibilityHidden(true)
                 .frame(width: 44, height: 44).background(Theme.accent.opacity(0.14), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text("Aperçu 3D").font(.headline)
@@ -326,12 +335,14 @@ struct ScannerView: View {
                 Spacer(minLength: 4)
                 Button { expanded.toggle() } label: {
                     Image(systemName: expanded ? "chevron.down" : "chevron.up").font(.subheadline.weight(.bold))
-                        .frame(width: 36, height: 36).background(Color.white.opacity(0.10), in: Circle()).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(Color.white.opacity(0.10), in: Circle()).foregroundStyle(.white)
                 }
+                .accessibilityLabel(expanded ? "Réduire l'aperçu 3D" : "Agrandir l'aperçu 3D")
             }
             .padding(.horizontal, 18)
             ZStack {
                 PreviewView(renderer: controller.preview)
+                    .accessibilityLabel("Aperçu 3D du plat")
                 if controller.lastGeometry == nil {
                     VStack(spacing: 10) {
                         Image(systemName: "circle.hexagongrid.fill").font(.system(size: 30)).foregroundStyle(Theme.accent.opacity(0.8))
