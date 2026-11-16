@@ -153,3 +153,13 @@ def test_splat_dataset_cameras_match_the_engine(tmp_path):
         assert mask is not None and mask.shape == (fr["h"], fr["w"]) and 0 < (mask > 0).mean() < 1
         inside = (u_gl >= 0) & (u_gl < fr["w"]) & (v_gl >= 0) & (v_gl < fr["h"])
         assert (mask[v_gl[inside].astype(int), u_gl[inside].astype(int)] > 0).all()
+
+
+def test_colab_notebook_embeds_the_current_trainer():
+    """The notebook must carry exactly tools/splat_train.py (it cannot fetch it from the private repository)."""
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    nb = json.loads((root / "colab" / "essai_neuronal.ipynb").read_text())
+    cell = next("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code" and "".join(c["source"]).startswith("%%writefile"))
+    assert cell.split("\n", 1)[1].rstrip("\n") == (root / "tools" / "splat_train.py").read_text().rstrip("\n")
