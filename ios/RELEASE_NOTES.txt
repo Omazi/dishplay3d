@@ -7,3 +7,4 @@ DishPlay Scan 1.0.0 — premier prototype de scan progressif
 - Correctif : orientations iPad exigées par Apple.
 - Relance (conflit de concurrence CI corrigé).
 - Relance (erreur transitoire de checkout GitHub).
+- Relance.
