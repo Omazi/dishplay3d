@@ -46,6 +46,14 @@ public struct GeometryHeader: Codable, Equatable, Sendable {
         public var interpolated_m2: Double?
         public var estimated_m2: Double?
     }
+    /// The calculator's verdict on the scan so far: will it give a good model?
+    public struct Quality: Codable, Equatable, Sendable {
+        public var level: String?            // good, fair, poor, too_early
+        public var score: Int?
+        public var issues: [String]?         // sides_missing, holes, fragmented, uniform_or_shiny, few_views
+        public var top_coverage: Double?
+        public var measured_share: Double?
+    }
     public struct Coverage: Codable, Equatable, Sendable {
         public var azimuth_bins: Int?
         public var views_per_bin: [[Int]]?
@@ -67,6 +75,7 @@ public struct GeometryHeader: Codable, Equatable, Sendable {
     public var point_count: Int?
     public var vertex_count: Int?
     public var triangle_count: Int?
+    public var quality: Quality?
     public var surface: Surface?
     public var coverage: Coverage?
 }

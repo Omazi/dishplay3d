@@ -244,6 +244,26 @@ Lecture honnête : −43 % de temps, pour un modèle un peu moins dense. Sur le 
 vue d'après sa capture d'écran, contre 1,6 s ici), 140 vues représentent encore de l'ordre d'un quart d'heure : la
 durée reste liée à la puissance du processeur. 44 tests passés.
 
+## Mise à jour du 16 novembre — verdict de qualité pendant le scan (moteur `p1-0.4.0`, app 1.6.0)
+
+Besoin exprimé : savoir avant « Terminer » si le scan donnera un bon modèle. L'anneau ne mesure que les directions
+vues. `reconstruction/quality.py` juge le modèle lui-même : couverture vue de dessus, morcellement de la surface
+(longueur des bords ouverts rapportée à l'aire), part réellement mesurée, côtés vus, nombre de vues utiles.
+Le verdict (`good` / `fair` / `poor` + causes) est envoyé avec chaque aperçu ; l'app l'affiche et prévient avant de
+terminer un scan insuffisant.
+
+| Cas | Verdict | Ce que je vois sur le rendu |
+|---|---|---|
+| Assiette de synthèse texturée, tour complet | good (97) | complète |
+| Bol de synthèse uni | fair (90), surface unie | parois partiellement interpolées |
+| Vraie capture, tasse (tour partiel) | poor (56) : morcelé, côtés manquants, trous | corps absent |
+| Vraie capture, gobelet métal | poor (68) : morcelé, trous | parois absentes |
+| Vraie capture, gobelet rouge (tour partiel) | poor (68) : morcelé, côtés manquants | incomplet |
+
+Limites : seuils calés sur ces cinq cas seulement, aucun vrai plat ; un premier jeu de seuils avait classé « good » le
+gobelet métal (vu de dessus il paraît complet), d'où l'ajout du morcellement. Le verdict porte sur l'aperçu en direct,
+pas sur le modèle final. Côté app : écrit mais **non compilé** (GitHub Actions bloqué par le quota du compte).
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

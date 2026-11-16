@@ -22,6 +22,7 @@ struct ScannerView: View {
     @State private var now = Date()
     @State private var askName = false
     @State private var confirmClose = false
+    @State private var confirmFinish = false
     @State private var dishName = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -81,6 +82,12 @@ struct ScannerView: View {
             }
         } message: {
             Text(closeMessage)
+        }
+        .confirmationDialog("Le modèle risque d’être incomplet", isPresented: $confirmFinish, titleVisibility: .visible) {
+            Button("Continuer le scan", role: .cancel) {}
+            Button("Terminer quand même") { controller.finish() }
+        } message: {
+            Text(verdict.text + ". Vous pouvez continuer à tourner autour du plat avant de terminer.")
         }
         .alert("Nom du plat", isPresented: $askName) {
             TextField("Par exemple : Tajine aux pruneaux", text: $dishName)
@@ -230,7 +237,7 @@ struct ScannerView: View {
                         .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
                     if scanning, i.color == .white, let hint = sideHint {
                         Text(hint).font(.subheadline.weight(.semibold))
-                            .foregroundStyle(controller.tourComplete ? Theme.good : Theme.accent).lineLimit(1).minimumScaleFactor(0.8)
+                            .foregroundStyle(controller.tourComplete ? verdict.color : Theme.accent).lineLimit(2).minimumScaleFactor(0.8)
                     } else if let d = i.detail, !d.isEmpty {
                         Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85)).lineLimit(2).minimumScaleFactor(0.85)
                     }
@@ -257,10 +264,44 @@ struct ScannerView: View {
         let az = controller.cameraAzimuthDeg * .pi / 180
         let h = Double(box.height)
         guard let s = controller.scheduler.ring.suggestion(currentCameraInObject: [cos(az), h / 2, sin(az)], boxHeight: h) else {
-            return "Tour complet : vous pouvez terminer"
+            // Every side has been seen. Whether that is enough is the calculator's verdict on the model itself.
+            return verdict.text
         }
         if s.0 == .goHigher { return "↑ Passez au-dessus du plat" }
         return s.direction >= 0 ? "← Allez vers votre gauche" : "Allez vers votre droite →"
+    }
+
+    /// The calculator's judgement of the model built so far, in the user's words.
+    private var verdict: (text: String, color: Color, good: Bool) {
+        let q = controller.lastGeometry?.quality
+        let issues = q?.issues ?? []
+        let advice: String
+        if issues.contains("sides_missing") {
+            advice = "il manque des côtés, continuez le tour"
+        } else if issues.contains("holes") || issues.contains("fragmented") {
+            advice = "des zones sont vides, repassez dessus lentement"
+        } else if issues.contains("few_views") {
+            advice = "pas assez de vues nettes, tournez plus lentement"
+        } else if issues.contains("uniform_or_shiny") {
+            advice = "surface unie ou brillante, ajoutez de la lumière douce"
+        } else {
+            advice = "continuez encore un peu"
+        }
+        switch q?.level {
+        case "good": return ("Scan réussi : vous pouvez terminer", Theme.good, true)
+        case "fair": return ("Scan correct : " + advice, Theme.warn, false)
+        case "poor": return ("Scan insuffisant : " + advice, Theme.bad, false)
+        default: return ("Analyse du modèle en cours…", .white, false)
+        }
+    }
+
+    /// "Terminer" goes straight to the final model when the verdict is good; otherwise it asks first.
+    private func finishTapped() {
+        if verdict.good || controller.lastGeometry?.quality?.level == "fair" {
+            controller.finish()
+        } else {
+            confirmFinish = true
+        }
     }
 
     // MARK: box dimensions
@@ -333,14 +374,14 @@ struct ScannerView: View {
                 }
             case .scanning:
                 GlassIconButton(icon: "pause.fill", name: "Mettre en pause") { Haptics.tap(); controller.pause() }
-                PrimaryButton(title: controller.tourComplete ? "Terminer le scan" : "Terminer", icon: "checkmark",
-                              tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
+                PrimaryButton(title: verdict.good ? "Terminer le scan" : "Terminer", icon: "checkmark",
+                              tint: verdict.good ? Theme.good : Theme.accent, action: finishTapped)
             case .paused:
                 if box.locked {
                     GlassIconButton(icon: "cube", label: "Boîte") { controller.reviseBox() }
                     GlassIconButton(icon: "play.fill", name: "Reprendre le scan") { controller.resume() }
                     PrimaryButton(title: "Terminer", icon: "checkmark",
-                                  tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
+                                  tint: verdict.good ? Theme.good : Theme.accent, action: finishTapped)
                 } else {
                     GlassIconButton(icon: "xmark", label: "Annuler") { controller.cancelBoxRevision() }
                     PrimaryButton(title: "Recalculer", icon: "arrow.triangle.2.circlepath") { controller.applyBoxRevision() }
@@ -404,7 +445,17 @@ struct ScannerView: View {
             Capsule().fill(Color.white.opacity(0.25)).frame(width: 36, height: 4).padding(.top, 8)
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(previewTitle).font(.headline)
+                    HStack(spacing: 8) {
+                        Text(previewTitle).font(.headline)
+                        if let level = controller.lastGeometry?.quality?.level, level != "too_early", controller.phase != .done {
+                            Text(level == "good" ? "Bon" : level == "fair" ? "Correct" : "Insuffisant")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(verdict.color.opacity(0.18), in: Capsule())
+                                .foregroundStyle(verdict.color)
+                                .accessibilityLabel("Qualité du scan : \(level == "good" ? "bonne" : level == "fair" ? "correcte" : "insuffisante")")
+                        }
+                    }
                     Text(previewSubtitle).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 4)

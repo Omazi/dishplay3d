@@ -212,6 +212,24 @@ def test_preview_points_stay_close_to_the_surface(session):
     assert eng.metrics()["depth_scale"]["applied"] > 0
 
 
+def test_quality_verdict_follows_the_model(session):
+    """A full tour of a well textured plate is 'good'; the same scan stopped early is not."""
+    eng, snaps = run(session)
+    q = snaps[-1][0]["quality"]
+    assert q["level"] == "good" and q["top_coverage"] > 0.9 and not q["issues"], q
+    early = next(h["quality"] for h, _ in snaps if h["integrated_frames"] >= 9)
+    assert early["level"] in ("poor", "fair") and "sides_missing" in early["issues"], early
+    # holes: a model whose surface is in pieces must never be called good
+    from reconstruction.mesh_preview import DishFootprint
+    from reconstruction.quality import scan_quality
+    g = decode_geometry(snaps[-1][1])
+    V, T, cls = g["verts"].astype(np.float64), g["tris"].astype(np.int64), g["vert_rgbc"][:, 3]
+    centre = V[T].mean(1)
+    holed = T[(np.floor(centre[:, 0] / 0.012) + np.floor(centre[:, 2] / 0.012)) % 2 == 0]   # checkerboard of holes
+    bad = scan_quality(V, holed, cls, DishFootprint.from_vertices(V), 60, 1.0)
+    assert bad["level"] != "good" and "fragmented" in bad["issues"], bad
+
+
 def test_long_scans_are_finished_on_a_spread_subset(tmp_path):
     """300 views around the dish: the finishing step keeps 140, covering every side."""
     from reconstruction.refinement import spread_subset

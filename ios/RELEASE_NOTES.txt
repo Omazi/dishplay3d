@@ -1,4 +1,6 @@
-DishPlay Scan 1.5.3 — le bouton X répond toujours
-- Le X en haut à gauche fonctionne à tout moment : pendant un scan, un envoi ou un calcul, il demande quoi faire au lieu de rester sans effet.
-- Quitter pendant le calcul final ne perd plus le plat : il apparaît dans Mes plats dès que son modèle est prêt (tirer vers le bas pour actualiser).
-- Toutes les consignes au vouvoiement.
+DishPlay Scan 1.6.0 — savoir si le scan est réussi avant de terminer
+- Verdict du calculateur pendant le scan : « Bon », « Correct » ou « Insuffisant », avec la raison (côtés manquants, zones vides, surface brillante).
+- Le bouton « Terminer » ne devient vert que quand le scan est jugé réussi ; sinon l'app prévient avant de lancer le calcul final.
+- Le X en haut à gauche répond à tout moment (pause, abandon, ou quitter pendant le calcul).
+- Quitter pendant le calcul final ne perd plus le plat : il apparaît dans Mes plats quand son modèle est prêt.
+- Nécessite le calculateur à jour (moteur p1-0.4.0).

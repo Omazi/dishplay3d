@@ -22,10 +22,11 @@ from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
 from .mesh_preview import INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, supported_mesh, surface_area
 from .pair_selector import PairLimits, select_partners
 from .preview_format import encode_geometry
+from .quality import scan_quality
 from .stereo_depth import StereoParams, View, combine_depths, compute_pair_depth
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.3.0"
+ENGINE_VERSION = "p1-0.4.0"
 
 
 @dataclass
@@ -422,6 +423,7 @@ class SessionEngine:
             mcfg = MeshConfig(**{**asdict(self.cfg.mesh), "max_triangles": self.cfg.max_snapshot_triangles})
             V, Cv, N, cls, T = supported_mesh(self.fusion.extract_mesh(), self.box.size_m, xyz, nframes, mcfg, weak)
             table_hidden = False
+            fp = None
             if len(T) and self.cfg.hide_table:
                 fp = DishFootprint.from_vertices(V)
                 if fp is not None:
@@ -431,6 +433,9 @@ class SessionEngine:
                         kp = fp.keep(xyz)
                         xyz, rgb, nframes, sup, pcls, weak = xyz[kp], rgb[kp], nframes[kp], sup[kp], pcls[kp], weak[kp]
                         table_hidden = True
+            cov = self.coverage()
+            sides = float((np.array(cov["views_per_bin"]).sum(0) > 0).mean())
+            quality = scan_quality(V, T, cls, fp if table_hidden else None, n_integrated, sides)
             if len(T):
                 verts, normals, tris = V, N, T
                 vrgbc = np.concatenate([Cv, cls[:, None]], 1)
@@ -462,6 +467,7 @@ class SessionEngine:
             "classes": {"0": "measured", "1": "interpolated", "2": "estimated", "3": "tracking", "4": "provisional_single_view"},
         }
         header["table_hidden"] = bool(want_mesh and locals().get("table_hidden", False))
+        header["quality"] = locals().get("quality") or scan_quality(np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0), None, n_integrated, 0.0)
         header["compute_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         header.update(point_count=int(len(p_rgbc)), vertex_count=0 if verts is None else int(len(verts)),
                       triangle_count=0 if tris is None else int(len(tris)))
