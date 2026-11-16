@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dishplay.app/contracts/preview-message.schema.json",
+  "title": "DishPlay Scan calculator -> client messages",
+  "description": "JSON events on WS /sessions/{id}/events. Geometry itself is binary DPG1 (see backend/reconstruction/preview_format.py) fetched from the URL in a geometry event; the client keeps only the newest version and ignores older ones.",
+  "type": "object",
+  "required": ["type"],
+  "oneOf": [
+    {"properties": {"type": {"const": "hello"}, "session_id": {"type": "string"}, "server_time": {"type": "number"}}, "required": ["type", "session_id"]},
+    {"properties": {"type": {"const": "status"}, "state": {"enum": ["capturing", "paused", "processing", "finishing", "done", "failed", "box_revised", "worker_restarted"]}, "queue": {"type": "integer"}}, "required": ["type", "state"]},
+    {"properties": {"type": {"const": "frame"}, "frame_id": {"type": "integer"}, "status": {"enum": ["received", "integrated", "waiting_partner", "rejected", "deferred", "other_epoch"]}, "reason": {"type": "string"}, "points": {"type": "integer"}, "pairs": {"type": "array"}}, "required": ["type", "frame_id", "status"]},
+    {"properties": {"type": {"const": "geometry"}, "url": {"type": "string"}, "header": {"$ref": "#/$defs/geometry_header"}}, "required": ["type", "url", "header"]},
+    {"properties": {"type": {"const": "finish_progress"}, "step": {"enum": ["depth", "mesh", "texture", "done"]}, "done": {"type": "integer"}, "total": {"type": "integer"}}, "required": ["type", "step"]},
+    {"properties": {"type": {"const": "artifacts"}, "files": {"type": "array", "items": {"type": "string"}}, "report": {"type": "object"}}, "required": ["type", "files"]},
+    {"properties": {"type": {"const": "error"}, "code": {"type": "string"}, "message": {"type": "string"}}, "required": ["type", "code"]}
+  ],
+  "$defs": {
+    "geometry_header": {
+      "type": "object",
+      "required": ["schema", "version", "kind", "frame", "units", "epoch", "box_revision", "computed_at", "last_frame_ids", "integrated_frames", "point_count", "vertex_count", "triangle_count"],
+      "properties": {
+        "schema": {"const": "dishplay.geometry/1"},
+        "version": {"type": "integer", "description": "Strictly increasing within a session. Final geometry uses 1000000 + n."},
+        "kind": {"enum": ["points", "points+mesh", "final"]},
+        "frame": {"const": "object"},
+        "units": {"const": "m"},
+        "epoch": {"type": "integer"},
+        "box_revision": {"type": "integer"},
+        "computed_at": {"type": "number", "description": "Server UNIX time when computed."},
+        "last_frame_ids": {"type": "array", "items": {"type": "integer"}},
+        "integrated_frames": {"type": "integer"},
+        "received_frames": {"type": "integer"},
+        "point_count": {"type": "integer"}, "vertex_count": {"type": "integer"}, "triangle_count": {"type": "integer"},
+        "measured_points": {"type": "integer"}, "confirmed_points": {"type": "integer"},
+        "surface": {"type": "object"},
+        "coverage": {"type": "object"},
+        "classes": {"type": "object", "description": "0 measured (>=2 views), 1 interpolated by fusion, 2 estimated (completion, off by default), 3 tracking (client only), 4 provisional single-view."}
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+name: DishPlay Scan — checks
+
+# Backend tests on Linux + ScanCore unit tests and an unsigned iOS device build on macOS.
+on:
+  push:
+    paths: ['dishplay-scan/**', 'scripts/apple/install-xcodegen.sh', '.github/workflows/ios-check.yml']
+  pull_request:
+    paths: ['dishplay-scan/**', '.github/workflows/ios-check.yml']
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: dishplay-scan/backend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install pinned dependencies (system Python 3.12 of ubuntu-24.04)
+        run: |
+          python3.12 -m venv .venv
+          .venv/bin/python -m pip install -q -r requirements.lock
+      - name: Unit, integration and end-to-end tests
+        run: .venv/bin/python -m pytest -q -p no:cacheprovider
+      - name: Doctor (includes a synthetic self-test of the chain)
+        run: .venv/bin/python ../tools/doctor.py || true
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Select the newest installed Xcode 26 and record versions
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR="$XC/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+          swift --version
+      - name: ScanCore unit tests (coordinates, wire formats, capture heuristics; Python golden vectors)
+        working-directory: dishplay-scan/ios/ScanCore
+        run: swift test
+      - name: Install pinned XcodeGen (2.46.0, SHA-256 verified)
+        run: echo "XCODEGEN=$(bash scripts/apple/install-xcodegen.sh)" >> "$GITHUB_ENV"
+      - name: Generate project and build for iPhone (unsigned)
+        working-directory: dishplay-scan/ios
+        run: |
+          "$XCODEGEN" --version
+          "$XCODEGEN" generate --spec project.yml
+          xcodebuild -project DishPlayScan.xcodeproj -scheme DishPlayScan -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO build | tee build/xcodebuild.log | grep -E "error:|warning: .*(Sendable|isolated)|BUILD" || true
+          test "${PIPESTATUS[0]}" = "0"
+      - name: Check bundle contents
+        working-directory: dishplay-scan/ios
+        run: |
+          APP=$(find build/DerivedData/Build/Products -name "DishPlayScan.app" -maxdepth 3 | head -1)
+          test -f "$APP/default.metallib"
+          test -f "$APP/PrivacyInfo.xcprivacy"
+          /usr/libexec/PlistBuddy -c "Print :NSLocalNetworkUsageDescription" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: scan-ios-build-log
+          path: dishplay-scan/ios/build/xcodebuild.log
+          retention-days: 7

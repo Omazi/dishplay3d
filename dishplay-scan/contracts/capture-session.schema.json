@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dishplay.app/contracts/capture-session.schema.json",
+  "title": "DishPlay Scan capture contract (iPhone/Android -> calculator)",
+  "description": "Units: metres, seconds. Transforms are T_A_from_B (maps coordinates in B to A), serialised as 16 numbers in ROW-MAJOR order. Images are in the sensor-native orientation that matches the intrinsics (no rotation applied). Frames: world = ARKit/ARCore world of one tracking epoch (y up); object = capture box (origin at centre of the box base, +y up, x width, z depth); cameraAR = x right, y up, z towards viewer; cameraCV = cameraAR * diag(1,-1,-1,1). Box sizes are (width x, height y, depth z).",
+  "$defs": {
+    "mat4": {"type": "array", "items": {"type": "number"}, "minItems": 16, "maxItems": 16},
+    "intrinsics": {
+      "type": "object",
+      "required": ["fx", "fy", "cx", "cy", "width", "height"],
+      "properties": {
+        "fx": {"type": "number", "exclusiveMinimum": 0}, "fy": {"type": "number", "exclusiveMinimum": 0},
+        "cx": {"type": "number"}, "cy": {"type": "number"},
+        "width": {"type": "integer", "minimum": 16}, "height": {"type": "integer", "minimum": 16}
+      },
+      "description": "Pinhole intrinsics in pixels for an image of exactly width x height (pixel centres at integer coordinates)."
+    },
+    "box": {
+      "type": "object",
+      "required": ["T_world_from_object", "size_m", "epoch"],
+      "properties": {
+        "T_world_from_object": {"$ref": "#/$defs/mat4"},
+        "size_m": {
+          "type": "object", "required": ["width", "height", "depth"],
+          "properties": {"width": {"type": "number", "minimum": 0.03, "maximum": 1.5}, "height": {"type": "number", "minimum": 0.01, "maximum": 1.0}, "depth": {"type": "number", "minimum": 0.03, "maximum": 1.5}}
+        },
+        "epoch": {"type": "integer", "minimum": 0},
+        "revision": {"type": "integer", "minimum": 0},
+        "scale_confidence": {"enum": ["tracking_only", "reference_measured"]},
+        "plane": {"type": "string", "maxLength": 64, "description": "How the base plane was chosen, e.g. arkit_horizontal_plane, estimated_plane."}
+      }
+    },
+    "session_create": {
+      "type": "object",
+      "required": ["schema", "box", "device"],
+      "properties": {
+        "schema": {"const": "dishplay.session/1"},
+        "client_session_id": {"type": "string", "maxLength": 64},
+        "box": {"$ref": "#/$defs/box"},
+        "device": {
+          "type": "object", "required": ["platform", "model"],
+          "properties": {
+            "platform": {"enum": ["ios", "android", "replay", "synthetic"]},
+            "model": {"type": "string", "maxLength": 64},
+            "os": {"type": "string", "maxLength": 64},
+            "app_version": {"type": "string", "maxLength": 32},
+            "lidar_available": {"type": "boolean"},
+            "lidar_enabled": {"type": "boolean"}
+          }
+        },
+        "reference_width_m": {"type": ["number", "null"]}
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": ["schema", "session_id", "frame_id", "epoch", "timestamp_s", "image", "intrinsics", "distortion", "T_world_from_cameraAR", "tracking"],
+      "properties": {
+        "schema": {"const": "dishplay.frame/1"},
+        "session_id": {"type": "string", "maxLength": 64},
+        "frame_id": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "epoch": {"type": "integer", "minimum": 0},
+        "timestamp_s": {"type": "number", "description": "Monotonic capture time (ARFrame.timestamp)."},
+        "image": {
+          "type": "object", "required": ["width", "height", "encoding", "sha256", "orientation"],
+          "properties": {
+            "width": {"type": "integer"}, "height": {"type": "integer"},
+            "encoding": {"const": "jpeg"},
+            "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "orientation": {"const": "sensor_native"},
+            "transforms": {"type": "array", "items": {"type": "string"}, "description": "Applied image operations, e.g. scale. Empty for originals."}
+          }
+        },
+        "intrinsics": {"$ref": "#/$defs/intrinsics"},
+        "distortion": {
+          "type": "object", "required": ["status"],
+          "properties": {"status": {"enum": ["arkit_not_provided_assumed_negligible", "none_synthetic", "coefficients"]}, "coefficients": {"type": "array", "items": {"type": "number"}}}
+        },
+        "T_world_from_cameraAR": {"$ref": "#/$defs/mat4"},
+        "tracking": {
+          "type": "object", "required": ["state"],
+          "properties": {"state": {"enum": ["normal", "limited", "not_available"]}, "reason": {"type": "string"}}
+        },
+        "camera_format": {
+          "type": "object",
+          "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}, "fps": {"type": "number"}, "device": {"type": "string"}, "exposure_s": {"type": "number"}, "iso": {"type": "number"}}
+        },
+        "quality": {
+          "type": "object",
+          "properties": {"sharpness": {"type": "number"}, "mean_luma": {"type": "number"}, "box_in_view": {"type": "number"}, "translation_since_last_m": {"type": "number"}, "angular_speed_dps": {"type": "number"}}
+        },
+        "depth": {
+          "type": "object", "required": ["width", "height", "encoding", "intrinsics", "source"],
+          "properties": {
+            "width": {"type": "integer"}, "height": {"type": "integer"},
+            "encoding": {"const": "float32_le_m"},
+            "confidence_encoding": {"enum": ["uint8_arkit", "none"]},
+            "intrinsics": {"$ref": "#/$defs/intrinsics"},
+            "source": {"enum": ["lidar_scene_depth"]},
+            "timestamp_s": {"type": "number"}
+          }
+        },
+        "synthetic": {"type": "boolean"}
+      }
+    }
+  }
+}

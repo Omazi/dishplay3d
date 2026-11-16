@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>fr</string>
+  <key>CFBundleDisplayName</key><string>DishPlay Scan</string>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>app.dishplay.scan.pair</string>
+    <key>CFBundleURLSchemes</key><array><string>dishplayscan</string></array>
+  </dict></array>
+  <key>ITSAppUsesNonExemptEncryption</key><false/>
+  <key>LSRequiresIPhoneOS</key><true/>
+  <key>NSCameraUsageDescription</key><string>DishPlay Scan filme le plat avec la caméra pour le reconstruire en 3D. Les images restent sur l’iPhone et sur votre calculateur local.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>DishPlay Scan envoie les vues du plat à votre ordinateur de calcul sur le même Wi-Fi et reçoit le nuage de points et la surface en direct.</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <!-- Restricted exception: local network only. The app still requires HTTPS and pins the calculator certificate. -->
+    <key>NSAllowsLocalNetworking</key><true/>
+  </dict>
+  <key>UIRequiredDeviceCapabilities</key><array><string>arkit</string><string>metal</string></array>
+  <key>UIFileSharingEnabled</key><true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+  <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
+  <key>UILaunchScreen</key><dict/>
+  <key>UIStatusBarHidden</key><false/>
+  <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+</dict>
+</plist>

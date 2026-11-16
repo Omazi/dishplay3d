@@ -1,0 +1,93 @@
+"""Partial surface extraction restricted to well-supported regions.
+
+Provenance classes (per vertex / point), shared with the iOS renderer:
+  0 MEASURED      supported by validated depth from >= 2 frames nearby
+  1 INTERPOLATED  TSDF surface between measured samples (single-frame or sparse support)
+  2 ESTIMATED     proposed by a completion provider (never produced by default)
+  3 TRACKING      ARKit feature points (iOS only, never sent by the server)
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+import open3d as o3d
+from scipy.spatial import cKDTree
+
+from .coordinates import inside_box
+
+MEASURED, INTERPOLATED, ESTIMATED, TRACKING = 0, 1, 2, 3
+
+
+@dataclass
+class MeshConfig:
+    support_radius_m: float = 0.004
+    interp_radius_m: float = 0.008
+    min_frames_measured: int = 2
+    min_component_triangles: int = 40
+    max_triangles: int = 60000
+
+
+def classify_vertices(vertices: np.ndarray, pts: np.ndarray, nframes: np.ndarray, cfg: MeshConfig) -> np.ndarray:
+    cls = np.full(len(vertices), 255, np.uint8)  # 255 = unsupported -> removed
+    if len(pts) == 0 or len(vertices) == 0:
+        return cls
+    tree = cKDTree(pts.astype(np.float64))
+    d, idx = tree.query(vertices, k=8, distance_upper_bound=cfg.interp_radius_m)
+    found = np.isfinite(d)
+    idx_safe = np.where(found, idx, 0)
+    nf = np.where(found & (d <= cfg.support_radius_m), nframes[idx_safe], 0)
+    measured = nf.max(1) >= cfg.min_frames_measured
+    interp = found[:, 0]
+    cls[interp] = INTERPOLATED
+    cls[measured] = MEASURED
+    return cls
+
+
+def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: MeshConfig = MeshConfig()):
+    """Crop to the box, drop unsupported triangles and tiny islands, decimate, classify.
+
+    No hole filling and no closing: concavities (plate well, bowl) stay open.
+    Returns (vertices Nx3 f32, colors Nx3 u8, normals Nx3 f32, classes N u8, triangles Mx3 u32).
+    """
+    empty = (np.zeros((0, 3), np.float32), np.zeros((0, 3), np.uint8), np.zeros((0, 3), np.float32),
+             np.zeros(0, np.uint8), np.zeros((0, 3), np.uint32))
+    if len(mesh.triangles) == 0:
+        return empty
+    V = np.asarray(mesh.vertices)
+    keep_v = inside_box(V, size_m, margin=0.005, below=0.005)
+    cls = classify_vertices(V, pts, nframes, cfg)
+    keep_v &= cls != 255
+    T = np.asarray(mesh.triangles)
+    keep_t = keep_v[T].all(1)
+    mesh.remove_triangles_by_mask(~keep_t)
+    mesh.remove_unreferenced_vertices()
+    if len(mesh.triangles) == 0:
+        return empty
+    tri_clusters, n_tri, _ = mesh.cluster_connected_triangles()
+    tri_clusters = np.asarray(tri_clusters)
+    n_tri = np.asarray(n_tri)
+    mesh.remove_triangles_by_mask(n_tri[tri_clusters] < cfg.min_component_triangles)
+    mesh.remove_unreferenced_vertices()
+    if len(mesh.triangles) > cfg.max_triangles:
+        mesh = mesh.simplify_quadric_decimation(cfg.max_triangles)
+    if len(mesh.triangles) == 0:
+        return empty
+    mesh.compute_vertex_normals()
+    V = np.asarray(mesh.vertices)
+    cls = classify_vertices(V, pts, nframes, cfg)
+    cls[cls == 255] = INTERPOLATED  # decimation can move a vertex slightly off support
+    colors = (np.clip(np.asarray(mesh.vertex_colors), 0, 1) * 255).astype(np.uint8) if mesh.has_vertex_colors() else np.full((len(V), 3), 180, np.uint8)
+    return (V.astype(np.float32), colors, np.asarray(mesh.vertex_normals).astype(np.float32), cls,
+            np.asarray(mesh.triangles).astype(np.uint32))
+
+
+def surface_area(vertices: np.ndarray, triangles: np.ndarray, classes: np.ndarray | None = None, cls: int | None = None) -> float:
+    if len(triangles) == 0:
+        return 0.0
+    t = triangles
+    if classes is not None and cls is not None:
+        t = t[(classes[t] == cls).all(1)]
+    a = vertices[t[:, 1]] - vertices[t[:, 0]]
+    b = vertices[t[:, 2]] - vertices[t[:, 0]]
+    return float(0.5 * np.linalg.norm(np.cross(a, b), axis=1).sum())
