@@ -6,7 +6,8 @@ import ImageIO
 import ScanCore
 
 /// Everything needed to encode one keyframe AFTER the ARFrame has been released.
-struct CapturedFrame {
+// Owns a private copy of the pixel buffer; handed to one background encode task only.
+struct CapturedFrame: @unchecked Sendable {
     var frameID: Int
     var epoch: Int
     var timestamp: Double

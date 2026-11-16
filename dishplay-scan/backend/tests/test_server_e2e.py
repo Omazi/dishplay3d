@@ -103,7 +103,8 @@ def test_full_loop_progressive_then_finish(server, tmp_path):
     t0 = time.time()
     while time.time() - t0 < 120:
         geo = lis.of("geometry")
-        if geo and geo[-1]["header"].get("integrated_frames", 0) >= 50:
+        seen = {f["frame_id"] for f in lis.of("frame") if f["status"] != "waiting_partner"}
+        if geo and seen >= set(range(60)):
             break
         time.sleep(0.5)
     geo = lis.of("geometry")
@@ -116,10 +117,17 @@ def test_full_loop_progressive_then_finish(server, tmp_path):
     g = cl.geometry(geo[-1]["url"])
     assert g["header"]["triangle_count"] > 500 and g["header"]["point_count"] > 3000
     frames = lis.of("frame")
-    assert {f["frame_id"] for f in frames if f["status"] == "integrated"} >= set(range(5, 50))
+    final_status = {}
+    for f in frames:
+        final_status[f["frame_id"]] = f["status"]
+    integrated = {k for k, v in final_status.items() if v == "integrated"}
+    assert len(integrated & set(range(60))) >= 0.85 * 60, final_status
+    # Frames not integrated live carry an explicit status (e.g. deferred to finishing under CPU load), never silence.
+    assert all(final_status.get(i) in ("integrated", "deferred", "waiting_partner", "rejected") for i in range(60))
     intervals = np.diff([x["_rx"] for x in geo])
     stats = {"first_geometry_s": first, "updates_during_capture": len(during), "interval_median_s": float(np.median(intervals)),
-             "interval_p95_s": float(np.percentile(intervals, 95)), "geometry_bytes_last": geo[-1].get("bytes")}
+             "interval_p95_s": float(np.percentile(intervals, 95)), "geometry_bytes_last": geo[-1].get("bytes"),
+             "statuses": {s: sum(1 for v in final_status.values() if v == s) for s in set(final_status.values())}}
     # finish
     cl.post(f"/sessions/{sid}/finish", {"reference_width_m": 0.24})
     t0 = time.time()

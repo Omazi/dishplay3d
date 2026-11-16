@@ -55,12 +55,14 @@ jobs:
       - name: Generate project and build for iPhone (unsigned)
         working-directory: dishplay-scan/ios
         run: |
+          set -o pipefail
+          mkdir -p build
           "$XCODEGEN" --version
           "$XCODEGEN" generate --spec project.yml
           xcodebuild -project DishPlayScan.xcodeproj -scheme DishPlayScan -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO build | tee build/xcodebuild.log | grep -E "error:|warning: .*(Sendable|isolated)|BUILD" || true
-          test "${PIPESTATUS[0]}" = "0"
+            CODE_SIGNING_ALLOWED=NO build > build/xcodebuild.log 2>&1 || { grep -E "error:" build/xcodebuild.log; tail -40 build/xcodebuild.log; exit 1; }
+          grep -E "warning: .*\.swift|BUILD SUCCEEDED" build/xcodebuild.log || true
       - name: Check bundle contents
         working-directory: dishplay-scan/ios
         run: |
