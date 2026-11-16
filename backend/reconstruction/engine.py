@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 
-from .coordinates import (inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
+from .coordinates import (box_corners, inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
                           scale_intrinsics, transform_points)
 from .consistency import DepthView, confirmed_depth, depth_scale_from_views, pick_neighbours
 from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
@@ -23,10 +23,11 @@ from .mesh_preview import INTERPOLATED, MEASURED, DishFootprint, MeshConfig, cro
 from .pair_selector import PairLimits, select_partners
 from .preview_format import encode_geometry
 from .quality import scan_quality
-from .stereo_depth import StereoParams, View, combine_depths, compute_pair_depth
+from .mono_depth import align_and_fill
+from .stereo_depth import StereoParams, View, _box_mask, combine_depths, compute_pair_depth
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.4.0"
+ENGINE_VERSION = "p1-0.5.0"
 
 
 @dataclass
@@ -126,6 +127,10 @@ class SessionEngine:
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
         self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
         self.scale_stats = {"applied": 0, "skipped": 0, "abs_dev_sum": 0.0}
+        # Optional learned single-image depth (see mono_depth.py): fills what stereo cannot measure.
+        self.mono = None
+        self.mono_stats = {"views": 0, "views_filled": 0, "filled_px": 0, "kept_px": 0, "errors": 0, "skipped": {}}
+        self._mono_filled: dict[int, np.ndarray] = {}
         self._geom: dict = {}
         self._scale_raw: list[float] = []
         self.latencies: list[float] = []
@@ -141,6 +146,7 @@ class SessionEngine:
         self._model_mesh = None
         self._depth_cache = []
         self._awaiting = []
+        self._mono_filled = {}
         self._scale_raw = []
         self._geom = {}
         self.views.clear()
@@ -299,6 +305,8 @@ class SessionEngine:
         depth, support = combine_depths(depths)
         if self.cfg.scale_to_views:
             depth = self._rescale(fid, depth, ref)
+        if self.mono is not None:
+            depth = self._fill_from_mono(fid, depth, ref)
         # Not fused yet: wait for neighbouring views so the depth can be confirmed or contradicted.
         self._depth_cache.append(DepthView(fid, depth, ref.K, ref.T_obj_from_cam, cv2.GaussianBlur(ref.image, (5, 5), 0)))
         if len(self._depth_cache) > self.cfg.confirm_window:
@@ -324,6 +332,28 @@ class SessionEngine:
         self.scale_stats["abs_dev_sum"] += abs(s - 1)
         return (depth * np.float32(s)).astype(np.float32)
 
+    def _fill_from_mono(self, fid: int, depth: np.ndarray, ref: View) -> np.ndarray:
+        """Give a depth to the pixels of the box that stereo left empty, from the learned prediction tied
+        to this view's own measurements. Any failure leaves the measured depth untouched."""
+        st = self.mono_stats
+        st["views"] += 1
+        try:
+            pred = self.mono.predict(ref.image, fid)
+            roi = _box_mask(ref, self.box.size_m, 0.0) > 0
+            zc = transform_points(invert_rigid(ref.T_obj_from_cam), box_corners(self.box.size_m))[:, 2]
+            out, fill, info = align_and_fill(depth, pred, roi, (max(0.03, float(zc.min()) - 0.01), float(zc.max()) + 0.01))
+        except Exception as exc:
+            st["errors"] += 1
+            st["last_error"] = repr(exc)
+            return depth
+        if fill is None or not fill.any():
+            st["skipped"][info["status"]] = st["skipped"].get(info["status"], 0) + 1
+            return depth
+        st["views_filled"] += 1
+        st["filled_px"] += int(fill.sum())
+        self._mono_filled[fid] = fill
+        return out
+
     def _fuse_ready(self, flush: bool) -> int:
         """Fuse frames whose depth can now be judged by enough later views (all of them when flushing)."""
         n_done = 0
@@ -344,7 +374,12 @@ class SessionEngine:
             ref = self._view(fid)
             # support = number of independent confirmations (other views), at least 2 once confirmed
             sup = np.where(depth > 0, np.minimum(agree.astype(np.int32) + 1, 255), 0).astype(np.uint8)
-            n = self.fusion.integrate(fid, ref.image, depth, ref.K, ref.T_obj_from_cam, sup, SOURCE_STEREO, ref.weak_texture())
+            weak = ref.weak_texture()
+            filled = self._mono_filled.pop(fid, None)
+            if filled is not None:   # predicted, then confirmed by other views: shown, but never called measured
+                weak = weak | filled
+                self.mono_stats["kept_px"] += int((filled & (depth > 0)).sum())
+            n = self.fusion.integrate(fid, ref.image, depth, ref.K, ref.T_obj_from_cam, sup, SOURCE_STEREO, weak)
             rec.status = "integrated" if n > 0 else "rejected"
             rec.reason = "" if n > 0 else ("not_confirmed_by_other_views" if st["valid"] else "no_points_in_box")
             rec.integrated_at = self.clock()
@@ -486,6 +521,14 @@ class SessionEngine:
                                     "compute_ms": header["compute_ms"], "surface": areas})
         return header, blob
 
+    def mono_report(self) -> dict:
+        if self.mono is None:
+            return {"enabled": False}
+        st = self.mono_stats
+        return {"enabled": True, **{k: v for k, v in st.items()},
+                "kept_share": round(st["kept_px"] / st["filled_px"], 3) if st["filled_px"] else None,
+                "seconds": round(float(getattr(self.mono, "seconds", 0.0)), 2), "calls": int(getattr(self.mono, "calls", 0))}
+
     def metrics(self) -> dict:
         lat = np.array(self.latencies) if self.latencies else None
         statuses: dict[str, int] = {}
@@ -502,6 +545,7 @@ class SessionEngine:
                           "median_shift_mm": float(np.median([a["shift_m"] for a in self.alignments if a.get("applied")]) * 1000)
                           if any(a.get("applied") for a in self.alignments) else None},
             "confirmation": dict(self.confirm_stats),
+            "mono_fill": self.mono_report(),
             "depth_scale": {"applied": self.scale_stats["applied"], "skipped": self.scale_stats["skipped"],
                             "mean_abs_correction_pct": round(100 * self.scale_stats["abs_dev_sum"] / max(1, self.scale_stats["applied"]), 3)},
             "pairs": {"total": len(pr), "ok": sum(p["status"] == "ok" for p in pr),

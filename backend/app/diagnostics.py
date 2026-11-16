@@ -47,6 +47,17 @@ def capabilities(data_dir: str | None = None) -> dict:
         out["open3d_cuda"] = bool(o3d.core.cuda.is_available())
     except Exception as exc:
         out["open3d_error"] = repr(exc)
+    try:
+        import onnxruntime
+        out["onnxruntime"] = onnxruntime.__version__
+    except Exception as exc:
+        out["onnxruntime_error"] = repr(exc)
+    try:
+        from reconstruction.mono_depth import model_path
+        mp = model_path(None) if not data_dir else Path(data_dir) / "models" / model_path(None).name
+        out["depth_model"] = mp.exists()
+    except Exception:
+        out["depth_model"] = False
     gpu = shutil.which("nvidia-smi")
     out["nvidia_smi"] = bool(gpu)
     out["gpu_required"] = False

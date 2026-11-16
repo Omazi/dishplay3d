@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import time
 import traceback
@@ -25,6 +26,21 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
     if "preview_width" in settings:
         cfg.preview_width = int(settings["preview_width"])
     engine = SessionEngine(sdir, Box.from_json(box_json), cfg, emit=emit)
+    # Learned depth for uniform or shiny surfaces (reconstruction/mono_depth.py). Used when finishing;
+    # during capture only on request, because it adds processor time to every view.
+    mono_state = {"model": None, "reason": "not_loaded"}
+
+    def mono_model():
+        if not settings.get("mono", True) or os.environ.get("DISHPLAY_MONO", "1") == "0":
+            mono_state["reason"] = "disabled"
+            return None
+        if mono_state["model"] is None and mono_state["reason"] == "not_loaded":
+            from reconstruction.mono_depth import load_default
+            mono_state["model"], mono_state["reason"] = load_default(sdir)
+        return mono_state["model"]
+
+    if settings.get("mono_live", False):
+        engine.mono = mono_model()
     for meta_path, received_at in existing_frames:  # resume after a server restart
         _add(engine, Path(meta_path), received_at)
     paused = False
@@ -59,7 +75,8 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
                     if snap:
                         _publish(sdir, *snap, emit)
                     rep = finish_session(engine, sdir / "final", reference_width_m=cmd[1], emit=emit,
-                                         texture=bool(settings.get("texture", True)))
+                                         texture=bool(settings.get("texture", True)),
+                                         mono=mono_model(), mono_reason=mono_state["reason"])
                     files = sorted(p.name for p in (sdir / "final").iterdir() if p.is_file())
                     emit({"type": "geometry", "url": f"/sessions/{sid}/artifacts/final_preview.dpg",
                           "header": {"version": 1_000_000 + engine.version, "kind": "final"}})

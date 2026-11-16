@@ -70,6 +70,10 @@ def main():
     ap.add_argument("--jitter-mm", type=float, default=0.0, help="independent per-frame position noise on reported poses")
     ap.add_argument("--jitter-deg", type=float, default=0.0, help="independent per-frame rotation noise on reported poses")
     ap.add_argument("--dump", action="store_true", help="save the raw fused mesh and the point store for offline experiments")
+    ap.add_argument("--mono-oracle", action="store_true",
+                    help="fill stereo gaps from a SIMULATED single-image depth (true depth, damaged): upper bound of the fill step, not a result of the real network")
+    ap.add_argument("--mono-distortion", type=float, default=0.03, help="slow relative error of the simulated prediction")
+    ap.add_argument("--mono-model", default="", help="path of the real ONNX depth model: fill stereo gaps with it")
     a = ap.parse_args()
     from reconstruction.engine import Box, EngineConfig, SessionEngine
     from reconstruction.preview_format import decode_geometry
@@ -97,10 +101,18 @@ def main():
     clock = {"t": 0.0}
     # The bench scores the table too (it is part of the ground truth): keep it in the output.
     eng = SessionEngine(out, Box.from_json(bj), EngineConfig(hide_table=False), clock=lambda: clock["t"])
+    mono, true_depths = None, {}
+    if a.mono_oracle:
+        from reconstruction.mono_depth import OracleMono
+        mono = OracleMono(true_depths, seed=a.seed, distortion=a.mono_distortion)
+    elif a.mono_model:
+        from reconstruction.mono_depth import MonoDepth
+        mono = MonoDepth(Path(a.mono_model))
+    eng.mono = mono
     t0 = time.perf_counter()
     last = None
     for i, (Tr, Tt) in enumerate(zip(rep, true)):
-        img, _ = sc.render(Tt)
+        img, true_depths[i] = sc.render(Tt)
         jpg = cv2.imencode(".jpg", degrade(img, rng), [cv2.IMWRITE_JPEG_QUALITY, 88])[1].tobytes()
         meta = frame_meta(sc, i, Tr, session_id="bench", timestamp=i * 0.3)
         meta["image"]["sha256"] = hashlib.sha256(jpg).hexdigest()
@@ -129,8 +141,9 @@ def main():
         from reconstruction.refinement import finish_session
         import open3d as o3d
         t1 = time.perf_counter()
-        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine, remove_table=False)
+        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine, remove_table=False, mono=mono)
         res["pose_refinement"] = rep_final["pose_refinement"]
+        res["mono_fill_final"] = rep_final["mono_fill"]
         gf = decode_geometry((out / "final" / "final_preview.dpg").read_bytes())
         res["final"] = metrics(sc, gf["verts"].astype(np.float64), gf["tris"], vis_pts, vis_mat, gf["vert_rgbc"][:, 3])
         res["finish_seconds"] = time.perf_counter() - t1
@@ -140,6 +153,7 @@ def main():
             print(k, json.dumps({a: (round(b, 2) if isinstance(b, float) else b) for a, b in res[k].items()}))
     if "pose_refinement" in res:
         print("pose_refinement", {k: (round(v, 2) if isinstance(v, float) else v) for k, v in res["pose_refinement"].items()})
+    print("mono_fill live", res["engine_metrics"]["mono_fill"], "final", res.get("mono_fill_final"))
     print("frames", res["engine_metrics"]["frames"], "live_s", round(live_s, 1), "finish_s", round(res.get("finish_seconds", 0), 1))
 
 

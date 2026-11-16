@@ -5,7 +5,21 @@ Set-Location (Join-Path $PSScriptRoot "backend")
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
   py -3.12 -m venv .venv
   .\.venv\Scripts\python.exe -m pip install --upgrade pip
+}
+# Install the libraries again whenever the list changed (after an update of the project).
+$lock = (Get-FileHash requirements.lock -Algorithm SHA256).Hash
+$stamp = ".venv\requirements.sha256"
+if (-not (Test-Path $stamp) -or ((Get-Content $stamp -Raw).Trim() -ne $lock)) {
+  Write-Host "Installing the calculator's libraries..."
   .\.venv\Scripts\python.exe -m pip install -r requirements.lock
+  if ($LASTEXITCODE -eq 0) { Set-Content -Path $stamp -Value $lock -NoNewline }
+  else { Write-Host "Some libraries could not be installed (no internet?). Starting with what is there; it will be tried again next time." }
+}
+# Optional depth model for uniform or shiny dishes (about 99 MB, once). Set DISHPLAY_MONO=0 to skip it.
+if ($env:DISHPLAY_MONO -ne "0") {
+  $ErrorActionPreference = "Continue"
+  .\.venv\Scripts\python.exe ..\tools\get_models.py
+  $ErrorActionPreference = "Stop"
 }
 # Allow the iPhone to reach the calculator on the private network only (asks for admin once).
 $rule = Get-NetFirewallRule -DisplayName "DishPlay Scan 8765" -ErrorAction SilentlyContinue

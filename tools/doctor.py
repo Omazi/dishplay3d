@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import sys
 import time
@@ -27,7 +28,7 @@ def main():
     a = ap.parse_args()
     from app.diagnostics import capabilities
     from app.main import lan_addresses
-    rep = {"capabilities": capabilities(str(Path.home())), "lan_addresses": lan_addresses(), "checks": []}
+    rep = {"capabilities": capabilities(os.environ.get("DISHPLAY_DATA", str(Path.home() / "dishplay-scan-data"))), "lan_addresses": lan_addresses(), "checks": []}
 
     def check(name, ok, detail=""):
         rep["checks"].append({"name": name, "ok": bool(ok), "detail": detail})
@@ -38,6 +39,8 @@ def main():
     check("open3d", "open3d" in c, c.get("open3d", c.get("open3d_error")))
     ram = c.get("ram_bytes") or 0
     check("RAM >= 8 GB (4 GB minimum)", ram >= 3.5e9, f"{ram / 1e9:.1f} GB")
+    # Optional: without it the calculator works, but uniform or shiny surfaces keep their holes.
+    rep["optional"] = {"onnxruntime": c.get("onnxruntime"), "depth_model": bool(c.get("depth_model"))}
     check("LAN address found", bool(rep["lan_addresses"]), ", ".join(rep["lan_addresses"]) or "none: connect to Wi-Fi/Ethernet")
     if c.get("wsl"):
         check("WSL2 networking", False, "WSL2 NAT hides the server from the iPhone: run natively on Windows (start-calculator.ps1) "
@@ -79,7 +82,7 @@ def main():
         print(json.dumps(rep, indent=1))
     else:
         print("DishPlay Scan doctor")
-        for k in ("python", "platform", "cpu_count", "opencv", "open3d", "open3d_cuda", "nvidia_smi"):
+        for k in ("python", "platform", "cpu_count", "opencv", "open3d", "open3d_cuda", "nvidia_smi", "onnxruntime", "depth_model"):
             print(f"  {k}: {c.get(k)}")
         for ch in rep["checks"]:
             print(f"  [{'OK ' if ch['ok'] else 'NO '}] {ch['name']}: {ch['detail']}")

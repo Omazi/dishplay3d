@@ -264,6 +264,48 @@ Limites : seuils calés sur ces cinq cas seulement, aucun vrai plat ; un premier
 gobelet métal (vu de dessus il paraît complet), d'où l'ajout du morcellement. Le verdict porte sur l'aperçu en direct,
 pas sur le modèle final. Côté app : écrit mais **non compilé** (GitHub Actions bloqué par le quota du compte).
 
+## Mise à jour du 16 novembre — surfaces unies ou brillantes : remplissage par profondeur apprise (moteur `p1-0.5.0`)
+
+Besoin exprimé : le restaurateur choisit son plat, le moteur ne peut pas demander d'éviter le blanc uni ou le
+brillant. La stéréo ne mesure que là où il y a un motif ; ailleurs elle laisse un trou. Ajout :
+`reconstruction/mono_depth.py`. Un réseau de profondeur à une image (Depth Anything V2 Small, ONNX, Apache-2.0,
+99 Mo, processeur seul) prédit la forme relative de chaque vue ; cette prédiction est recalée sur les profondeurs
+que la stéréo a mesurées dans la même vue (droite robuste en profondeur inverse, puis correction locale lissée),
+et seuls les pixels de la boîte restés vides sont remplis. Ces pixels passent ensuite la même confirmation par
+les autres vues que le reste, et sont classés « interpolé », jamais « mesuré ». Garde-fous : prédiction rejetée
+si elle s'écarte de plus de 4 % des mesures de la vue ; rien n'est posé sur un saut de profondeur ; sans le fichier
+du modèle ou sans `onnxruntime`, le moteur se comporte exactement comme avant. Activé à la finition ; pendant la
+capture seulement sur demande (`mono_live`), faute de mesure du temps par vue.
+
+**Ce qui est vérifié, et avec quoi.** Le vrai réseau n'a **pas** été exécuté : dans cette session, l'installation
+d'`onnxruntime` et l'exécution du modèle téléchargé ont été refusées deux fois par la protection automatique.
+Tout ce qui suit utilise un **remplaçant simulé** (`OracleMono`) : la vraie profondeur de la vue de synthèse,
+abîmée comme un réseau se trompe (échelle et décalage inconnus, déformation lente de 3 %, bruit). Cela mesure ce
+que l'étape de remplissage fait d'une prédiction de cette qualité — une borne haute, pas le résultat du vrai réseau.
+
+Bol de synthèse uni, 110 vues, images dégradées, dérive de suivi (`tools/bench_quality.py`, avec et sans
+`--mono-oracle`) :
+
+| | Sans | Avec (simulé) |
+|---|---|---|
+| Parois du bol couvertes, aperçu en direct | 65,9 % | 98,5 % |
+| Parois du bol couvertes, modèle final | 80,0 % | 97,5 % |
+| Couverture totale, modèle final | 84,6 % | 92,1 % |
+| Précision p90, modèle final | 4,12 mm | 3,34 mm |
+| Sommets à plus de 6 mm, modèle final | 3,24 % | 0,92 % |
+| Part des pixels remplis gardés après confirmation par les autres vues | — | 35 % |
+
+Trou seul (180 × 140 px sans aucune mesure, une vue) : erreur médiane du remplissage 0,3 mm avec une prédiction
+parfaite à l'échelle près, 1,4 mm à 3 % de déformation, 2,6 mm à 6 %, 4,7 mm à 12 % — la précision loin des
+mesures suit directement celle du réseau, d'où la confirmation par les autres vues.
+
+Limites : aucune image réelle, aucun vrai plat, vitesse du réseau sur le PC non mesurée, comportement réel sur
+reflets et sauces inconnu. Une vue sans aucune profondeur stéréo (assiette blanche sur nappe blanche) ne peut pas
+être recalée et reste vide. Premier vrai essai : sur le PC, après mise à jour (`start-calculator.ps1` installe la
+bibliothèque et télécharge le modèle, somme SHA-256 vérifiée ; `DISHPLAY_MONO=0` pour s'en passer) ;
+`final/report.json` → `mono_fill` dit combien de vues ont été remplies, combien de pixels gardés, et le temps passé.
+51 tests passés, 1 sauté (celui du vrai réseau, absent ici). Script Windows modifié mais non exécuté (pas de PowerShell ici).
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

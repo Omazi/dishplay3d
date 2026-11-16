@@ -93,7 +93,7 @@ def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) 
 
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
                    texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True,
-                   remove_table: bool = True, max_frames: int = 140) -> dict:
+                   remove_table: bool = True, max_frames: int = 140, mono=None, mono_reason: str = "") -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -111,6 +111,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
             emit({"type": "finish_progress", "step": "depth", "done": min(progress["done"], len(usable)), "total": len(usable)})
 
     fin = SessionEngine(engine.dir, engine.box, cfg, emit=fin_emit)
+    fin.mono = mono   # learned depth for what stereo cannot measure (uniform or shiny surfaces); None = off
     usable = [fid for fid, r in sorted(engine.frames.items())
               if r.epoch == engine.box.epoch and r.reason not in ("tracking_not_normal", "blurred", "image_decode_failed")]
     available = len(usable)
@@ -244,7 +245,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     report = {
         "schema": "dishplay.report/1", "engine": ENGINE_VERSION, "finish_width": finish_width,
         "frames_available": available, "frames_used": len(usable), "frames_integrated_final": len(fusion.integrated_frames),
-        "pairs": pair_stats, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
+        "pairs": pair_stats, "mono_fill": {**fin.mono_report(), **({"reason": mono_reason} if mono is None and mono_reason else {})}, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
         "mesh": {"vertices": int(len(V)), "triangles": int(len(T)), "surface": areas,
                  "provenance_vertices": {"measured": int((cls == MEASURED).sum()), "interpolated": int((cls == INTERPOLATED).sum()),
                                          "estimated": int((cls == ESTIMATED).sum())}},
