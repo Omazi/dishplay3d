@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Shared look: Liquid Glass on iOS 26+, material fallback before.
 extension View {
@@ -20,11 +21,32 @@ enum Theme {
     static let corner: CGFloat = 26
 }
 
+/// Light physical feedback at the moments that matter (placing, starting, a new side covered, done).
+@MainActor
+enum Haptics {
+    static func tap(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .light) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    static func warning() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+}
+
+/// Buttons sink slightly under the finger.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+    }
+}
+
 /// One obvious action per step.
 struct PrimaryButton: View {
     let title: String
     let icon: String
     var enabled = true
+    var tint: Color = Theme.accent
     let action: () -> Void
 
     var body: some View {
@@ -34,9 +56,18 @@ struct PrimaryButton: View {
                 Text(title).font(.headline)
             }
             .frame(maxWidth: .infinity).frame(height: 56)
-            .background(enabled ? Theme.accent : Color.white.opacity(0.14), in: Capsule())
+            .background {
+                if enabled {
+                    Capsule().fill(LinearGradient(colors: [tint, tint.opacity(0.82)], startPoint: .top, endPoint: .bottom))
+                        .shadow(color: tint.opacity(0.45), radius: 14, y: 6)
+                } else {
+                    Capsule().fill(Color.white.opacity(0.14))
+                }
+            }
             .foregroundStyle(enabled ? Color.black : Color.white.opacity(0.45))
+            .animation(.easeInOut(duration: 0.3), value: tint)
         }
+        .buttonStyle(PressableStyle())
         .disabled(!enabled)
     }
 }
@@ -57,6 +88,7 @@ struct GlassIconButton: View {
             .foregroundStyle(.white)
             .glass(Capsule())
         }
+        .buttonStyle(PressableStyle())
     }
 }
 

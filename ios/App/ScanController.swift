@@ -22,6 +22,11 @@ final class ScanController: ObservableObject {
     @Published private(set) var sentFrames = 0
     @Published private(set) var resultFiles: [URL] = []
     @Published var status = CaptureScheduler.Status()
+    /// 0...1 while the calculator reports a countable finishing step, nil otherwise.
+    @Published private(set) var finishFraction: Double?
+    /// Every side seen and enough high views: the user may finish.
+    @Published private(set) var tourComplete = false
+    private var lastVisitedBins = 0
 
     let ar = ARSessionController()
     let box = BoundingBoxController()
@@ -86,6 +91,9 @@ final class ScanController: ObservableObject {
         scheduler.active = true
         ar.setScanExposure(locked: true)
         phase = .scanning
+        lastVisitedBins = 0
+        tourComplete = false
+        Haptics.tap(.heavy)
         store?.writeSessionInfo(["local_id": localID, "box": (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(boxSpec()))) ?? [:],
                                  "lidar": useLidar, "reference_width_m": referenceWidth as Any])
         startUploadLoop()
@@ -223,6 +231,14 @@ final class ScanController: ObservableObject {
             scheduler.consider(frame, worldFromCam: cameraPose(frame), box: box, store: store, lidar: ar.lidarActive,
                                formatText: ar.videoFormatText)
             if status != scheduler.status { status = scheduler.status }
+            let bins = scheduler.ring.visitedBins
+            if bins != lastVisitedBins {
+                lastVisitedBins = bins
+                Haptics.tap(.light)   // a new side of the dish is covered
+                let done = scheduler.ring.visitedAzimuths == 12 && scheduler.ring.highViews >= 6
+                if done && !tourComplete { Haptics.success() }
+                tourComplete = done
+            }
         }
         guard box.placed else { return }
         let objFromWorld = objectFromLiveWorld(frame)
@@ -331,6 +347,7 @@ final class ScanController: ObservableObject {
         case "finish_progress":
             let names = ["poses": "recalage des vues", "depth": "calcul fin des profondeurs", "mesh": "surface", "texture": "texture"]
             let step = names[ev.step ?? ""] ?? (ev.step ?? "")
+            finishFraction = (ev.total ?? 0) > 1 ? min(1, Double(ev.done ?? 0) / Double(ev.total ?? 1)) : nil
             if let total = ev.total, total > 1 {
                 finishText = "\(step.prefix(1).uppercased() + step.dropFirst()) : \(ev.done ?? 0)/\(total)"
             } else {
@@ -338,6 +355,8 @@ final class ScanController: ObservableObject {
             }
         case "artifacts":
             phase = .done
+            finishFraction = nil
+            Haptics.success()
             preview.followPhone = false
             finishText = "Modèle final prêt."
             Task { await downloadResults(ev.files ?? []) }

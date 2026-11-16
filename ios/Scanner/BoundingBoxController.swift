@@ -79,6 +79,7 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         }
         placed = true
         rebuild()
+        Haptics.tap(.medium)
     }
 
     /// Two-finger pinch: grow or shrink width and depth together.
@@ -120,6 +121,7 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
                 while let c = cur { if c.name.hasPrefix("h_") { return c.name }; cur = c.parent }
                 return nil
             }
+            if dragging != nil { Haptics.tap(.light) }  // a knob was caught
             if dragging == nil { dragging = "h_move" }  // anywhere else: slide the whole box on the table
             if let name = dragging, let hit = hitPoint(p, handle: name) {
                 dragStart = (centre, width, depth, height, hit)
@@ -206,44 +208,70 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         root.children.removeAll()
         guard placed else { return }
         anchor.transform = Transform(scale: .one, rotation: simd_quatf(angle: yaw, axis: [0, 1, 0]), translation: centre)
-        let edge: UIColor = locked ? UIColor.systemGreen : UIColor.white
-        let mat = UnlitMaterial(color: edge)
-        let t: Float = 0.004
+        let tint: UIColor = locked ? UIColor(red: 0.30, green: 0.85, blue: 0.55, alpha: 1) : .white
         let w = width, d = depth, h = height
-        func bar(_ size: SIMD3<Float>, _ pos: SIMD3<Float>) {
+        func bar(_ size: SIMD3<Float>, _ pos: SIMD3<Float>, _ mat: UnlitMaterial) {
             let e = ModelEntity(mesh: .generateBox(size: size), materials: [mat])
             e.position = pos
             root.addChild(e)
         }
+        // Soft full edges: the volume reads as a box without hiding the dish.
+        var soft = UnlitMaterial(color: tint)
+        soft.blending = .transparent(opacity: 0.38)
+        let t: Float = 0.002
+        let xs: [Float] = [-w / 2, w / 2]
+        let zs: [Float] = [-d / 2, d / 2]
         for y in [Float(0), h] {
-            for z in [-d / 2, d / 2] { bar([w, t, t], [0, y, z]) }
-            for x in [-w / 2, w / 2] { bar([t, t, d], [x, y, 0]) }
+            for z in zs { bar(SIMD3<Float>(w, t, t), SIMD3<Float>(0, y, z), soft) }
+            for x in xs { bar(SIMD3<Float>(t, t, d), SIMD3<Float>(x, y, 0), soft) }
         }
-        for x in [-w / 2, w / 2] { for z in [-d / 2, d / 2] { bar([t, h, t], [x, h / 2, z]) } }
+        for x in xs { for z in zs { bar(SIMD3<Float>(t, h, t), SIMD3<Float>(x, h / 2, z), soft) } }
+        // Bright corner brackets carry the shape, like a camera frame.
+        let solid = UnlitMaterial(color: tint)
+        let k: Float = 0.005
+        let lx = min(0.035, w * 0.22), lz = min(0.035, d * 0.22), ly = min(0.03, h * 0.4)
+        for sx in [Float(-1), 1] {
+            for sz in [Float(-1), 1] {
+                for y in [Float(0), h] {
+                    let cx: Float = sx * w / 2
+                    let cz: Float = sz * d / 2
+                    let up: Float = y == 0 ? 1 : -1
+                    let px = SIMD3<Float>(cx - sx * lx / 2, y, cz)
+                    let pz = SIMD3<Float>(cx, y, cz - sz * lz / 2)
+                    let py = SIMD3<Float>(cx, y + up * ly / 2, cz)
+                    bar(SIMD3<Float>(lx, k, k), px, solid)
+                    bar(SIMD3<Float>(k, k, lz), pz, solid)
+                    bar(SIMD3<Float>(k, ly, k), py, solid)
+                }
+            }
+        }
         // Translucent footprint: shows exactly which part of the table is inside the box.
-        var floorMat = UnlitMaterial(color: locked ? UIColor.systemGreen : UIColor.white)
-        floorMat.blending = .transparent(opacity: 0.16)
+        var floorMat = UnlitMaterial(color: tint)
+        floorMat.blending = .transparent(opacity: 0.12)
         let floor = ModelEntity(mesh: .generatePlane(width: w, depth: d), materials: [floorMat])
         floor.position = [0, 0.001, 0]
         root.addChild(floor)
         guard !locked else { return }
-        func handle(_ name: String, _ pos: SIMD3<Float>, _ color: UIColor) {
-            let e = ModelEntity(mesh: .generateSphere(radius: 0.014), materials: [UnlitMaterial(color: color)])
+        // Centre mark (the whole box moves by dragging anywhere).
+        var faint = UnlitMaterial(color: .white)
+        faint.blending = .transparent(opacity: 0.7)
+        bar(SIMD3<Float>(0.03, 0.001, 0.003), SIMD3<Float>(0, 0.002, 0), faint)
+        bar(SIMD3<Float>(0.003, 0.001, 0.03), SIMD3<Float>(0, 0.002, 0), faint)
+        // Knobs: one look for all, white with an accent halo. Sides resize, the top one sets the height.
+        var halo = UnlitMaterial(color: UIColor(red: 1.0, green: 0.58, blue: 0.22, alpha: 1))
+        halo.blending = .transparent(opacity: 0.35)
+        func handle(_ name: String, _ pos: SIMD3<Float>) {
+            let e = ModelEntity(mesh: .generateSphere(radius: 0.010), materials: [UnlitMaterial(color: .white)])
             e.name = name
             e.position = pos
             e.collision = CollisionComponent(shapes: [.generateSphere(radius: 0.04)])
+            e.addChild(ModelEntity(mesh: .generateSphere(radius: 0.017), materials: [halo]))
             root.addChild(e)
         }
-        handle("h_+x", [w / 2, h / 2, 0], .systemOrange)
-        handle("h_-x", [-w / 2, h / 2, 0], .systemOrange)
-        handle("h_+z", [0, h / 2, d / 2], .systemTeal)
-        handle("h_-z", [0, h / 2, -d / 2], .systemTeal)
-        handle("h_top", [0, h, 0], .systemYellow)
-        let disc = ModelEntity(mesh: .generatePlane(width: 0.05, depth: 0.05, cornerRadius: 0.025),
-                               materials: [UnlitMaterial(color: UIColor.white.withAlphaComponent(0.8))])
-        disc.name = "h_move"
-        disc.position = [0, 0.002, 0]
-        disc.collision = CollisionComponent(shapes: [.generateBox(size: [0.07, 0.02, 0.07])])
-        root.addChild(disc)
+        handle("h_+x", [w / 2, h / 2, 0])
+        handle("h_-x", [-w / 2, h / 2, 0])
+        handle("h_+z", [0, h / 2, d / 2])
+        handle("h_-z", [0, h / 2, -d / 2])
+        handle("h_top", [0, h, 0])
     }
 }

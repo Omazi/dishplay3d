@@ -30,7 +30,8 @@ struct ScannerView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let previewHeight = geo.size.height * (expanded ? 0.66 : 0.36)
+            // While placing the box the camera needs the room: the preview is a slim card until the scan starts.
+            let previewHeight = placing ? 112 : geo.size.height * (expanded ? 0.66 : 0.36)
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     ZStack {
@@ -51,12 +52,15 @@ struct ScannerView: View {
             .background(Color.black)
             .ignoresSafeArea(edges: .bottom)
             .animation(.spring(duration: 0.35), value: expanded)
+            .animation(.spring(duration: 0.45), value: controller.phase)
             .animation(.spring(duration: 0.3), value: showSliders)
         }
         .preferredColorScheme(.dark)
         .onReceive(ticker) { now = $0 }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
     }
+
+    private var placing: Bool { controller.phase == .placing || controller.phase == .needsNewBox }
 
     // MARK: top bar
 
@@ -107,7 +111,7 @@ struct ScannerView: View {
         switch controller.phase {
         case .placing:
             return box.placed
-                ? ("Centre la boîte sur le plat", "Glisse pour déplacer · pince pour réduire ou agrandir · boules : chaque côté.", .white)
+                ? ("Centre la boîte sur le plat", "Glisse pour déplacer, pince pour ajuster la taille. Les poignées règlent chaque côté.", .white)
                 : ("Place la boîte", "Touche la table au pied du plat.", .white)
         case .needsNewBox:
             return ("Replace la boîte", "Le suivi a redémarré : touche la table au pied du plat.", Theme.warn)
@@ -116,7 +120,7 @@ struct ScannerView: View {
         case .uploadingRest:
             return ("Envoi des dernières vues", "\(controller.store?.pendingCount ?? 0) restantes…", .white)
         case .finishing:
-            return ("Finition du modèle", controller.finishText, .white)
+            return ("Finition du modèle", "Le calculateur assemble le modèle final.", .white)
         case .done:
             return ("Modèle prêt", "Fais-le tourner du doigt dans l’aperçu.", Theme.good)
         case .scanning:
@@ -221,7 +225,8 @@ struct ScannerView: View {
 
     private func dimTile(_ label: String, _ value: Float) -> some View {
         VStack(spacing: 2) {
-            Text(String(format: "%.0f cm", value * 100)).font(.headline.monospacedDigit())
+            Text(String(format: "%.0f cm", value * 100)).font(.system(.headline, design: .rounded).monospacedDigit())
+                .contentTransition(.numericText()).animation(.snappy, value: value)
             Text(label).font(.caption2).foregroundStyle(.white.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
@@ -240,10 +245,14 @@ struct ScannerView: View {
         HStack(spacing: 10) {
             switch controller.phase {
             case .placing:
-                PrimaryButton(title: "Démarrer le scan", icon: "record.circle", enabled: box.placed) { showSliders = false; controller.start() }
+                PrimaryButton(title: "Démarrer le scan", icon: "record.circle", enabled: box.placed) {
+                    showSliders = false
+                    controller.start()
+                }
             case .scanning:
-                GlassIconButton(icon: "pause.fill") { controller.pause() }
-                PrimaryButton(title: "Terminer", icon: "checkmark") { controller.finish() }
+                GlassIconButton(icon: "pause.fill") { Haptics.tap(); controller.pause() }
+                PrimaryButton(title: controller.tourComplete ? "Terminer le scan" : "Terminer", icon: "checkmark",
+                              tint: controller.tourComplete ? Theme.good : Theme.accent) { controller.finish() }
             case .paused:
                 if box.locked {
                     GlassIconButton(icon: "cube") { controller.reviseBox() }
@@ -259,8 +268,16 @@ struct ScannerView: View {
                 HStack(spacing: 10) { ProgressView().tint(.white); Text("Envoi des vues…").font(.subheadline.weight(.semibold)) }
                     .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
             case .finishing:
-                HStack(spacing: 10) { ProgressView().tint(.white); Text("Calcul en cours…").font(.subheadline.weight(.semibold)) }
-                    .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        if controller.finishFraction == nil { ProgressView().tint(.white) }
+                        Text(controller.finishText ?? "Calcul en cours…").font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    if let f = controller.finishFraction {
+                        ProgressView(value: f).tint(Theme.accent).padding(.horizontal, 24)
+                    }
+                }
+                .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
             case .done:
                 PrimaryButton(title: "Exporter le modèle", icon: "square.and.arrow.up") { shareURL = controller.exportZip() }
             }
@@ -270,6 +287,30 @@ struct ScannerView: View {
     // MARK: preview card
 
     private var previewCard: some View {
+        Group {
+            if placing { compactPreview } else { fullPreview }
+        }
+        .frame(maxWidth: .infinity)
+        .background(Theme.panel, in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
+        .overlay(alignment: .top) {
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28).strokeBorder(Color.white.opacity(0.08)).allowsHitTesting(false)
+        }
+    }
+
+    private var compactPreview: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "circle.hexagongrid.fill").font(.title2).foregroundStyle(Theme.accent)
+                .frame(width: 44, height: 44).background(Theme.accent.opacity(0.14), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Aperçu 3D").font(.headline)
+                Text("Le plat se construira ici pendant le scan.").font(.footnote).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18).padding(.top, 18).frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var fullPreview: some View {
         VStack(spacing: 10) {
             Capsule().fill(Color.white.opacity(0.25)).frame(width: 36, height: 4).padding(.top, 8)
             HStack(spacing: 10) {
@@ -302,11 +343,6 @@ struct ScannerView: View {
                     .onChange(of: mode) { _, m in controller.preview.mode = m }
             }
             Spacer(minLength: 0).frame(height: 22)
-        }
-        .frame(maxWidth: .infinity)
-        .background(Theme.panel, in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
-        .overlay(alignment: .top) {
-            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28).strokeBorder(Color.white.opacity(0.08)).allowsHitTesting(false)
         }
     }
 

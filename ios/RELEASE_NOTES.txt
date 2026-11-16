@@ -1,5 +1,6 @@
-DishPlay Scan 1.3.2 — boîte
-- Pincer réduit ou agrandit vraiment la boîte : le geste n'est plus pris pour une rotation.
-- La boîte se pose face à toi, même téléphone pointé vers le bas.
-- La rotation devient un curseur dans le panneau des dimensions.
-- Arêtes un peu plus épaisses.
+DishPlay Scan 1.4.0 — finition de l'interface
+- Boîte redessinée : coins lumineux, arêtes fines, poignées blanches identiques.
+- Pendant le placement, l'aperçu 3D se replie pour laisser la place à la caméra ; il s'ouvre au démarrage du scan.
+- Vibrations légères : boîte posée, poignée saisie, nouveau côté couvert, tour complet, modèle prêt.
+- Le bouton « Terminer » devient vert quand le tour est complet.
+- Barre de progression pendant la finition.
