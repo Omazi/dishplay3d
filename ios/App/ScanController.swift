@@ -38,8 +38,9 @@ final class ScanController: ObservableObject {
     private var lastPoseUpdate = 0.0
     /// Box pose in the "frozen" world sent to the calculator. Camera poses are expressed relative to the
     /// box ARAnchor, then mapped through this pose, so ARKit map corrections do not shift the model.
-    private var frozenBox: simd_float4x4?
-    private var frozenFromLive = matrix_identity_float4x4
+    /// Kept in double precision with exact rigid inverses (the calculator rejects non-rigid matrices).
+    private var frozenBox: Mat4?
+    private var frozenFromLive = Mat4.identity
     /// Where the phone is around the box (object frame), for the coverage ring and the preview camera.
     @Published private(set) var cameraAzimuthDeg = 0.0
 
@@ -78,7 +79,7 @@ final class ScanController: ObservableObject {
         guard box.placed else { return }
         let localID = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         do { store = try SessionStore(localID: localID) } catch { errorText = error.localizedDescription; return }
-        frozenFromLive = matrix_identity_float4x4
+        frozenFromLive = .identity
         lockBox()
         scheduler.reset()
         scheduler.epoch = ar.epoch
@@ -93,14 +94,14 @@ final class ScanController: ObservableObject {
     /// Freeze the box: its pose becomes the reference frame of the reconstruction and an ARAnchor is dropped on it.
     private func lockBox() {
         let live = box.worldTransform
-        frozenBox = frozenFromLive * live
+        frozenBox = frozenFromLive * Mat4(live)
         ar.setBoxAnchor(live)
         box.locked = true
-        scheduler.lockedWorldFromObject = frozenBox.map { Mat4($0) }
+        scheduler.lockedWorldFromObject = frozenBox
     }
 
     private func boxSpec() -> BoxSpec {
-        BoxSpec(worldFromObject: frozenBox.map { Mat4($0) } ?? box.worldFromObject,
+        BoxSpec(worldFromObject: frozenBox ?? box.worldFromObject,
                 size: .init(width: Double(box.width), height: Double(box.height), depth: Double(box.depth)),
                 epoch: ar.epoch, revision: boxRevision, plane: box.planeSource)
     }
@@ -108,7 +109,7 @@ final class ScanController: ObservableObject {
     /// Camera pose in the frozen world: (frozen box) * inverse(box anchor now) * (camera now).
     private func cameraPose(_ frame: ARFrame) -> Mat4 {
         if let frozenBox, let a = ar.boxAnchorTransform(in: frame) {
-            return Mat4(frozenBox * a.inverse * frame.camera.transform)
+            return frozenBox * Mat4(a).rigidInverse * Mat4(frame.camera.transform)
         }
         return Mat4(frame.camera.transform)
     }
@@ -137,7 +138,7 @@ final class ScanController: ObservableObject {
     /// Explicit box revision (only while paused): the calculator rebuilds the volume from stored frames.
     func reviseBox() {
         if let frame = ar.arView.session.currentFrame, let a = ar.boxAnchorTransform(in: frame), let frozenBox {
-            frozenFromLive = frozenBox * a.inverse   // keeps already captured views consistent with the edited box
+            frozenFromLive = frozenBox * Mat4(a).rigidInverse   // keeps already captured views consistent with the edited box
             box.adopt(anchorTransform: a)
         }
         ar.setBoxAnchor(nil)
@@ -146,7 +147,7 @@ final class ScanController: ObservableObject {
 
     func applyBoxRevision() {
         guard box.placed else { return }
-        if phase == .needsNewBox { frozenFromLive = matrix_identity_float4x4 }  // new tracking world: nothing to keep aligned
+        if phase == .needsNewBox { frozenFromLive = .identity }  // new tracking world: nothing to keep aligned
         boxRevision += 1
         lockBox()
         let spec = boxSpec()
@@ -154,7 +155,6 @@ final class ScanController: ObservableObject {
         if phase == .needsNewBox {
             scheduler.reset()
             scheduler.epoch = ar.epoch
-            scheduler.lockedWorldFromObject = frozenBox.map { Mat4($0) }
             phase = .paused
         }
     }

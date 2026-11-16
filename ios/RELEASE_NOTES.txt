@@ -1,5 +1,7 @@
-DishPlay Scan 1.1.1 — boîte plus facile à centrer
-- Un appui après la pose ne déplace plus la boîte par accident.
-- Glisser un doigt n'importe où déplace la boîte ; pincer l'agrandit ou la réduit ; les boules règlent chaque côté.
-- Le sol de la boîte est teinté : on voit exactement la zone couverte. Poignées plus grosses.
-- Bouton « Replacer la boîte ailleurs » dans les dimensions.
+DishPlay Scan 1.2.0
+- Guide en anneau : vue de dessus du tour autour du plat, toi en bas ; les secteurs vides indiquent où aller (gauche/droite, vues hautes).
+- L'aperçu 3D montre le modèle du même côté que la caméra pendant le scan.
+- Boîte accrochée à un repère ARKit : elle ne glisse plus quand le suivi se corrige.
+- Pendant le scan : exposition et balance des blancs fixes, obturateur plus rapide (moins de flou de mouvement).
+- Boîte : glisser pour déplacer, pincer pour agrandir, sol teinté (1.1.1).
+- « Terminer » attend toutes les vues ; annulation possible si le PC est injoignable.
