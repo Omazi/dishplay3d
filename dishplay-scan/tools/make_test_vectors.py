@@ -48,11 +48,24 @@ def build():
     return coords, geo, env
 
 
+def _close(a, b, tol=1e-9):
+    if isinstance(a, dict):
+        return isinstance(b, dict) and a.keys() == b.keys() and all(_close(a[k], b[k], tol) for k in a)
+    if isinstance(a, list):
+        return isinstance(b, list) and len(a) == len(b) and all(_close(x, y, tol) for x, y in zip(a, b))
+    if isinstance(a, (int, float)):
+        return abs(a - b) <= tol * max(1.0, abs(a))
+    return a == b
+
+
 def main(check=False):
     coords, geo, env = build()
     files = {"coordinates.json": json.dumps(coords, indent=1).encode(), "geometry.dpg": geo, "frame.dpf": env}
     if check:
-        return all((OUT / k).read_bytes() == v for k, v in files.items())
+        # Binary formats must match exactly; floats in JSON may differ in the last digit across CPUs/BLAS.
+        if any((OUT / k).read_bytes() != files[k] for k in ("geometry.dpg", "frame.dpf")):
+            return False
+        return _close(json.loads((OUT / "coordinates.json").read_text()), coords)
     OUT.mkdir(parents=True, exist_ok=True)
     for k, v in files.items():
         (OUT / k).write_bytes(v)
