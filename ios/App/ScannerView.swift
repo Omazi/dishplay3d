@@ -176,7 +176,7 @@ struct ScannerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(i.title).font(.headline).foregroundStyle(i.color).lineLimit(1).minimumScaleFactor(0.8)
                         .id(i.title)
-                        .transition(reduceMotion ? .opacity : .blurReplace)
+                        .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
                     if scanning, i.color == .white, let hint = sideHint {
                         Text(hint).font(.subheadline.weight(.semibold))
                             .foregroundStyle(controller.tourComplete ? Theme.good : Theme.accent).lineLimit(1).minimumScaleFactor(0.8)
