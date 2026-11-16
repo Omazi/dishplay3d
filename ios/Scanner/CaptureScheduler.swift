@@ -21,6 +21,8 @@ final class CaptureScheduler {
     var active = false
     var epoch = 0
     var nextFrameID = 0
+    /// Box pose frozen at lock time; every keyframe pose is expressed relative to it.
+    var lockedWorldFromObject: Mat4?
     private var lastEval = 0.0
     private let maxInFlight = 3
     private let encodeQueue = DispatchQueue(label: "app.dishplay.scan.encode", qos: .userInitiated)
@@ -36,21 +38,17 @@ final class CaptureScheduler {
         lastEval = 0
     }
 
-    func consider(_ frame: ARFrame, box: BoundingBoxController, store: SessionStore, lidar: Bool, formatText: String) {
+    /// `worldFromCam` is the camera pose expressed in the frozen box world (see ScanController.cameraPose).
+    func consider(_ frame: ARFrame, worldFromCam: Mat4, box: BoundingBoxController, store: SessionStore, lidar: Bool, formatText: String) {
         guard active else { return }
         // Evaluate at ~12 Hz: enough for keyframes at <= 4/s, keeps the main thread free.
         if frame.timestamp - lastEval < 0.08 { return }
         lastEval = frame.timestamp
         let cam = frame.camera
-        let c = cam.transform.columns
-        let worldFromCam = Mat4(columns: [Double(c.0.x), Double(c.0.y), Double(c.0.z), Double(c.0.w)],
-                                [Double(c.1.x), Double(c.1.y), Double(c.1.z), Double(c.1.w)],
-                                [Double(c.2.x), Double(c.2.y), Double(c.2.z), Double(c.2.w)],
-                                [Double(c.3.x), Double(c.3.y), Double(c.3.z), Double(c.3.w)])
         let k = cam.intrinsics  // column-major: fx = k[0][0], fy = k[1][1], cx = k[2][0], cy = k[2][1]
         let K = Intrinsics(fx: Double(k[0][0]), fy: Double(k[1][1]), cx: Double(k[2][0]), cy: Double(k[2][1]),
                            width: Int(cam.imageResolution.width), height: Int(cam.imageResolution.height))
-        let objFromCam = Coordinates.objectFromCameraCV(worldFromObject: box.worldFromObject, worldFromCameraAR: worldFromCam)
+        let objFromCam = Coordinates.objectFromCameraCV(worldFromObject: lockedWorldFromObject ?? box.worldFromObject, worldFromCameraAR: worldFromCam)
         let vis = Coordinates.boxVisibility(K, cameraCVFromObject: objFromCam.rigidInverse, width: Double(box.width),
                                             height: Double(box.height), depth: Double(box.depth))
         var limitedReason: String?

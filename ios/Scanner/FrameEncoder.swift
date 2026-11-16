@@ -56,6 +56,8 @@ enum FrameEncoder {
         var dst: CVPixelBuffer?
         let attrs = [kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]] as CFDictionary
         guard CVPixelBufferCreate(nil, w, h, fmt, attrs, &dst) == kCVReturnSuccess, let dst else { return nil }
+        // Keep the YCbCr matrix / colour primaries so the JPEG has the same colours as the camera image.
+        if let att = CVBufferCopyAttachments(src, .shouldPropagate) { CVBufferSetAttachments(dst, att, .shouldPropagate) }
         CVPixelBufferLockBaseAddress(src, .readOnly)
         CVPixelBufferLockBaseAddress(dst, [])
         defer {

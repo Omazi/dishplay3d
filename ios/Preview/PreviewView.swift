@@ -31,6 +31,11 @@ final class PreviewRenderer: NSObject, MTKViewDelegate, ObservableObject {
     var pitch: Float = 0.6
     var distanceScale: Float = 1.0
     var lastInteraction = Date.distantPast
+    /// During capture the virtual camera looks at the model from the phone's side, so the preview
+    /// matches what the real camera sees. After the scan it turns slowly on its own.
+    var followPhone = true
+    private var targetYaw: Float?
+    private var targetPitch: Float = 0.6
     private var lastDraw = CACurrentMediaTime()
 
     override init() {
@@ -54,13 +59,29 @@ final class PreviewRenderer: NSObject, MTKViewDelegate, ObservableObject {
 
     func showTracking(_ pts: [SIMD3<Float>]) { points?.updateTracking(pts) }
 
+    /// Unit vector from the box centre towards the phone, in the object frame.
+    func follow(direction d: SIMD3<Float>) {
+        targetYaw = atan2(d.x, d.z)
+        targetPitch = min(1.45, max(0.15, asin(max(-1, min(1, d.y)))))
+    }
+
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
         let dt = Float(now - lastDraw)
         lastDraw = now
-        if Date().timeIntervalSince(lastInteraction) > 3 { yaw += dt * 0.25 }  // slow automatic turn when idle
+        if Date().timeIntervalSince(lastInteraction) > 3 {
+            if followPhone, let ty = targetYaw {
+                var dy = (ty - yaw).truncatingRemainder(dividingBy: 2 * .pi)
+                if dy > .pi { dy -= 2 * .pi } else if dy < -.pi { dy += 2 * .pi }
+                let k = min(1, dt * 4)
+                yaw += dy * k
+                pitch += (targetPitch - pitch) * k
+            } else {
+                yaw += dt * 0.25  // slow automatic turn when idle
+            }
+        }
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let cmd = queue.makeCommandBuffer(), let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
         let aspect = Float(view.drawableSize.width / max(view.drawableSize.height, 1))

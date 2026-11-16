@@ -131,7 +131,7 @@ struct ScannerView: View {
             case .tooDark?: return ("Trop sombre", "Ajoute de la lumière douce.", Theme.warn)
             case .dontRotateInPlace?: return ("Déplace-toi", "Ne pivote pas sur place : marche autour du plat.", Theme.warn)
             case .goHigher?: return ("Monte un peu", "Passe plus haut pour voir l’intérieur du plat.", .white)
-            case .completeSide?: return ("Complète ce côté", "Continue le tour jusqu’aux zones pas encore vues.", .white)
+            case .completeSide?: return ("Continue le tour", "Remplis les secteurs vides de l’anneau.", .white)
             default: return ("Tourne autour du plat", "Lentement, en gardant le plat dans l’image.", .white)
             }
         }
@@ -150,15 +150,41 @@ struct ScannerView: View {
                 Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
             }
             if controller.phase == .scanning || controller.phase == .paused {
-                let seen = controller.scheduler.ring.visitedAzimuths
-                HStack(spacing: 8) {
-                    ProgressView(value: Double(seen), total: 12).tint(Theme.accent)
-                    Text("Tour \(seen)/12").font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(.white.opacity(0.8))
+                let ring = controller.scheduler.ring
+                HStack(spacing: 14) {
+                    CoverageRingView(counts: ring.counts, azimuthDeg: controller.cameraAzimuthDeg).frame(width: 74, height: 74)
+                    VStack(alignment: .leading, spacing: 4) {
+                        legendRow(Theme.accent, "Tour : \(ring.visitedAzimuths)/12 côtés")
+                        legendRow(Theme.good, "Vues hautes : \(min(ring.highViews, 6))/6")
+                        if let hint = sideHint {
+                            Text(hint).font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
+                .padding(.top, 2)
             }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .glass(RoundedRectangle(cornerRadius: 22))
+    }
+
+    private func legendRow(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 10, height: 10)
+            Text(text).font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.85))
+        }
+    }
+
+    /// Which way to walk: the ring keeps the phone at the bottom, so "right" on the ring is the user's right.
+    private var sideHint: String? {
+        let az = controller.cameraAzimuthDeg * .pi / 180
+        let h = Double(box.height)
+        guard let s = controller.scheduler.ring.suggestion(currentCameraInObject: [cos(az), h / 2, sin(az)], boxHeight: h) else {
+            return "Tour complet : tu peux terminer."
+        }
+        if s.0 == .goHigher { return "Passe au-dessus pour voir l’intérieur." }
+        return s.direction >= 0 ? "← Zones vides vers ta gauche" : "Zones vides vers ta droite →"
     }
 
     // MARK: box dimensions
@@ -228,7 +254,11 @@ struct ScannerView: View {
                 }
             case .needsNewBox:
                 PrimaryButton(title: "Valider la boîte", icon: "cube", enabled: box.placed) { controller.applyBoxRevision() }
-            case .uploadingRest, .finishing:
+            case .uploadingRest:
+                GlassIconButton(icon: "xmark") { controller.cancelFinish() }
+                HStack(spacing: 10) { ProgressView().tint(.white); Text("Envoi des vues…").font(.subheadline.weight(.semibold)) }
+                    .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
+            case .finishing:
                 HStack(spacing: 10) { ProgressView().tint(.white); Text("Calcul en cours…").font(.subheadline.weight(.semibold)) }
                     .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
             case .done:

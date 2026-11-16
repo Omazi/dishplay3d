@@ -1,4 +1,5 @@
 import ARKit
+import AVFoundation
 import Combine
 import RealityKit
 import ScanCore
@@ -65,6 +66,55 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
 
     func acknowledgeReset() { worldWasReset = false }
 
+    // MARK: box anchor (ARKit keeps refining its map; an ARAnchor follows those corrections)
+
+    private(set) var boxAnchorID: UUID?
+
+    func setBoxAnchor(_ transform: simd_float4x4?) {
+        if let id = boxAnchorID, let old = arView.session.currentFrame?.anchors.first(where: { $0.identifier == id }) {
+            arView.session.remove(anchor: old)
+        }
+        boxAnchorID = nil
+        guard let transform else { return }
+        let a = ARAnchor(name: "dishplay.box", transform: transform)
+        arView.session.add(anchor: a)
+        boxAnchorID = a.identifier
+    }
+
+    func boxAnchorTransform(in frame: ARFrame) -> simd_float4x4? {
+        guard let id = boxAnchorID else { return nil }
+        return frame.anchors.first(where: { $0.identifier == id })?.transform
+    }
+
+    // MARK: exposure
+
+    /// During a scan: fixed exposure and white balance (consistent colours between views) and a
+    /// shutter no slower than 1/100 s (less motion blur; ISO compensates). Focus stays automatic.
+    func setScanExposure(locked: Bool) {
+        guard let dev = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera else { return }
+        do {
+            try dev.lockForConfiguration()
+            defer { dev.unlockForConfiguration() }
+            if locked {
+                let current = CMTimeGetSeconds(dev.exposureDuration)
+                let fmt = dev.activeFormat
+                let target = max(min(current, 1.0 / 100.0), CMTimeGetSeconds(fmt.minExposureDuration))
+                if dev.isExposureModeSupported(.custom), current.isFinite, current > 0 {
+                    let iso = min(fmt.maxISO, max(fmt.minISO, dev.iso * Float(current / target)))
+                    dev.setExposureModeCustom(duration: CMTime(seconds: target, preferredTimescale: 1_000_000), iso: iso, completionHandler: nil)
+                } else if dev.isExposureModeSupported(.locked) {
+                    dev.exposureMode = .locked
+                }
+                if dev.isWhiteBalanceModeSupported(.locked) { dev.whiteBalanceMode = .locked }
+            } else {
+                if dev.isExposureModeSupported(.continuousAutoExposure) { dev.exposureMode = .continuousAutoExposure }
+                if dev.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) { dev.whiteBalanceMode = .continuousAutoWhiteBalance }
+            }
+        } catch {
+            errorText = "Réglage de l’exposition impossible : \(error.localizedDescription)"
+        }
+    }
+
     // MARK: ARSessionDelegate (main queue)
 
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -97,6 +147,7 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
         MainActor.assumeIsolated {
             epoch += 1
             worldWasReset = true
+            boxAnchorID = nil
             run(reset: true)
         }
     }

@@ -126,10 +126,11 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
             updating = true
             switch name {
             case "h_move": centre = SIMD3(s.centre.x + delta.x, s.centre.y, s.centre.z + delta.z)
-            case "h_+x": width = s.w + lx; shiftCentre(s.centre, along: SIMD3(c, 0, -sn), by: lx / 2)
-            case "h_-x": width = s.w - lx; shiftCentre(s.centre, along: SIMD3(c, 0, -sn), by: lx / 2)
-            case "h_+z": depth = s.d + lz; shiftCentre(s.centre, along: SIMD3(sn, 0, c), by: lz / 2)
-            case "h_-z": depth = s.d - lz; shiftCentre(s.centre, along: SIMD3(sn, 0, c), by: lz / 2)
+            // The opposite face stays fixed: the centre moves by half of the size actually applied (after limits).
+            case "h_+x": width = Self.side(s.w + lx); centre = s.centre + SIMD3(c, 0, -sn) * ((width - s.w) / 2)
+            case "h_-x": width = Self.side(s.w - lx); centre = s.centre - SIMD3(c, 0, -sn) * ((width - s.w) / 2)
+            case "h_+z": depth = Self.side(s.d + lz); centre = s.centre + SIMD3(sn, 0, c) * ((depth - s.d) / 2)
+            case "h_-z": depth = Self.side(s.d - lz); centre = s.centre - SIMD3(sn, 0, c) * ((depth - s.d) / 2)
             case "h_top": height = s.h + delta.y
             default: break
             }
@@ -141,9 +142,23 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         }
     }
 
-    private func shiftCentre(_ start: SIMD3<Float>, along axis: SIMD3<Float>, by d: Float) {
-        // keep the opposite face fixed while resizing (only if the size is inside its limits)
-        centre = start + axis * d
+    private static func side(_ v: Float) -> Float { min(max(v, minSide), maxSide) }
+
+    /// World transform of the box frame (origin at the centre of the base, +y up).
+    var worldTransform: simd_float4x4 {
+        Transform(scale: .one, rotation: simd_quatf(angle: yaw, axis: [0, 1, 0]), translation: centre).matrix
+    }
+
+    /// While locked, the drawn box follows the ARKit anchor (map corrections), not a frozen world pose.
+    func follow(anchorTransform t: simd_float4x4) {
+        guard locked else { return }
+        anchor.transform = Transform(matrix: t)
+    }
+
+    /// When unlocking for a revision, continue from where the anchored box is drawn now.
+    func adopt(anchorTransform t: simd_float4x4) {
+        centre = SIMD3(t.columns.3.x, t.columns.3.y, t.columns.3.z)
+        yaw = atan2(t.columns.2.x, t.columns.2.z)
     }
 
     /// Drag point: on the table plane for moves/width/depth, on a vertical plane facing the camera for height.
