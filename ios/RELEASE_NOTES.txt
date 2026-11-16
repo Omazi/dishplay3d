@@ -1,0 +1,5 @@
+DishPlay Scan 1.0.0 — premier prototype de scan progressif
+- Boîte AR réglable (poignées et curseurs en cm), verrouillée au démarrage.
+- Vues choisies automatiquement ; envoi au calculateur local (même Wi-Fi, HTTPS épinglé).
+- Panneau du bas : nuage coloré puis surface partielle pendant la capture ; finition après « Terminer ».
+- Sans LiDAR (stéréo), LiDAR optionnel. Calculateur requis : voir docs/FIRST_TEST.md.

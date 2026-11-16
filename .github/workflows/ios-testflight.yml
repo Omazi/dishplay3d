@@ -4,6 +4,10 @@ name: DishPlay Scan — TestFlight
 # Publishes to the EXISTING App Store Connect record "DishPlay Capture" (ID 6814221035, bundle
 # app.dishplay.capture) with the signing secrets already used for 0.1.0-0.6.0 (see docs/TESTFLIGHT.md).
 on:
+  # A release is requested by editing ios/RELEASE_NOTES.txt on main (or manually below).
+  push:
+    branches: [main]
+    paths: ['ios/RELEASE_NOTES.txt']
   workflow_dispatch:
     inputs:
       upload:
@@ -82,7 +86,7 @@ jobs:
             -exportPath build/export -exportOptionsPlist "$APPLE_EXPORT_OPTIONS"
           ls -la build/export
       - name: Validate with Apple and upload for TestFlight
-        if: inputs.upload
+        if: github.event_name == 'push' || inputs.upload
         working-directory: ios
         run: |
           export API_PRIVATE_KEYS_DIR="$(dirname "$APPLE_API_KEY_PATH")"

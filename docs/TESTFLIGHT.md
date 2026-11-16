@@ -28,9 +28,9 @@ Conséquence sur l'iPhone : la mise à jour TestFlight **remplace** l'app DishPl
 `main1` (dossier `native/ios/`).
 
 ## 3. Lancer le build TestFlight
-GitHub ne propose « Run workflow » que pour les workflows présents sur la branche par défaut, et l'environnement
-`testflight` était utilisé depuis `main`. Il faut donc d'abord fusionner cette branche dans `main` (pull request).
-Ensuite : Actions › **DishPlay Scan — TestFlight** › Run workflow › `main` › `upload = true`.
+Deux façons de lancer la publication depuis `main` :
+- modifier `ios/RELEASE_NOTES.txt` (notes de version) et pousser sur `main` : le workflow démarre et envoie le build ;
+- ou Actions › **DishPlay Scan — TestFlight** › Run workflow › `main` › `upload = true`.
 Le job réexécute les vérifications, installe la signature dans un trousseau temporaire, archive, exporte l'IPA, la
 valide puis l'envoie (`altool`), et nettoie le trousseau. Numéro de build : `run_number.run_attempt` (version 1.0.0,
 supérieure à 0.6.x).
