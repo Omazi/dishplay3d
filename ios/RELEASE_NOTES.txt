@@ -1,4 +1,5 @@
-DishPlay Scan 1.1.0 — nouvelle interface
-- Accueil refait : état de l'ordinateur, étapes de jumelage, un seul bouton « Scanner un plat ».
-- Scanner refait : une consigne et une action par étape (placer, ajuster, tourner, terminer), barre de progression du tour, dimensions de la boîte en un coup d'œil, effet verre.
-- Aperçu 3D dans une carte en bas, agrandissable.
+DishPlay Scan 1.1.1 — boîte plus facile à centrer
+- Un appui après la pose ne déplace plus la boîte par accident.
+- Glisser un doigt n'importe où déplace la boîte ; pincer l'agrandit ou la réduit ; les boules règlent chaque côté.
+- Le sol de la boîte est teinté : on voit exactement la zone couverte. Poignées plus grosses.
+- Bouton « Replacer la boîte ailleurs » dans les dimensions.

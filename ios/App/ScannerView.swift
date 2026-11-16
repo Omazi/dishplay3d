@@ -107,8 +107,8 @@ struct ScannerView: View {
         switch controller.phase {
         case .placing:
             return box.placed
-                ? ("Ajuste la boîte", "Elle doit entourer tout le plat, sans prendre toute la table. Tire les poignées ou le disque central.", .white)
-                : ("Place la boîte", "Touche la table juste à côté du plat.", .white)
+                ? ("Centre la boîte sur le plat", "Glisse un doigt pour la déplacer, pince pour l’agrandir, tire les boules pour chaque côté. Elle doit entourer tout le plat.", .white)
+                : ("Place la boîte", "Touche la table au pied du plat. Tu pourras ensuite la faire glisser dessus.", .white)
         case .needsNewBox:
             return ("Replace la boîte", "Le suivi a redémarré. Touche la table à côté du plat ; les vues déjà prises sont conservées.", Theme.warn)
         case .paused:
@@ -176,6 +176,12 @@ struct ScannerView: View {
                         .font(.subheadline.weight(.semibold)).frame(width: 40)
                 }
                 .foregroundStyle(.white)
+            }
+            if showSliders {
+                Button { box.replace() } label: {
+                    Label("Replacer la boîte ailleurs", systemImage: "arrow.uturn.backward").font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity).frame(height: 34).background(Color.white.opacity(0.12), in: Capsule()).foregroundStyle(.white)
+                }
             }
             if showSliders {
                 dimSlider("L", value: $box.width, range: 0.05...0.8)

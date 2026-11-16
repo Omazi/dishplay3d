@@ -35,7 +35,8 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         let pan = UIPanGestureRecognizer(target: self, action: #selector(onPan(_:)))
         pan.maximumNumberOfTouches = 1
         let rot = UIRotationGestureRecognizer(target: self, action: #selector(onRotate(_:)))
-        for g in [tap, pan, rot] as [UIGestureRecognizer] { g.delegate = self; view.addGestureRecognizer(g) }
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(onPinch(_:)))
+        for g in [tap, pan, rot, pinch] as [UIGestureRecognizer] { g.delegate = self; view.addGestureRecognizer(g) }
     }
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
@@ -58,9 +59,8 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
     // MARK: gestures
 
     @objc private func onTap(_ g: UITapGestureRecognizer) {
-        guard !locked, let view = arView else { return }
+        guard !locked, !placed, let view = arView else { return }
         let p = g.location(in: view)
-        if placed, view.entity(at: p) != nil { return }
         let results = view.raycast(from: p, allowing: .existingPlaneGeometry, alignment: .horizontal)
         let hit = results.first ?? view.raycast(from: p, allowing: .estimatedPlane, alignment: .horizontal).first
         guard let hit else { return }
@@ -74,6 +74,25 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         }
         placed = true
         rebuild()
+    }
+
+    /// Two-finger pinch: grow or shrink width and depth together.
+    @objc private func onPinch(_ g: UIPinchGestureRecognizer) {
+        guard placed, !locked else { return }
+        let k = Float(g.scale)
+        g.scale = 1
+        updating = true
+        width *= k
+        depth *= k
+        updating = false
+        clampAndRebuild()
+    }
+
+    /// Remove the box so the next tap places it again.
+    func replace() {
+        guard !locked else { return }
+        placed = false
+        root.children.removeAll()
     }
 
     @objc private func onRotate(_ g: UIRotationGestureRecognizer) {
@@ -93,6 +112,7 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
                 while let c = cur { if c.name.hasPrefix("h_") { return c.name }; cur = c.parent }
                 return nil
             }
+            if dragging == nil { dragging = "h_move" }  // anywhere else: slide the whole box on the table
             if let name = dragging, let hit = hitPoint(p, handle: name) {
                 dragStart = (centre, width, depth, height, hit)
             } else { dragging = nil }
@@ -175,12 +195,18 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
             for x in [-w / 2, w / 2] { bar([t, t, d], [x, y, 0]) }
         }
         for x in [-w / 2, w / 2] { for z in [-d / 2, d / 2] { bar([t, h, t], [x, h / 2, z]) } }
+        // Translucent footprint: shows exactly which part of the table is inside the box.
+        var floorMat = UnlitMaterial(color: locked ? UIColor.systemGreen : UIColor.white)
+        floorMat.blending = .transparent(opacity: 0.16)
+        let floor = ModelEntity(mesh: .generatePlane(width: w, depth: d), materials: [floorMat])
+        floor.position = [0, 0.001, 0]
+        root.addChild(floor)
         guard !locked else { return }
         func handle(_ name: String, _ pos: SIMD3<Float>, _ color: UIColor) {
-            let e = ModelEntity(mesh: .generateSphere(radius: 0.012), materials: [UnlitMaterial(color: color)])
+            let e = ModelEntity(mesh: .generateSphere(radius: 0.014), materials: [UnlitMaterial(color: color)])
             e.name = name
             e.position = pos
-            e.collision = CollisionComponent(shapes: [.generateSphere(radius: 0.03)])
+            e.collision = CollisionComponent(shapes: [.generateSphere(radius: 0.04)])
             root.addChild(e)
         }
         handle("h_+x", [w / 2, h / 2, 0], .systemOrange)
