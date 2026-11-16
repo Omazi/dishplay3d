@@ -40,6 +40,14 @@ Une fois le build « Prêt à tester » (traitement Apple : quelques minutes à 
 existant **DishPlay - Tests iPhone** ([TestFlight](https://appstoreconnect.apple.com/apps/6814221035/testflight/ios)),
 puis ouvrir TestFlight sur l'iPhone et toucher **Mettre à jour**. Le nom affiché sous l'icône sera « DishPlay Scan ».
 
+## Premier essai d'envoi (16 nov. 2026)
+Run [43795707664](https://github.com/Omazi/dishplay3d/actions/runs/43795707664) : tests, compilation, archive **signée**
+avec le profil existant `app.dishplay.capture` et export de l'IPA (647 Ko) réussis. **Envoi refusé par Apple** :
+`Failed to determine the Apple ID from Bundle ID 'app.dishplay.capture' … A required agreement is missing or has expired`.
+Le titulaire du compte doit accepter le contrat Apple mis à jour (developer.apple.com › Account, et App Store Connect ›
+Accords). Puis modifier `ios/RELEASE_NOTES.txt` sur `main` pour relancer. Le workflow échoue désormais explicitement
+dans ce cas (altool terminait sans code d'erreur).
+
 ## Limites honnêtes
 - Ce workflow de distribution **n'a pas été exécuté** dans cette livraison : il tourne avec vos secrets depuis `main`. Le précédent pipeline équivalent (mêmes scripts de signature) avait réussi pour 0.6.0.
 - Un historique du dépôt mentionne un refus de démarrage de job macOS pour plafond de dépenses GitHub ; si cela se

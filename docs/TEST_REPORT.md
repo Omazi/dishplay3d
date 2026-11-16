@@ -11,7 +11,7 @@ code, pas la qualité sur des aliments réels.
 | Compilé | app iOS compilée pour iPhone (non signée) sur runner GitHub macOS‑15, Xcode 26.3 — `** BUILD SUCCEEDED **` ([run 43777985145](https://github.com/Omazi/dishplay3d/actions/runs/43777985145)) |
 | Testé automatiquement | 34 tests Python (Linux, Python 3.12) + 11 tests Swift `ScanCore` (macOS) — tous passés |
 | Testé sur appareil | **non** (pas d'accès à l'iPhone ni aux secrets de signature) |
-| Distribué TestFlight | **non** : workflow prêt, publie sur la fiche existante DishPlay Capture (6814221035) après fusion dans `main` (`TESTFLIGHT.md`) |
+| Distribué TestFlight | **non** : IPA signée produite (run 43795707664) mais envoi refusé par Apple — contrat Apple à renouveler par le titulaire du compte (`TESTFLIGHT.md`) |
 | Qualité observée sur un vrai plat | **inconnue** à ce jour |
 
 ## Environnement de mesure

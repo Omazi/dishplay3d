@@ -91,8 +91,13 @@ jobs:
         run: |
           export API_PRIVATE_KEYS_DIR="$(dirname "$APPLE_API_KEY_PATH")"
           IPA=$(ls build/export/*.ipa | head -1)
-          xcrun altool --validate-app --type ios --file "$IPA" --apiKey "$APPLE_KEY_ID" --apiIssuer "$APPLE_ISSUER_ID"
-          xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$APPLE_KEY_ID" --apiIssuer "$APPLE_ISSUER_ID"
+          # altool can print ERROR yet exit 0 (e.g. missing Apple agreement): fail explicitly.
+          for action in --validate-app --upload-app; do
+            xcrun altool $action --type ios --file "$IPA" --apiKey "$APPLE_KEY_ID" --apiIssuer "$APPLE_ISSUER_ID" 2>&1 | tee "$RUNNER_TEMP/altool.log"
+            if [ "${PIPESTATUS[0]}" != "0" ] || grep -q "ERROR" "$RUNNER_TEMP/altool.log"; then
+              echo "::error::App Store Connect refused $action (see log above)"; exit 1
+            fi
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dishplay-scan-ipa-${{ github.run_number }}-${{ github.run_attempt }}
