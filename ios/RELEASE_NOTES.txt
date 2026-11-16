@@ -4,3 +4,4 @@ DishPlay Scan 1.0.0 — premier prototype de scan progressif
 - Panneau du bas : nuage coloré puis surface partielle pendant la capture ; finition après « Terminer ».
 - Sans LiDAR (stéréo), LiDAR optionnel. Calculateur requis : voir docs/FIRST_TEST.md.
 - Relance après acceptation du contrat Apple (16 nov. 2026).
+- Correctif : orientations iPad exigées par Apple.

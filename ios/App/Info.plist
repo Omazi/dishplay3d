@@ -32,5 +32,7 @@
   <key>UILaunchScreen</key><dict/>
   <key>UIStatusBarHidden</key><false/>
   <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+  <!-- The App Store record supports iPad (earlier 0.x builds): iPad multitasking requires all orientations. -->
+  <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 </dict>
 </plist>
