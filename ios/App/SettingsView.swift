@@ -52,8 +52,8 @@ struct SettingsView: View {
                 }
             } else {
                 Text("Relier l’ordinateur").font(.headline)
-                step(1, "Lance le calculateur sur ton PC.")
-                step(2, "Scanne son QR code avec l’appareil photo de l’iPhone.")
+                step(1, "Lancez le calculateur sur votre PC.")
+                step(2, "Scannez son QR code avec l’appareil photo de l’iPhone.")
                 if let st = model.step {
                     HStack(spacing: 10) { ProgressView(); Text(st).font(.footnote) }
                 }

@@ -130,34 +130,34 @@ struct ScannerView: View {
         switch controller.phase {
         case .placing:
             return box.placed
-                ? ("Centre la boîte sur le plat", "Glisse pour déplacer, pince pour ajuster la taille. Les poignées règlent chaque côté.", .white)
-                : ("Place la boîte", "Touche la table au pied du plat.", .white)
+                ? ("Centrez la boîte sur le plat", "Glissez pour déplacer, pincez pour ajuster la taille. Les poignées règlent chaque côté.", .white)
+                : ("Placez la boîte", "Touchez la table au pied du plat.", .white)
         case .needsNewBox:
-            return ("Replace la boîte", "Le suivi a redémarré : touche la table au pied du plat.", Theme.warn)
+            return ("Replacez la boîte", "Le suivi a redémarré : touchez la table au pied du plat.", Theme.warn)
         case .paused:
             return box.locked
-                ? ("En pause", "Ta session est conservée.", .white)
-                : ("Modifie la boîte", "« Recalculer » refait le modèle avec la nouvelle boîte. « Annuler » ne change rien.", .white)
+                ? ("En pause", "Votre scan est conservé.", .white)
+                : ("Modifiez la boîte", "« Recalculer » refait le modèle avec la nouvelle boîte. « Annuler » ne change rien.", .white)
         case .uploadingRest:
             return ("Envoi des dernières vues", "\(controller.store?.pendingCount ?? 0) restantes…", .white)
         case .finishing:
             return ("Finition du modèle", "Le calculateur assemble le modèle final.", .white)
         case .done:
-            return ("Modèle prêt", "Fais-le tourner du doigt, puis retrouve-le dans Mes plats.", Theme.good)
+            return ("Modèle prêt", "Faites-le tourner du doigt, puis retrouvez-le dans Mes plats.", Theme.good)
         case .scanning:
             if !controller.calculatorOnline {
                 return ("PC injoignable", "Les vues restent sur l’iPhone ; l’aperçu est figé.", Theme.bad)
             }
             switch controller.status.guidance {
-            case .trackingLost?: return ("Suivi perdu", "Reviens lentement vers le plat.", Theme.bad)
-            case .trackingLimited?: return ("Ralentis", "Garde la table dans l’image.", Theme.warn)
-            case .frameTheDish?: return ("Recadre", "Garde toute la boîte dans l’image.", Theme.warn)
-            case .slowDown?: return ("Ralentis", "Un mouvement lent donne des vues nettes.", Theme.warn)
-            case .tooDark?: return ("Trop sombre", "Ajoute de la lumière douce.", Theme.warn)
-            case .dontRotateInPlace?: return ("Déplace-toi", "Ne pivote pas sur place : marche autour du plat.", Theme.warn)
-            case .goHigher?: return ("Monte un peu", "Passe plus haut pour voir l’intérieur du plat.", .white)
-            case .completeSide?: return ("Continue le tour", "Remplis les secteurs vides de l’anneau.", .white)
-            default: return ("Tourne autour du plat", "Lentement, en gardant le plat dans l’image.", .white)
+            case .trackingLost?: return ("Suivi perdu", "Revenez lentement vers le plat.", Theme.bad)
+            case .trackingLimited?: return ("Ralentissez", "Gardez la table dans l’image.", Theme.warn)
+            case .frameTheDish?: return ("Recadrez", "Gardez toute la boîte dans l’image.", Theme.warn)
+            case .slowDown?: return ("Ralentissez", "Un mouvement lent donne des vues nettes.", Theme.warn)
+            case .tooDark?: return ("Trop sombre", "Ajoutez de la lumière douce.", Theme.warn)
+            case .dontRotateInPlace?: return ("Déplacez-vous", "Ne pivotez pas sur place : marchez autour du plat.", Theme.warn)
+            case .goHigher?: return ("Montez un peu", "Passez plus haut pour voir l’intérieur du plat.", .white)
+            case .completeSide?: return ("Continuez le tour", "Remplissez les secteurs vides de l’anneau.", .white)
+            default: return ("Tournez autour du plat", "Lentement, en gardant le plat dans l’image.", .white)
             }
         }
     }
@@ -206,10 +206,10 @@ struct ScannerView: View {
         let az = controller.cameraAzimuthDeg * .pi / 180
         let h = Double(box.height)
         guard let s = controller.scheduler.ring.suggestion(currentCameraInObject: [cos(az), h / 2, sin(az)], boxHeight: h) else {
-            return "Tour complet : tu peux terminer"
+            return "Tour complet : vous pouvez terminer"
         }
-        if s.0 == .goHigher { return "↑ Passe au-dessus du plat" }
-        return s.direction >= 0 ? "← Va vers ta gauche" : "Va vers ta droite →"
+        if s.0 == .goHigher { return "↑ Passez au-dessus du plat" }
+        return s.direction >= 0 ? "← Allez vers votre gauche" : "Allez vers votre droite →"
     }
 
     // MARK: box dimensions
@@ -405,9 +405,9 @@ struct ScannerView: View {
 
     private var emptyPreviewText: String {
         switch controller.phase {
-        case .placing, .needsNewBox: return "Le nuage de points du plat apparaîtra ici, puis sa surface, pendant que tu tournes autour."
-        default: return controller.calculatorOnline ? "Calcul des premières vues… continue de tourner lentement."
-            : "PC injoignable : l’aperçu reprendra au retour du réseau."
+        case .placing, .needsNewBox: return "Le nuage de points du plat apparaîtra ici, puis sa surface, pendant que vous tournez autour."
+        default: return controller.calculatorOnline ? "Calcul des premières vues… continuez de tourner lentement."
+            : "Calculateur injoignable : l’aperçu reprendra au retour du réseau."
         }
     }
 }

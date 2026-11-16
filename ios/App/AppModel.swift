@@ -69,7 +69,7 @@ final class AppModel: ObservableObject {
             pendingScan = nil
         } catch {
             if let te = error as? TransportError, case .http(404, _) = te {
-                pendingText = "Le PC ne connaît plus cette session (données déplacées ?). Tu peux l’ignorer."
+                pendingText = "Le PC ne connaît plus cette session (données déplacées ?). Vous pouvez l’ignorer."
             } else {
                 pendingText = Self.explain(error)
             }
@@ -150,9 +150,9 @@ final class AppModel: ObservableObject {
             switch ns.code {
             case NSURLErrorCancelled, NSURLErrorServerCertificateUntrusted, NSURLErrorSecureConnectionFailed,
                  NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorClientCertificateRejected:
-                return "Le PC répond, mais son certificat ne correspond pas à l’empreinte du QR. Rescanne le QR affiché actuellement par le calculateur." + code
+                return "Le PC répond, mais son certificat ne correspond pas à l’empreinte du QR. Rescannez le QR affiché actuellement par le calculateur." + code
             case NSURLErrorTimedOut:
-                return "Aucune réponse du PC en 8 s. Vérifie : Réglages › DishPlay Scan › Réseau local activé ; Wi‑Fi du PC en profil « Privé » (pare‑feu Windows, port 8765) ; pas de réseau invité ; l’adresse du QR est bien celle du PC." + code
+                return "Aucune réponse du PC en 8 s. Vérifiez : Réglages › DishPlay Scan › Réseau local activé ; Wi‑Fi du PC en profil « Privé » (pare‑feu Windows, port 8765) ; pas de réseau invité ; l’adresse du QR est bien celle du PC." + code
             case NSURLErrorCannotConnectToHost:
                 return "Le PC refuse la connexion : le calculateur n’est pas lancé ou n’écoute pas sur ce port." + code
             case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorCannotFindHost:

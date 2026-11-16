@@ -1,6 +1,4 @@
-DishPlay Scan 1.5.1 — nouvelle app, suite
-- Fiche d'un plat : le modèle 3D tourne tout seul, se déplace au doigt et se zoome (pour les plats scannés à partir de maintenant).
-- À la fin d'un scan : on donne un nom au plat, puis « Voir dans Mes plats ».
-- Écran de lancement sombre, sans éclair blanc à l'ouverture.
-- Les consignes du scan changent en fondu.
+DishPlay Scan 1.5.2 — ton harmonisé
+- Toutes les consignes passent au vouvoiement, comme l'accueil.
+- Depuis la 1.5.1 : modèle 3D qui tourne dans la fiche d'un plat, nom du plat en fin de scan, écran de lancement sombre.
 - Depuis la 1.5.0 : ouverture animée, pages de présentation, barre d'onglets, bibliothèque « Mes plats ».
