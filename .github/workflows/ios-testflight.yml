@@ -108,4 +108,4 @@ jobs:
           retention-days: 7
       - name: Remove temporary signing material
         if: always()
-        run: python3 ios/ci/cleanup-signing.py
+        run: test ! -f ios/ci/cleanup-signing.py || python3 ios/ci/cleanup-signing.py
