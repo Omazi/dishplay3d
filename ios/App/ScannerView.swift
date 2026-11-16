@@ -62,7 +62,7 @@ struct ScannerView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Button { model.screen = .connect } label: {
+            Button { controller.abandonIfUnfinished(); model.refreshPending(); model.screen = .connect } label: {
                 Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(.white)
                     .frame(width: 40, height: 40).glass(Circle())
             }

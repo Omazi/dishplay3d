@@ -16,6 +16,7 @@ import numpy as np
 
 from .coordinates import (inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
                           scale_intrinsics, transform_points)
+from .consistency import DepthView, confirmed_depth, pick_neighbours
 from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
 from .mesh_preview import INTERPOLATED, MEASURED, MeshConfig, supported_mesh, surface_area
 from .pair_selector import PairLimits, select_partners
@@ -40,11 +41,18 @@ class EngineConfig:
     lidar_min_confidence: int = 2
     blur_ratio: float = 0.35
     outlier_dist_m: float = 0.008
+    # Multi-view confirmation (see consistency.py): a frame is fused `confirm_lag` keyframes after it
+    # arrives, so that views taken before AND after it can confirm or contradict its depth.
+    confirm_min_views: int = 1
+    confirm_lag: int = 2
+    confirm_window: int = 12
+    confirm_neighbours: int = 5
     align_to_model: bool = False  # experimental: measured worse on synthetic data, see docs/TEST_REPORT.md
     max_backlog_live: int = 12  # beyond this, older frames are stored but deferred to finishing
     fusion: FusionConfig = field(default_factory=FusionConfig)
     mesh: MeshConfig = field(default_factory=MeshConfig)
-    stereo: StereoParams = field(default_factory=StereoParams)
+    # live: no half-resolution pass (keeps the per-view cost low); finishing turns it on
+    stereo: StereoParams = field(default_factory=lambda: StereoParams(coarse_fill=False))
     limits: PairLimits = field(default_factory=PairLimits)
 
 
@@ -104,6 +112,9 @@ class SessionEngine:
         self.pair_reports: list[dict] = []
         self.alignments: list[dict] = []
         self._model_mesh = None
+        self._depth_cache: list[DepthView] = []     # recent raw depth maps (bounded window)
+        self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
+        self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
         self.latencies: list[float] = []
         self.snapshot_log: list[dict] = []
         self.paused = False
@@ -115,6 +126,8 @@ class SessionEngine:
         self.box = box
         self.fusion = LiveFusion(box.size_m, self.cfg.fusion)
         self._model_mesh = None
+        self._depth_cache = []
+        self._awaiting = []
         self.views.clear()
         if reprocess:
             for rec in self.frames.values():
@@ -177,6 +190,9 @@ class SessionEngine:
     def pending(self) -> list[int]:
         return sorted(f for f, r in self.frames.items() if r.status in ("received", "waiting_partner"))
 
+    def awaiting_confirmation(self) -> int:
+        return len(self._awaiting)
+
     def process_pending(self, live: bool = True) -> int:
         """Process frames that still need depth. Returns number of newly integrated frames."""
         todo = [f for f in self.pending() if self.frames[f].status == "received"]
@@ -235,27 +251,48 @@ class SessionEngine:
             self._frame_event(rec, reports)
             return 0
         depth, support = combine_depths(depths)
-        align = {"applied": False, "reason": "disabled"}
-        if self.cfg.align_to_model and len(self.fusion.integrated_frames) >= self.cfg.mesh_min_frames:
-            if self._model_mesh is None:
-                self._model_mesh = self.fusion.extract_mesh()
-            T_corr, align = self.fusion.align_to_model(depth, ref.K, ref.T_obj_from_cam, self._model_mesh)
-            if T_corr is not None:
-                # Drift compensation: this view's pose is corrected in the object frame, and later
-                # pairs that use it see the corrected pose (no silent change of fused data).
-                ref.T_obj_from_cam = T_corr @ ref.T_obj_from_cam
-                ref.features = ref.features  # pixel features stay valid
-        self.alignments.append({"frame_id": fid, **align})
-        n = self.fusion.integrate(fid, ref.image, depth, ref.K, ref.T_obj_from_cam, support, SOURCE_STEREO)
-        if n > 0:
-            self._model_mesh = None
-        rec.status = "integrated" if n > 0 else "rejected"
-        rec.reason = "" if n > 0 else "no_points_in_box"
-        rec.integrated_at = self.clock()
-        self._frame_event(rec, reports, points=n)
-        if n > 0:
-            self.frames_since_snapshot += 1
-        return int(n > 0)
+        # Not fused yet: wait for neighbouring views so the depth can be confirmed or contradicted.
+        self._depth_cache.append(DepthView(fid, depth, ref.K, ref.T_obj_from_cam, cv2.GaussianBlur(ref.image, (5, 5), 0)))
+        if len(self._depth_cache) > self.cfg.confirm_window:
+            self._depth_cache.pop(0)
+        self._awaiting.append((fid, support))
+        rec.status, rec.reason = "depth_ready", ""
+        return self._fuse_ready(flush=False)
+
+    def _fuse_ready(self, flush: bool) -> int:
+        """Fuse frames whose depth can now be judged by enough later views (all of them when flushing)."""
+        n_done = 0
+        keep_waiting = [] if flush else self._awaiting[-self.cfg.confirm_lag:] if self.cfg.confirm_lag > 0 else []
+        ready = self._awaiting[: len(self._awaiting) - len(keep_waiting)]
+        self._awaiting = keep_waiting
+        for fid, support in ready:
+            rec = self.frames[fid]
+            dv = next((d for d in self._depth_cache if d.frame_id == fid), None)
+            if dv is None:  # fell out of the window (cannot happen with lag < window); never fuse unchecked depth
+                rec.status, rec.reason = "rejected", "confirmation_window_missed"
+                self._frame_event(rec)
+                continue
+            others = pick_neighbours(dv, self._depth_cache, self.cfg.confirm_neighbours)
+            depth, agree, st = confirmed_depth(dv, others, self.cfg.confirm_min_views)
+            for k in self.confirm_stats:
+                self.confirm_stats[k] += st[k]
+            ref = self._view(fid)
+            # support = number of independent confirmations (other views), at least 2 once confirmed
+            sup = np.where(depth > 0, np.minimum(agree.astype(np.int32) + 1, 255), 0).astype(np.uint8)
+            n = self.fusion.integrate(fid, ref.image, depth, ref.K, ref.T_obj_from_cam, sup, SOURCE_STEREO, ref.weak_texture())
+            rec.status = "integrated" if n > 0 else "rejected"
+            rec.reason = "" if n > 0 else ("not_confirmed_by_other_views" if st["valid"] else "no_points_in_box")
+            rec.integrated_at = self.clock()
+            self._frame_event(rec, points=n)
+            if n > 0:
+                self.frames_since_snapshot += 1
+                self._model_mesh = None
+                n_done += 1
+        return n_done
+
+    def flush(self) -> int:
+        """Fuse the frames still waiting for later views (pause, finish, end of a replay)."""
+        return self._fuse_ready(flush=True)
 
     def _integrate_lidar(self, rec: FrameRecord, ref: View) -> int:
         dmeta = rec.meta["depth"]
@@ -308,7 +345,9 @@ class SessionEngine:
         xyz, rgb, nframes, sup, src = self.fusion.measured_points()
         if len(xyz) == 0:
             return None
+        weak = self.fusion.weak_cells()
         pcls = np.where((nframes >= 2) | (sup >= 2), MEASURED, PROVISIONAL).astype(np.uint8)
+        pcls[weak] = INTERPOLATED  # confirmed by several views, but the matcher interpolated there
         raw_mesh = None
         n_integrated = len(self.fusion.integrated_frames)
         hidden = 0
@@ -321,7 +360,7 @@ class SessionEngine:
                 drop = (pcls == PROVISIONAL) & (dist > self.cfg.outlier_dist_m)
                 hidden = int(drop.sum())
                 keep = ~drop
-                xyz, rgb, nframes, sup, pcls = xyz[keep], rgb[keep], nframes[keep], sup[keep], pcls[keep]
+                xyz, rgb, nframes, sup, pcls, weak = xyz[keep], rgb[keep], nframes[keep], sup[keep], pcls[keep], weak[keep]
         if len(xyz) > self.cfg.max_snapshot_points:
             sel = np.linspace(0, len(xyz) - 1, self.cfg.max_snapshot_points).astype(np.int64)
         else:
@@ -334,7 +373,7 @@ class SessionEngine:
         if want_mesh:
             mcfg = MeshConfig(**{**asdict(self.cfg.mesh), "max_triangles": self.cfg.max_snapshot_triangles})
             V, Cv, N, cls, T = supported_mesh(raw_mesh if raw_mesh is not None else self.fusion.extract_mesh(),
-                                              self.box.size_m, xyz, nframes, mcfg)
+                                              self.box.size_m, xyz, nframes, mcfg, weak)
             if len(T):
                 verts, normals, tris = V, N, T
                 vrgbc = np.concatenate([Cv, cls[:, None]], 1)
@@ -385,6 +424,7 @@ class SessionEngine:
             "alignment": {"applied": sum(a.get("applied", False) for a in self.alignments),
                           "median_shift_mm": float(np.median([a["shift_m"] for a in self.alignments if a.get("applied")]) * 1000)
                           if any(a.get("applied") for a in self.alignments) else None},
+            "confirmation": dict(self.confirm_stats),
             "pairs": {"total": len(pr), "ok": sum(p["status"] == "ok" for p in pr),
                       "corrected_pose": sum(p["pose_source"] == "corrected" for p in pr),
                       "median_residual_px": float(np.nanmedian([p["residual_used_px"] for p in pr])) if pr else None},

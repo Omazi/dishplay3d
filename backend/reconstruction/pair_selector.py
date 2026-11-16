@@ -24,7 +24,7 @@ class PairGeometry:
 class PairLimits:
     min_ratio: float = 0.035   # baseline / distance-to-object
     max_ratio: float = 0.22
-    best_ratio: float = 0.09
+    best_ratio: float = 0.11
     max_axis_angle_deg: float = 22.0
     max_forward_fraction: float = 0.55  # |t_z| / |t| in the reference camera
     min_box_visible: float = 0.6

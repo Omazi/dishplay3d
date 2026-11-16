@@ -14,6 +14,7 @@ struct ConnectionView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header
                     computerCard
+                    if model.pendingScan != nil || model.pendingText != nil { pendingCard }
                     if model.lidarSupported || !model.trackingSupported { deviceCard }
                     measureCard
                 }
@@ -85,6 +86,29 @@ struct ConnectionView: View {
                     .padding(.top, 10)
                 }
                 .font(.subheadline).tint(.secondary)
+            }
+        }
+    }
+
+    private var pendingCard: some View {
+        card {
+            if let p = model.pendingScan {
+                Label("Scan interrompu", systemImage: "exclamationmark.arrow.triangle.2.circlepath").font(.headline).foregroundStyle(Theme.warn)
+                Text(p.pending > 0 ? "\(p.pending) vues sur \(p.total) n’ont pas été envoyées au PC." : "Les \(p.total) vues sont sur le PC, mais la finition n’a pas été lancée.")
+                    .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+            }
+            if let t = model.pendingText {
+                HStack(spacing: 10) {
+                    if model.pendingBusy { ProgressView() }
+                    Text(t).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if model.pendingScan != nil {
+                HStack(spacing: 10) {
+                    smallButton("Envoyer et terminer", "arrow.up.circle") { Task { await model.resumePending() } }
+                        .disabled(model.pendingBusy || !model.paired)
+                    smallButton("Ignorer", "trash") { model.discardPending() }.disabled(model.pendingBusy)
+                }
             }
         }
     }

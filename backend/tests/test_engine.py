@@ -22,6 +22,8 @@ def run(sdir, cfg=None, limit=None, events=None):
         eng.process_pending(live=False)
         if eng.should_snapshot():
             snaps.append(eng.snapshot())
+    if eng.flush():
+        snaps.append(eng.snapshot())
     return eng, snaps
 
 
@@ -138,3 +140,38 @@ def test_backlog_defers_but_keeps_frames(session):
     eng.process_pending(live=True)
     deferred = [f for f, r in eng.frames.items() if r.status == "deferred"]
     assert len(deferred) == 8 and all((session / "frames" / f"{f:06d}.jpg").exists() for f in deferred)
+
+
+def test_weak_texture_is_never_called_measured(tmp_path):
+    """A plain white plate: whatever surface appears on it must be labelled interpolated, or be accurate."""
+    sc = SyntheticScene(uniform_plate=True)
+    sdir = write_session(tmp_path, n=60, scene=sc)
+    eng, snaps = run(sdir)
+    g = decode_geometry(snaps[-1][1])
+    V, cls = g["verts"], g["vert_rgbc"][:, 3]
+    r = np.hypot(V[:, 0], V[:, 2])
+    plate = (r < 0.10) & (V[:, 1] > 0.004)   # the white well, away from the textured table and rim edge
+    d = distance_to_scene(sc, V)
+    measured_plate = plate & (cls == 0)
+    if measured_plate.sum() > 50:
+        assert np.percentile(d[measured_plate], 90) < 0.004, "surfaces called MEASURED must be accurate"
+    assert (cls[plate] == 1).mean() > 0.5 or plate.sum() < 200, "a texture-less surface is interpolated, and says so"
+
+
+def test_confirmation_rejects_a_contradicted_depth():
+    """A depth map contradicted by the neighbouring views is removed, an agreeing one is kept."""
+    from reconstruction.consistency import DepthView, confirmed_depth
+    K = np.array([[500.0, 0, 320], [0, 500.0, 240], [0, 0, 1]])
+
+    def view(i, x, z):
+        T = np.eye(4)
+        T[0, 3] = x
+        return DepthView(i, np.full((480, 640), z, np.float32), K, T)
+
+    ref = view(0, 0.0, 0.50)
+    good = [view(1, 0.03, 0.50), view(2, -0.03, 0.50)]
+    out, agree, st = confirmed_depth(ref, good, 2)
+    assert st["confirmed"] > 0.8 * st["valid"]
+    bad = [view(1, 0.03, 0.60), view(2, -0.03, 0.60)]   # both neighbours see 10 cm farther: ref is a floater
+    out, agree, st = confirmed_depth(ref, bad, 1)
+    assert st["confirmed"] == 0 and st["violated"] > 0.8 * st["valid"]

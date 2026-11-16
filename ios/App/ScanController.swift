@@ -180,6 +180,7 @@ final class ScanController: ObservableObject {
                 var body: [String: Any] = [:]
                 if let referenceWidth { body["reference_width_m"] = referenceWidth }
                 try await transport.post("sessions/\(sid)/finish", json: body)
+                store?.markFinishRequested()
                 phase = .finishing
                 finishText = "Finition lancée sur le calculateur…"
             } catch {
@@ -187,6 +188,11 @@ final class ScanController: ObservableObject {
                 phase = .paused
             }
         }
+    }
+
+    /// The user leaves the scanner on purpose before finishing: do not offer to resume this session.
+    func abandonIfUnfinished() {
+        if phase != .finishing && phase != .done { store?.markAbandoned() }
     }
 
     func exportZip() -> URL? {
@@ -275,6 +281,7 @@ final class ScanController: ObservableObject {
             do {
                 let sid = try await transport.createSession(body)
                 serverSessionID = sid
+                store.setServerSession(sid)
                 transport.connectEvents(sessionID: sid)
                 calculatorOnline = true
             } catch {

@@ -25,10 +25,12 @@ class MeshConfig:
     interp_radius_m: float = 0.008
     min_frames_measured: int = 2
     min_component_triangles: int = 40
+    min_component_fraction: float = 0.004
     max_triangles: int = 60000
 
 
-def classify_vertices(vertices: np.ndarray, pts: np.ndarray, nframes: np.ndarray, cfg: MeshConfig) -> np.ndarray:
+def classify_vertices(vertices: np.ndarray, pts: np.ndarray, nframes: np.ndarray, cfg: MeshConfig,
+                      weak: np.ndarray | None = None) -> np.ndarray:
     cls = np.full(len(vertices), 255, np.uint8)  # 255 = unsupported -> removed
     if len(pts) == 0 or len(vertices) == 0:
         return cls
@@ -36,7 +38,8 @@ def classify_vertices(vertices: np.ndarray, pts: np.ndarray, nframes: np.ndarray
     d, idx = tree.query(vertices, k=8, distance_upper_bound=cfg.interp_radius_m)
     found = np.isfinite(d)
     idx_safe = np.where(found, idx, 0)
-    nf = np.where(found & (d <= cfg.support_radius_m), nframes[idx_safe], 0)
+    strong = nframes if weak is None else np.where(weak, 0, nframes)  # weak texture never counts as measured
+    nf = np.where(found & (d <= cfg.support_radius_m), strong[idx_safe], 0)
     measured = nf.max(1) >= cfg.min_frames_measured
     interp = found[:, 0]
     cls[interp] = INTERPOLATED
@@ -44,7 +47,7 @@ def classify_vertices(vertices: np.ndarray, pts: np.ndarray, nframes: np.ndarray
     return cls
 
 
-def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: MeshConfig = MeshConfig()):
+def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: MeshConfig = MeshConfig(), weak=None):
     """Crop to the box, drop unsupported triangles and tiny islands, decimate, classify.
 
     No hole filling and no closing: concavities (plate well, bowl) stay open.
@@ -56,7 +59,7 @@ def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: M
         return empty
     V = np.asarray(mesh.vertices)
     keep_v = inside_box(V, size_m, margin=0.005, below=0.005)
-    cls = classify_vertices(V, pts, nframes, cfg)
+    cls = classify_vertices(V, pts, nframes, cfg, weak)
     keep_v &= cls != 255
     T = np.asarray(mesh.triangles)
     keep_t = keep_v[T].all(1)
@@ -67,7 +70,9 @@ def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: M
     tri_clusters, n_tri, _ = mesh.cluster_connected_triangles()
     tri_clusters = np.asarray(tri_clusters)
     n_tri = np.asarray(n_tri)
-    mesh.remove_triangles_by_mask(n_tri[tri_clusters] < cfg.min_component_triangles)
+    # Islands: tiny ones are noise; small ones compared with the whole model are detached fragments.
+    limit = max(cfg.min_component_triangles, int(cfg.min_component_fraction * len(tri_clusters)))
+    mesh.remove_triangles_by_mask(n_tri[tri_clusters] < limit)
     mesh.remove_unreferenced_vertices()
     if len(mesh.triangles) > cfg.max_triangles:
         mesh = mesh.simplify_quadric_decimation(cfg.max_triangles)
@@ -75,7 +80,7 @@ def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: M
         return empty
     mesh.compute_vertex_normals()
     V = np.asarray(mesh.vertices)
-    cls = classify_vertices(V, pts, nframes, cfg)
+    cls = classify_vertices(V, pts, nframes, cfg, weak)
     cls[cls == 255] = INTERPOLATED  # decimation can move a vertex slightly off support
     colors = (np.clip(np.asarray(mesh.vertex_colors), 0, 1) * 255).astype(np.uint8) if mesh.has_vertex_colors() else np.full((len(V), 3), 180, np.uint8)
     return (V.astype(np.float32), colors, np.asarray(mesh.vertex_normals).astype(np.float32), cls,

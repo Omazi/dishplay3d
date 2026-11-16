@@ -61,6 +61,55 @@ Image : `docs/evidence/synthetic_progression.png` (v1 après 3 vues, v6, v29 ava
 - Haute résolution `captureHighResolutionFrame` : **non utilisée** ; l'app envoie l'image native 1920×1440 de chaque
   vue clé, et la finition la retraite à 960 px de large (réglable).
 
+## Mise à jour du 16 novembre (soir) — premier scan réel et qualité 3D
+
+**Premier scan réel (iPhone 13, bol de noix, de nuit)** : la chaîne a fonctionné de bout en bout (255 vues envoyées,
+50 versions en direct, finition). Défauts observés sur les captures de l'utilisateur : noix floues, bord du bol
+déchiqueté, lambeaux flottants, guidage difficile à suivre. Le dossier de session n'a pas été transmis : les
+réglages ci-dessous n'ont donc **pas** été vérifiés sur ces données réelles.
+
+**Banc d'essai plus dur** (`tools/bench_quality.py`, scène `tests/realistic.py`) : bol profond à bord fin, parois
+presque unies, tas de petits objets, trajectoire à la main, dérive du suivi, bruit, flou de mouvement. Il reproduit
+les défauts du scan réel. Mesures après recalage rigide (la dérive simulée décale tout le modèle de ~4 mm) :
+
+| Mesure (modèle final) | Avant | Après |
+|---|---|---|
+| Fragments éloignés (> 15 mm de la vraie surface) | 2,6 % | 0 % |
+| Parois du bol reconstruites | 24 % | 77 % (signalées « interpolé ») |
+| Bord du bol reconstruit | 95 % | 99 % |
+| Petits objets (noix) reconstruits | 65 % | 78 % |
+| Couverture globale des surfaces vues | 59 % | 84 % |
+| Précision des surfaces « mesurées » (P90) | 3,7 mm (tout confondu) | 3,2 mm |
+| Précision des surfaces « interpolées » (P90) | — | 5,2 mm |
+
+Image : `docs/evidence/qualite_avant_apres.png`.
+
+**Ce qui a changé dans le moteur**
+- *Confirmation multi-vues* (`reconstruction/consistency.py`) : une profondeur n'est fusionnée que si d'autres vues,
+  avec leur propre carte de profondeur, voient la même chose au même endroit et de la même couleur, et si elles sont
+  majoritaires. Une vue qui « voit à travers » le point le contredit. La fusion d'une vue attend 2 vues suivantes en
+  direct (4 en finition).
+- *Texture faible* : constat mesuré — sur une paroi quasi unie, ~30 % seulement des profondeurs brutes sont justes et
+  l'appariement interpole entre le bord et le fond. Ces surfaces ne sont plus jetées ni présentées comme mesurées :
+  elles sont conservées si elles sont confirmées, et classées **interpolées** (bleutées à l'écran, `_PROVENANCE = 1`
+  dans le GLB).
+- Contraste local normalisé avant l'appariement ; passe demi-résolution en finition ; troncature TSDF plus courte et
+  voxels de 2,5 mm en direct ; suppression des îlots détachés ; paires stéréo un peu plus écartées.
+- Vitesse : la vérification de pose (RANSAC) prenait plus de la moitié du temps par vue ; elle est bornée.
+  Mesuré ici : ~0,37 s par vue en direct (4 cœurs, 640 px).
+- Chaque finition écrit `final/apercu.png` (4 vues du modèle) pour juger ou partager le résultat d'un coup d'œil.
+
+**Limites qui restent**
+- Les surfaces sans texture (plastique uni, assiette blanche) ne sont pas *mesurées* par cette stéréo classique :
+  elles sont interpolées et signalées, avec une erreur de l'ordre de 5 mm sur le banc. Les mesurer vraiment
+  demanderait une autre source (LiDAR, lumière structurée, ou un modèle appris à auditer).
+- Pas de recalage global des poses : la dérive du suivi décale le modèle entier (≈4 mm sur le banc).
+- Toujours aucune mesure de qualité sur données réelles.
+
+**App iPhone** (compilée en CI, non vérifiée par moi sur appareil) : 1.2.x — guide en anneau, aperçu qui suit le
+téléphone, boîte accrochée à un repère ARKit, exposition fixe et obturateur ≤ 1/100 s pendant le scan ; 1.3.0 —
+reprise d'un scan interrompu (envoi des vues restantes puis finition).
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

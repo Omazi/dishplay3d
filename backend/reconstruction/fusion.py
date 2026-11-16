@@ -20,8 +20,8 @@ SOURCE_LIDAR = 1
 
 @dataclass
 class FusionConfig:
-    voxel_m: float = 0.003
-    trunc_voxels: float = 4.0
+    voxel_m: float = 0.0025
+    trunc_voxels: float = 3.0          # short truncation: thin rims are not eroded from the other side
     point_voxel_m: float = 0.0025      # dedup grid of the measured point store
     max_depth_m: float = 2.0
     box_margin_m: float = 0.01
@@ -46,7 +46,7 @@ class LiveFusion:
             color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
         # Incremental voxel accumulator of measured samples (bounded memory).
         self._keys = np.zeros(0, np.int64)
-        self._sum = np.zeros((0, 7), np.float64)  # x, y, z, r, g, b, n_samples
+        self._sum = np.zeros((0, 8), np.float64)  # x, y, z, r, g, b, n_samples, n_weak_texture_samples
         self._nframes = np.zeros(0, np.int64)
         self._sup = np.zeros(0, np.uint8)
         self._src = np.zeros(0, np.uint8)
@@ -56,7 +56,8 @@ class LiveFusion:
         self.camera_centres: dict[int, np.ndarray] = {}
 
     def integrate(self, frame_id: int, image_bgr: np.ndarray, depth: np.ndarray, K: np.ndarray,
-                  T_obj_from_cam: np.ndarray, support: np.ndarray | None = None, source: int = SOURCE_STEREO) -> int:
+                  T_obj_from_cam: np.ndarray, support: np.ndarray | None = None, source: int = SOURCE_STEREO,
+                  weak: np.ndarray | None = None) -> int:
         """Integrate a validated depth map. depth: float32 metres on the colour grid (0 = unknown)."""
         h, w = depth.shape
         if image_bgr.shape[:2] != (h, w):
@@ -78,7 +79,8 @@ class LiveFusion:
         intr = o3d.camera.PinholeCameraIntrinsic(w, h, K[0, 0], K[1, 1], K[0, 2], K[1, 2])
         self.volume.integrate(rgbd, intr, invert_rigid(T_obj_from_cam))
         sup = support[vs, us] if support is not None else np.ones(len(po), np.uint8)
-        self._accumulate(po, rgb[vs, us], sup.astype(np.uint8), source)
+        wk = weak[vs, us].astype(np.float64) if weak is not None else np.zeros(len(po))
+        self._accumulate(po, rgb[vs, us], sup.astype(np.uint8), source, wk)
         self.observations.append(Observation(frame_id, source, len(po)))
         self.integrated_frames.append(frame_id)
         self.camera_centres[frame_id] = T_obj_from_cam[:3, 3].copy()
@@ -89,18 +91,18 @@ class LiveFusion:
         c = np.floor(p / self.cfg.point_voxel_m).astype(np.int64) + 4096
         return (c[:, 0] * 8192 + c[:, 1]) * 8192 + c[:, 2]
 
-    def _accumulate(self, po: np.ndarray, rgb: np.ndarray, sup: np.ndarray, source: int):
+    def _accumulate(self, po: np.ndarray, rgb: np.ndarray, sup: np.ndarray, source: int, weak: np.ndarray):
         self._raw += len(po)
         nk = self._cell_keys(po)
         uk, inv = np.unique(nk, return_inverse=True)
-        vals = np.concatenate([po, rgb.astype(np.float64), np.ones((len(po), 1))], 1)
-        fsum = np.stack([np.bincount(inv, weights=vals[:, j], minlength=len(uk)) for j in range(7)], 1)
+        vals = np.concatenate([po, rgb.astype(np.float64), np.ones((len(po), 1)), weak[:, None]], 1)
+        fsum = np.stack([np.bincount(inv, weights=vals[:, j], minlength=len(uk)) for j in range(8)], 1)
         fsup = np.zeros(len(uk), np.uint8)
         np.maximum.at(fsup, inv, sup)
         keys = np.concatenate([self._keys, uk])
         allk, ainv = np.unique(keys, return_inverse=True)
         n = len(allk)
-        tot = np.zeros((n, 7))
+        tot = np.zeros((n, 8))
         np.add.at(tot, ainv, np.concatenate([self._sum, fsum]))
         nfr = np.zeros(n, np.int64)
         np.add.at(nfr, ainv, np.concatenate([self._nframes, np.ones(len(uk), np.int64)]))
@@ -116,6 +118,12 @@ class LiveFusion:
         xyz = (self._sum[:, :3] / np.maximum(cnt, 1)).astype(np.float32)
         rgb = np.clip(self._sum[:, 3:6] / np.maximum(cnt, 1), 0, 255).astype(np.uint8)
         return xyz, rgb, self._nframes.astype(np.uint16), self._sup.copy(), self._src.copy()
+
+    def weak_cells(self) -> np.ndarray:
+        """Per measured-point cell: True when most of its samples came from weakly textured pixels."""
+        if len(self._sum) == 0:
+            return np.zeros(0, bool)
+        return self._sum[:, 7] > 0.5 * self._sum[:, 6]
 
     def raw_point_count(self) -> int:
         return int(self._raw)

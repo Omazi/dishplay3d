@@ -17,11 +17,9 @@ from .completion import NoCompletion
 from .coordinates import invert_rigid
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply
-from .fusion import SOURCE_STEREO, FusionConfig, LiveFusion
+from .fusion import FusionConfig
 from .mesh_preview import ESTIMATED, INTERPOLATED, MEASURED, MeshConfig, supported_mesh, surface_area
-from .pair_selector import select_partners
 from .preview_format import encode_geometry
-from .stereo_depth import combine_depths, compute_pair_depth
 
 
 def footprint_width(V: np.ndarray, size_m) -> dict:
@@ -62,42 +60,40 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
     out_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     timings = {}
-    cfg = replace(engine.cfg, preview_width=finish_width, max_partners=3,
-                  fusion=FusionConfig(voxel_m=0.002, point_voxel_m=0.002, trunc_voxels=4.0))
-    cfg.stereo = replace(cfg.stereo, max_disparities=384)
-    fin = SessionEngine(engine.dir, engine.box, cfg)
+    cfg = replace(engine.cfg, preview_width=finish_width, max_partners=3, confirm_min_views=2, confirm_lag=4,
+                  confirm_window=16, confirm_neighbours=6,
+                  fusion=FusionConfig(voxel_m=0.002, point_voxel_m=0.002, trunc_voxels=3.0))
+    cfg.stereo = replace(cfg.stereo, max_disparities=384, coarse_fill=True)
+    progress = {"done": 0}
+
+    def fin_emit(ev):
+        if ev.get("type") == "frame" and ev.get("status") in ("integrated", "rejected"):
+            progress["done"] += 1
+            if progress["done"] % 5 == 0:
+                emit({"type": "finish_progress", "step": "depth", "done": progress["done"], "total": len(usable)})
+
+    fin = SessionEngine(engine.dir, engine.box, cfg, emit=fin_emit)
     usable = [fid for fid, r in sorted(engine.frames.items())
               if r.epoch == engine.box.epoch and r.reason not in ("tracking_not_normal", "blurred", "image_decode_failed")]
     for fid in usable:
         r = engine.frames[fid]
         fin.add_frame(r.meta, r.image_path, r.depth_path, r.conf_path, r.received_at)
-    cands = fin._candidates()
+    # Every frame is known in advance: partners and confirming views come from both sides in time.
+    fin.process_pending(live=False)
+    fin.process_pending(live=False)   # second chance for frames whose first pair failed
+    fin.flush()
     fusion = fin.fusion
-    pair_stats = {"ok": 0, "rejected": 0}
-    for k, fid in enumerate(usable):
-        ref = fin._view(fid)
-        if cfg.use_lidar and fin.frames[fid].depth_path is not None:
-            fin._integrate_lidar(fin.frames[fid], ref)
-            continue
-        partners = select_partners(fid, cands, engine.box.size_m, cfg.max_partners, cfg.limits)
-        depths = []
-        for g in partners:
-            res = compute_pair_depth(ref, fin._view(g.other_id), engine.box.size_m, cfg.stereo)
-            pair_stats["ok" if res.depth is not None else "rejected"] += 1
-            if res.depth is not None:
-                depths.append(res.depth)
-        if depths:
-            d, sup = combine_depths(depths)
-            fusion.integrate(fid, ref.image, d, ref.K, ref.T_obj_from_cam, sup, SOURCE_STEREO)
-        if k % 5 == 0:
-            emit({"type": "finish_progress", "step": "depth", "done": k + 1, "total": len(usable)})
+    pair_stats = {"ok": sum(p["status"] == "ok" for p in fin.pair_reports),
+                  "rejected": sum(p["status"] != "ok" for p in fin.pair_reports), "confirmation": dict(fin.confirm_stats)}
     timings["depth_s"] = time.perf_counter() - t0
     emit({"type": "finish_progress", "step": "mesh", "done": 0, "total": 1})
     t1 = time.perf_counter()
     xyz, rgb, nframes, sup, src = fusion.measured_points()
+    weak = fusion.weak_cells()
     pcls = np.where((nframes >= 2) | (sup >= 2), MEASURED, PROVISIONAL).astype(np.uint8)
+    pcls[weak] = INTERPOLATED
     mcfg = MeshConfig(support_radius_m=0.003, interp_radius_m=0.006, min_component_triangles=150, max_triangles=250000)
-    V, C, N, cls, T = supported_mesh(fusion.extract_mesh(), engine.box.size_m, xyz, nframes, mcfg)
+    V, C, N, cls, T = supported_mesh(fusion.extract_mesh(), engine.box.size_m, xyz, nframes, mcfg, weak)
     timings["mesh_s"] = time.perf_counter() - t1
     completion = NoCompletion().propose(V, T, cls, engine.box.size_m)
     write_points_ply(out_dir / "points.ply", xyz, rgb, pcls, nframes)
@@ -132,7 +128,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
         m.compute_vertex_normals()
         from .mesh_preview import classify_vertices
         Vd = np.asarray(m.vertices)
-        cd = classify_vertices(Vd, xyz, nframes, mcfg)
+        cd = classify_vertices(Vd, xyz, nframes, mcfg, weak)
         cd[cd == 255] = INTERPOLATED
         disp = (Vd.astype(np.float32), (np.asarray(m.vertex_colors) * 255).astype(np.uint8), np.asarray(m.vertex_normals, np.float32), cd, np.asarray(m.triangles, np.uint32))
     fw = footprint_width(V, engine.box.size_m)
@@ -152,6 +148,12 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
               "coverage": fin.coverage()}
     (out_dir / "final_preview.dpg").write_bytes(encode_geometry(header, xyz[sel], np.concatenate([rgb, pcls[:, None]], 1)[sel],
                                                                disp[0], np.concatenate([disp[1], disp[3][:, None]], 1), disp[2], disp[4]))
+    try:  # a picture of the result, easy to check and to share
+        from .preview_format import decode_geometry
+        from .render import contact_sheet
+        cv2.imwrite(str(out_dir / "apercu.png"), contact_sheet(decode_geometry((out_dir / "final_preview.dpg").read_bytes()), "mesh"))
+    except Exception as exc:
+        emit({"type": "error", "code": "render_failed", "message": repr(exc)})
     report = {
         "schema": "dishplay.report/1", "engine": ENGINE_VERSION, "finish_width": finish_width,
         "frames_used": len(usable), "frames_integrated_final": len(fusion.integrated_frames),

@@ -22,11 +22,55 @@ final class AppModel: ObservableObject {
     @Published private(set) var step: String?
     @Published private(set) var healthText: String?
     @Published private(set) var transport: ScanTransport?
+    /// A scan interrupted by closing the app: its views are still on the iPhone.
+    @Published private(set) var pendingScan: SessionStore.Unfinished?
+    @Published private(set) var pendingText: String?
+    @Published private(set) var pendingBusy = false
 
     init() {
         if let url = URL(string: baseURLText), fingerprint.count == 64, let token = Keychain.load(account: baseURLText) {
             transport = ScanTransport(baseURL: url, fingerprint: fingerprint, token: token)
             paired = true
+        }
+        pendingScan = SessionStore.unfinished()
+    }
+
+    func refreshPending() { pendingScan = SessionStore.unfinished() }
+
+    func discardPending() {
+        if let p = pendingScan, let store = try? SessionStore(resuming: p.localID) { store.markAbandoned() }
+        pendingText = nil
+        refreshPending()
+    }
+
+    /// Send the views that never reached the calculator, then start the finishing there.
+    func resumePending() async {
+        guard let p = pendingScan, let t = transport, !pendingBusy else { return }
+        pendingBusy = true
+        defer { pendingBusy = false }
+        do {
+            let store = try SessionStore(resuming: p.localID)
+            pendingText = "Réouverture de la session sur le PC…"
+            try await t.post("sessions/\(p.serverSessionID)/resume_worker")
+            var sent = 0
+            let total = store.pendingCount
+            while let fid = store.nextPending() {
+                let env = try store.envelope(frameID: fid, serverSessionID: p.serverSessionID)
+                try await t.putFrame(sessionID: p.serverSessionID, frameID: fid, envelope: env)
+                store.markSent(fid)
+                sent += 1
+                pendingText = "Envoi des vues \(sent)/\(total)…"
+            }
+            try await t.post("sessions/\(p.serverSessionID)/finish")
+            store.markFinishRequested()
+            pendingText = "Finition lancée sur le PC. Le modèle sera dans le dossier de la session (final/, avec apercu.png)."
+            pendingScan = nil
+        } catch {
+            if let te = error as? TransportError, case .http(404, _) = te {
+                pendingText = "Le PC ne connaît plus cette session (données déplacées ?). Tu peux l’ignorer."
+            } else {
+                pendingText = Self.explain(error)
+            }
         }
     }
 

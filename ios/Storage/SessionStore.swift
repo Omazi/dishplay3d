@@ -22,6 +22,59 @@ final class SessionStore: @unchecked Sendable {
         try FileManager.default.createDirectory(at: root.appendingPathComponent("frames"), withIntermediateDirectories: true)
     }
 
+    // MARK: resuming after the app was closed in the middle of a scan
+
+    struct Unfinished: Equatable {
+        var localID: String
+        var serverSessionID: String
+        var pending: Int
+        var total: Int
+    }
+
+    /// Reopen a session from disk: the views not yet acknowledged by the calculator become pending again.
+    init(resuming localID: String) throws {
+        self.localID = localID
+        root = SessionStore.sessionsDirectory.appendingPathComponent(localID, isDirectory: true)
+        let (all, sent) = SessionStore.frameIDs(in: root)
+        pending = all.filter { !sent.contains($0) }
+        savedCount = all.count
+        sentCount = sent.count
+    }
+
+    private static func frameIDs(in root: URL) -> (all: [Int], sent: Set<Int>) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("frames").path)) ?? []
+        var all: [Int] = [], sent = Set<Int>()
+        for n in names {
+            let parts = n.split(separator: ".")
+            guard parts.count == 2, let id = Int(parts[0]) else { continue }
+            if parts[1] == "json" { all.append(id) } else if parts[1] == "sent" { sent.insert(id) }
+        }
+        return (all.sorted(), sent)
+    }
+
+    private func marker(_ name: String) -> URL { root.appendingPathComponent(name) }
+
+    func setServerSession(_ sid: String) { try? Data(sid.utf8).write(to: marker("server_session.txt"), options: .atomic) }
+    func markFinishRequested() { FileManager.default.createFile(atPath: marker("finish.requested").path, contents: Data()) }
+    func markAbandoned() { FileManager.default.createFile(atPath: marker("abandoned").path, contents: Data()) }
+
+    /// Most recent session that reached the calculator but was neither finished nor abandoned on purpose.
+    static func unfinished() -> Unfinished? {
+        let fm = FileManager.default
+        let dirs = ((try? fm.contentsOfDirectory(atPath: sessionsDirectory.path)) ?? []).sorted(by: >)
+        for d in dirs.prefix(5) {
+            let root = sessionsDirectory.appendingPathComponent(d, isDirectory: true)
+            if fm.fileExists(atPath: root.appendingPathComponent("finish.requested").path) { continue }
+            if fm.fileExists(atPath: root.appendingPathComponent("abandoned").path) { continue }
+            guard let sidData = try? Data(contentsOf: root.appendingPathComponent("server_session.txt")),
+                  let sid = String(data: sidData, encoding: .utf8), !sid.isEmpty else { continue }
+            let (all, sent) = frameIDs(in: root)
+            if all.isEmpty { continue }
+            return Unfinished(localID: d, serverSessionID: sid, pending: all.filter { !sent.contains($0) }.count, total: all.count)
+        }
+        return nil
+    }
+
     func url(_ frameID: Int, _ ext: String) -> URL {
         root.appendingPathComponent("frames").appendingPathComponent(String(format: "%06d.%@", frameID, ext))
     }

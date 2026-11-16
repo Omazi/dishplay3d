@@ -68,6 +68,7 @@ def main():
                     t1 = time.perf_counter()
                     eng.process_pending(live=False)
                     per.append(time.perf_counter() - t1)
+                eng.flush()
                 h, _ = eng.snapshot()
             check("reconstruction self-test (synthetic, not a scan)", h["triangle_count"] > 0,
                   f"{h['integrated_frames']} frames, {h['triangle_count']} triangles, {1000 * sorted(per)[len(per) // 2]:.0f} ms/frame median, "

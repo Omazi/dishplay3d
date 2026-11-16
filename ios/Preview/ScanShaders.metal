@@ -27,6 +27,7 @@ vertex PointOut pointVertex(uint vid [[vertex_id]],
     float alpha = 1.0;
     float size = u.pointSize;
     if (cls == 4) { rgb = mix(rgb, float3(0.55), 0.35); alpha = 0.75; }            // provisional single view
+    if (cls == 1) { rgb = mix(rgb, float3(0.25, 0.45, 0.95), 0.45); }               // interpolated (weak texture)
     if (cls == 3) { rgb = float3(0.75, 0.75, 0.80); alpha = 0.6; size *= 0.7; }     // ARKit tracking points
     if (u.showMesh != 0 && cls == 0) { size *= 0.6; }
     o.color = float4(rgb, alpha);

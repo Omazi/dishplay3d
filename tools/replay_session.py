@@ -55,6 +55,7 @@ def replay_local(sdir: Path, out: Path, finish: bool, reference_width_m=None, pr
                              "integrated": h["integrated_frames"], "points": h["measured_points"],
                              "triangles": h["triangle_count"] if "triangle_count" in h else None,
                              "process_s": time.perf_counter() - tp})
+    eng.flush()
     snap = eng.snapshot()
     if snap:
         (out / f"v{snap[0]['version']:05d}.dpg").write_bytes(snap[1])

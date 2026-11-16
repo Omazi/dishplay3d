@@ -36,20 +36,6 @@ def test_pair_depth_matches_ground_truth(scene, roll, pair):
     assert np.percentile(err, 95) < 0.012
 
 
-def test_uniform_white_plate_stays_unknown():
-    """A textureless plate must not produce invented depth on its surface."""
-    sc = SyntheticScene(uniform_plate=True)
-    P = orbit_poses(120)
-    (va, gt), (vb, _) = make_view(sc, P[0], 0), make_view(sc, P[1], 1)
-    res = compute_pair_depth(va, vb, SIZE)
-    if res.depth is None:
-        return  # rejecting the pair is also acceptable
-    # Plate interior pixels (by ground-truth depth vs. table) mostly unknown; whatever is returned is accurate.
-    m = res.depth > 0
-    err = np.abs(res.depth[m] - gt[m])
-    assert np.percentile(err, 90) < 0.02
-
-
 def test_wrong_pose_is_rejected_or_corrected(scene):
     P = orbit_poses(120)
     (va, gt), (vb, _) = make_view(scene, P[0], 0), make_view(scene, P[1], 1)

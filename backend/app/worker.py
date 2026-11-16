@@ -28,6 +28,7 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
     for meta_path, received_at in existing_frames:  # resume after a server restart
         _add(engine, Path(meta_path), received_at)
     paused = False
+    last_activity = time.time()
     emit({"type": "status", "state": "capturing", "queue": len(engine.pending())})
     while True:
         cmds = []
@@ -53,6 +54,7 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
                 elif kind == "finish":
                     emit({"type": "status", "state": "finishing", "queue": len(engine.pending())})
                     engine.process_pending(live=False)
+                    engine.flush()
                     snap = engine.snapshot()
                     if snap:
                         _publish(sdir, *snap, emit)
@@ -71,6 +73,10 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
             return
         try:
             n = engine.process_pending(live=True)
+            if cmds:
+                last_activity = time.time()
+            elif engine.awaiting_confirmation() and time.time() - last_activity > 1.5:
+                n += engine.flush()  # capture stopped or paused: fuse the last views with what is available
             if engine.should_snapshot():
                 snap = engine.snapshot()
                 if snap:

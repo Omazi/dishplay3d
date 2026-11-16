@@ -22,6 +22,16 @@ class View:
     T_obj_from_cam: np.ndarray   # OpenCV camera -> object
     gray: np.ndarray | None = None
     features: tuple | None = None
+    weak: np.ndarray | None = None
+
+    def weak_texture(self, thr: float = 1.2) -> np.ndarray:
+        """Pixels whose local texture is too faint to pin depth down by itself. There the matcher
+        mostly interpolates between stronger features, so the result is labelled INTERPOLATED."""
+        if self.weak is None:
+            g = cv2.GaussianBlur(self.gray_image(), (0, 0), 1.5).astype(np.float32)
+            mag = np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)) + np.abs(cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3))
+            self.weak = cv2.blur(mag, (9, 9)) / 8.0 < thr
+        return self.weak
 
     def gray_image(self) -> np.ndarray:
         if self.gray is None:
@@ -36,13 +46,17 @@ class StereoParams:
     speckle_window: int = 80
     speckle_range: int = 2
     lr_max_diff: float = 1.0
-    min_texture: float = 3.0           # mean |gradient| in a 7x7 window (grey levels)
+    min_texture: float = 0.0           # >0: also drop pixels below this mean |gradient| (7x7). Off: weakly
+                                       # textured areas are judged by multi-view confirmation (consistency.py)
     max_disparities: int = 256
     min_matches: int = 40
     max_residual_px: float = 1.5       # Sampson residual allowed after (optional) correction
     accept_arkit_below_px: float = 0.6  # keep ARKit relative pose when already this consistent
     sift_features: int = 2500
     box_margin_m: float = 0.01
+    coarse_fill: bool = True            # half-resolution pass for weakly textured areas
+    clahe_clip: float = 3.0             # >0: local contrast normalisation before matching
+    full_paths: bool = False            # 8-direction SGBM (slower, steadier on weak texture): used for finishing
     edge_rel_jump: float = 0.02         # neighbour depth jump (relative) marking an occlusion border
     sparse_rel_tol: float = 0.03
     max_sparse_disagree: float = 0.25
@@ -142,7 +156,9 @@ def verify_relative_pose(ref: View, other: View, size_m, params: StereoParams, r
     f = float(ref.K[0, 0])
     E_a = _skew(t_a / np.linalg.norm(t_a)) @ R_a
     res_a = _sampson_px(E_a, n1, n2, f)
-    E, inl = cv2.findEssentialMat(n1, n2, np.eye(3), method=cv2.RANSAC, prob=0.999, threshold=1.0 / f)
+    # Bounded RANSAC: this only checks/corrects a pose that ARKit already gives, it does not have to
+    # find one from scratch. (Unbounded, it took more than half of the per-view time.)
+    E, inl = cv2.findEssentialMat(n1, n2, np.eye(3), method=cv2.RANSAC, prob=0.99, threshold=1.0 / f, maxIters=250)
     if E is None or E.shape != (3, 3):
         report.status, report.reason = "rejected", "essential_failed"
         return None
@@ -191,7 +207,22 @@ def _sgbm(min_disp, num_disp, params: StereoParams):
         minDisparity=int(min_disp), numDisparities=int(num_disp), blockSize=bs,
         P1=8 * 3 * bs * bs, P2=32 * 3 * bs * bs, disp12MaxDiff=-1,
         uniquenessRatio=params.uniqueness, speckleWindowSize=params.speckle_window,
-        speckleRange=params.speckle_range, mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY)
+        speckleRange=params.speckle_range, mode=cv2.STEREO_SGBM_MODE_HH if params.full_paths else cv2.STEREO_SGBM_MODE_SGBM_3WAY)
+
+
+def _lr_checked_disparity(gl: np.ndarray, gr: np.ndarray, dmin: int, num: int, params: "StereoParams"):
+    """SGBM disparity of the left image with an explicit left-right consistency check."""
+    matcher = _sgbm(dmin, num, params)
+    dl = matcher.compute(gl, gr).astype(np.float32) / 16.0
+    dr = matcher.compute(np.ascontiguousarray(gr[:, ::-1]), np.ascontiguousarray(gl[:, ::-1])).astype(np.float32)[:, ::-1] / 16.0
+    # Disparities at the ends of the search range are saturated (true value may lie outside).
+    valid = (dl > dmin + 1.0) & (dl < dmin + num - 2.0)
+    yy, xx = np.mgrid[0:dl.shape[0], 0:dl.shape[1]]
+    xr = np.round(xx - dl).astype(np.int32)
+    inb = valid & (xr >= 0) & (xr < dl.shape[1])
+    lr_ok = np.zeros_like(valid)
+    lr_ok[inb] = np.abs(dl[inb] - dr[yy[inb], xr[inb]]) <= params.lr_max_diff
+    return dl, valid & lr_ok
 
 
 def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = StereoParams()) -> StereoResult:
@@ -278,20 +309,30 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     Rr = right[y0:y1, x0:x1]
     gl = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY)
     gr = cv2.cvtColor(Rr, cv2.COLOR_BGR2GRAY)
-    matcher = _sgbm(dmin, num, params)
-    dl = matcher.compute(gl, gr).astype(np.float32) / 16.0
-    dr_flip = matcher.compute(np.ascontiguousarray(gr[:, ::-1]), np.ascontiguousarray(gl[:, ::-1])).astype(np.float32) / 16.0
-    dr = dr_flip[:, ::-1]
+    if params.clahe_clip > 0:
+        # Local contrast normalisation: in weakly textured areas the matching cost is tiny compared with
+        # the smoothness penalties, so the matcher just extends its neighbours. Equalising local
+        # contrast lets faint real texture (ridges, shading, grain) drive the match.
+        clahe = cv2.createCLAHE(clipLimit=params.clahe_clip, tileGridSize=(8, 8))
+        gl, gr = clahe.apply(cv2.GaussianBlur(gl, (0, 0), 0.8)), clahe.apply(cv2.GaussianBlur(gr, (0, 0), 0.8))
+    dl, valid = _lr_checked_disparity(gl, gr, dmin, num, params)
+    if params.coarse_fill:
+        # Weak texture: a half-resolution pass sees a wider neighbourhood and matches where the fine pass
+        # cannot. Its (coarser) disparities only fill pixels the fine pass left unknown; like every
+        # other depth they must still be confirmed by independent views before being fused.
+        gl2, gr2 = cv2.pyrDown(gl), cv2.pyrDown(gr)
+        num2 = int(np.ceil((num / 2 + 2) / 16.0) * 16)
+        d2, v2 = _lr_checked_disparity(gl2, gr2, int(np.floor(dmin / 2)) - 1, num2, params)
+        up = cv2.resize(d2 * 2.0, (dl.shape[1], dl.shape[0]), interpolation=cv2.INTER_NEAREST)
+        upv = cv2.resize(v2.astype(np.uint8), (dl.shape[1], dl.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
+        fill = upv & ~valid
+        dl = np.where(fill, up, dl)
+        valid |= fill
+        report.timings_ms["coarse_filled"] = float(fill.sum())
     report.timings_ms["sgbm"] = (time.perf_counter() - t1) * 1000
-    # Disparities at the ends of the search range are saturated (true value may lie outside).
-    valid = (dl > dmin + 1.0) & (dl < dmin + num - 2.0)
     yy, xx = np.mgrid[0:dl.shape[0], 0:dl.shape[1]]
-    xr = np.round(xx - dl).astype(np.int32)
-    inb = valid & (xr >= 0) & (xr < dl.shape[1])
-    lr_ok = np.zeros_like(valid)
-    lr_ok[inb] = np.abs(dl[inb] - dr[yy[inb], xr[inb]]) <= params.lr_max_diff
-    valid &= lr_ok
-    valid &= _texture_mask(gl, params.min_texture)
+    if params.min_texture > 0:
+        valid &= _texture_mask(gl, params.min_texture)
     valid &= roi_l[y0:y1, x0:x1] > 0
     # Undo crop / mirror / transpose to rectified reference coordinates.
     x_full = xx + x0
