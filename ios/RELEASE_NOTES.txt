@@ -1,4 +1,4 @@
-DishPlay Scan 1.0.2
-- Écran du scanner refait : barre d'état compacte, boutons plus lisibles, panneau d'aperçu sans chevauchement de texte.
-- L'état du PC est vérifié avant « Démarrer » (« PC prêt » / « PC injoignable ») au lieu d'afficher « déconnecté » à tort.
-- Jumelage : étape en cours visible et erreurs explicites (1.0.1).
+DishPlay Scan 1.1.0 — nouvelle interface
+- Accueil refait : état de l'ordinateur, étapes de jumelage, un seul bouton « Scanner un plat ».
+- Scanner refait : une consigne et une action par étape (placer, ajuster, tourner, terminer), barre de progression du tour, dimensions de la boîte en un coup d'œil, effet verre.
+- Aperçu 3D dans une carte en bas, agrandissable.
