@@ -95,3 +95,20 @@ def test_contract_schemas_accept_examples():
         jsonschema.validate(bad, {**schema, "$ref": "#/$defs/frame"})
     preview = json.loads((root / "preview-message.schema.json").read_text())
     jsonschema.Draft202012Validator.check_schema(preview)
+
+
+def test_isolate_dish_removes_table_keeps_low_plate_floor():
+    from reconstruction.mesh_preview import isolate_dish
+    # table: 30 cm grid at y=0 ; plate: ring wall up to 2 cm at r=8..10 cm and a floor at y=3 mm inside
+    g = np.linspace(-0.15, 0.15, 61)
+    X, Z = np.meshgrid(g, g)
+    r = np.hypot(X, Z)
+    Y = np.where((r > 0.08) & (r < 0.10), 0.02, np.where(r <= 0.08, 0.003, 0.0))
+    V = np.stack([X.ravel(), Y.ravel(), Z.ravel()], 1)
+    idx = np.arange(61 * 61).reshape(61, 61)
+    T = np.concatenate([np.stack([idx[:-1, :-1], idx[1:, :-1], idx[:-1, 1:]], -1).reshape(-1, 3),
+                        np.stack([idx[1:, :-1], idx[1:, 1:], idx[:-1, 1:]], -1).reshape(-1, 3)])
+    keep = isolate_dish(V, T)
+    rc = np.hypot(V[T][:, :, 0].mean(1), V[T][:, :, 2].mean(1))
+    assert keep[rc < 0.07].all(), "the low floor inside the plate is part of the dish"
+    assert not keep[rc > 0.125].any(), "the table around the plate is removed"

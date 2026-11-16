@@ -20,7 +20,7 @@ Calculateur Windows/Linux : FastAPI ── processus de reconstruction
 | `backend/` | calculateur (`app/`), moteur (`reconstruction/`), tests (`tests/`), `requirements.lock` |
 | `ios/` | app SwiftUI (`App/ Scanner/ Preview/ Network/ Storage/`), paquet testable `ScanCore/`, `project.yml` |
 | `contracts/` | schémas JSON versionnés (capture, messages) ; formats binaires décrits dans `backend/reconstruction/preview_format.py` |
-| `tools/` | `replay_session.py`, `bench_quality.py` (banc de qualité), `doctor.py`, `verify_capture.py`, `render_geometry.py`, `asc_profile.py`, `asc_testflight.py`, `scan_client.py` |
+| `tools/` | `replay_session.py`, `pack_session.py` (zip compact d'une session), `bench_quality.py` (banc de qualité), `doctor.py`, `verify_capture.py`, `render_geometry.py`, `asc_profile.py`, `asc_testflight.py`, `scan_client.py` |
 | `docs/` | `SETUP_WINDOWS_LINUX.md`, `TESTFLIGHT.md`, `FIRST_TEST.md`, `TEST_REPORT.md` |
 | `compliance/` | `components.csv`, `THIRD_PARTY_NOTICES.md` |
 

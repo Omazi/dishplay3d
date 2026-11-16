@@ -81,3 +81,16 @@ def test_combine_depths_removes_disagreement():
     assert d[0, 0] == 0 and d[1, 1] == pytest.approx(0.5) and s[1, 1] == 2
     d2, s2 = combine_depths([c, np.zeros_like(c)])
     assert d2[1, 1] == pytest.approx(0.5) and s2[1, 1] == 1
+
+
+def test_reflections_are_left_unknown(scene):
+    """A blown-out highlight that sits at different places in the two images must not get a depth."""
+    P = orbit_poses(120)
+    (va, gt), (vb, _) = make_view(scene, P[0], 0, jpeg=False), make_view(scene, P[1], 1, jpeg=False)
+    ys, xs = np.nonzero(gt > 0)
+    cy, cx = int(np.median(ys)), int(np.median(xs))
+    cv2.circle(va.image, (cx, cy), 14, (255, 255, 255), -1)
+    cv2.circle(vb.image, (cx + 9, cy + 6), 14, (255, 255, 255), -1)   # the reflection moved with the camera
+    res = compute_pair_depth(va, vb, SIZE)
+    assert res.depth is not None
+    assert (res.depth[cy - 8:cy + 9, cx - 8:cx + 9] > 0).mean() < 0.02

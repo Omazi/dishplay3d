@@ -96,3 +96,30 @@ def surface_area(vertices: np.ndarray, triangles: np.ndarray, classes: np.ndarra
     a = vertices[t[:, 1]] - vertices[t[:, 0]]
     b = vertices[t[:, 2]] - vertices[t[:, 0]]
     return float(0.5 * np.linalg.norm(np.cross(a, b), axis=1).sum())
+
+
+def isolate_dish(V: np.ndarray, T: np.ndarray, table_band_m: float = 0.004, body_min_m: float = 0.006,
+                 cell_m: float = 0.002) -> np.ndarray:
+    """Triangle mask that keeps the dish and drops the table around it.
+
+    Footprint = where the model rises above the table (filled, slightly grown). Everything inside the
+    footprint is kept, including a low plate floor; outside it, the thin layer at table height is the
+    support surface and is removed. Nothing is added or closed: the underside stays open.
+    """
+    from scipy import ndimage
+    if len(T) == 0:
+        return np.zeros(0, bool)
+    body = V[:, 1] > body_min_m
+    if body.sum() < 30:
+        return np.ones(len(T), bool)
+    lo = V[:, [0, 2]].min(0) - 3 * cell_m
+    ij = np.floor((V[:, [0, 2]] - lo) / cell_m).astype(int)
+    shape = ij.max(0) + 4
+    grid = np.zeros(shape, bool)
+    grid[ij[body, 0], ij[body, 1]] = True
+    grid = ndimage.binary_closing(grid, iterations=3)
+    grid = ndimage.binary_fill_holes(grid)
+    grid = ndimage.binary_dilation(grid, iterations=2)
+    inside = grid[ij[:, 0], ij[:, 1]]
+    keep_v = inside | (V[:, 1] > table_band_m)
+    return keep_v[T].all(1)

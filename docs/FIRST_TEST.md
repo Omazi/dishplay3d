@@ -37,6 +37,8 @@ même Wi‑Fi, un vrai plat posé sur une table, un mètre ruban.
    backend/.venv/bin/python tools/replay_session.py local ~/dishplay-scan-data/sessions/<id> --out replay_out --finish
    backend/.venv/bin/python tools/render_geometry.py replay_out/final/final_preview.dpg rendu.png --mode mesh
    ```
+   Pour partager une session (images réduites, rapport, aperçu) en un seul fichier :
+   `backend/.venv/bin/python tools/pack_session.py` → `~/dishplay-scan-data/sessions/<id>-pack.zip` (contient vos photos).
 10. **À renvoyer pour le rapport** : enregistrement d'écran continu (Centre de contrôle › Enregistrement de l'écran)
     montrant points puis surface AVANT Terminer, `report.json`, le zip de session, le log du terminal du PC.
 

@@ -18,7 +18,7 @@ from .coordinates import invert_rigid
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply
 from .fusion import FusionConfig
-from .mesh_preview import ESTIMATED, INTERPOLATED, MEASURED, MeshConfig, supported_mesh, surface_area
+from .mesh_preview import ESTIMATED, INTERPOLATED, MEASURED, MeshConfig, isolate_dish, supported_mesh, surface_area
 from .preview_format import encode_geometry
 
 
@@ -35,8 +35,10 @@ def footprint_width(V: np.ndarray, size_m) -> dict:
     return {"x_m": ex, "z_m": ez}
 
 
-def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 24):
-    """UV atlas + projection of calibrated images (Open3D). Returns (uv per vertex, texture BGR) or raises."""
+def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_bgr: np.ndarray | None = None):
+    """UV atlas + projection of calibrated images (Open3D).
+
+    Returns (per-corner uv in glTF convention, texture BGR, views used, fraction filled from vertex colours)."""
     tm = o3d.t.geometry.TriangleMesh()
     tm.vertex.positions = o3d.core.Tensor(V.astype(np.float32))
     tm.triangle.indices = o3d.core.Tensor(T.astype(np.int32))
@@ -48,13 +50,30 @@ def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 24):
     Es = [o3d.core.Tensor(invert_rigid(v.T_obj_from_cam).astype(np.float64)) for v in sel]
     albedo = tm.project_images_to_albedo(imgs, Ks, Es, tex_size, True)
     tex = np.asarray(albedo.as_tensor().numpy())
-    tri_uv = tm.triangle["texture_uvs"].numpy()  # (M, 3, 2) per-corner
-    # glTF needs per-vertex UVs: split vertices per triangle corner.
-    return tri_uv, tex[:, :, ::-1].copy() if tex.shape[2] == 3 else cv2.cvtColor(tex, cv2.COLOR_RGBA2BGR), len(sel)
+    tex = tex[:, :, ::-1].copy() if tex.shape[2] == 3 else cv2.cvtColor(tex, cv2.COLOR_RGBA2BGR)
+    tri_uv = tm.triangle["texture_uvs"].numpy().astype(np.float64)  # (M, 3, 2) per corner, v pointing UP (Open3D)
+    h, w = tex.shape[:2]
+    # Texels that no selected image reached stay black in Open3D's result. Fill them with the fused
+    # colour of their triangle (measured vertex colours), so the model has no black patches.
+    base = np.zeros_like(tex)
+    px = np.stack([tri_uv[:, :, 0] * (w - 1), (1.0 - tri_uv[:, :, 1]) * (h - 1)], -1)
+    tri_col = colors_bgr[T].mean(1) if colors_bgr is not None else None
+    filled = 0.0
+    if tri_col is not None:
+        pts = np.round(px * 4).astype(np.int32)
+        for k in range(len(pts)):
+            cv2.fillConvexPoly(base, pts[k], tri_col[k].tolist(), lineType=cv2.LINE_8, shift=2)
+        unprojected = tex.sum(2) < 15
+        filled = float(unprojected[base.sum(2) > 0].mean()) if (base.sum(2) > 0).any() else 0.0
+        tex[unprojected] = base[unprojected]
+    # glTF texture coordinates have their origin at the TOP-left of the image: flip v.
+    uv = tri_uv.copy()
+    uv[:, :, 1] = 1.0 - uv[:, :, 1]
+    return uv, tex, len(sel), filled
 
 
-def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960, reference_width_m: float | None = None,
-                   texture: bool = True, emit: Callable[[dict], None] | None = None) -> dict:
+def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
+                   texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True) -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -78,6 +97,28 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
     for fid in usable:
         r = engine.frames[fid]
         fin.add_frame(r.meta, r.image_path, r.depth_path, r.conf_path, r.received_at)
+    # Global pose refinement: remove the tracking drift accumulated over the tour before computing depth.
+    pose_info = {"applied": False, "reason": "disabled"}
+    if refine and len(usable) >= 6:
+        emit({"type": "finish_progress", "step": "poses", "done": 0, "total": 1})
+        try:
+            from .bundle import refine_poses
+            ba_views = {}
+            for fid in usable:
+                try:
+                    ba_views[fid] = fin._view(fid)
+                except ValueError:
+                    pass
+            res = refine_poses(ba_views, engine.box.size_m, cfg.stereo)
+            pose_info = {"applied": res.applied, **res.info}
+            if res.applied:
+                fin.pose_overrides = res.poses
+                for fid, v in fin.views.items():
+                    if fid in res.poses:
+                        v.T_obj_from_cam = res.poses[fid]
+        except Exception as exc:  # never lose a scan because the refinement failed: ARKit poses are kept
+            pose_info = {"applied": False, "reason": "error", "error": repr(exc)}
+    timings["poses_s"] = time.perf_counter() - t0
     # Every frame is known in advance: partners and confirming views come from both sides in time.
     fin.process_pending(live=False)
     fin.process_pending(live=False)   # second chance for frames whose first pair failed
@@ -99,6 +140,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
     write_points_ply(out_dir / "points.ply", xyz, rgb, pcls, nframes)
     write_mesh_ply(out_dir / "mesh.ply", V, C, N, cls, T)
     tex_info = {"status": "not_requested"}
+    dish_info = {"status": "no_mesh"}
     glb_extras = {"frame": "object", "units": "m", "up": "+y", "provenance_classes": {"0": "measured", "1": "interpolated", "2": "estimated"}}
     if len(T):
         if texture:
@@ -106,19 +148,34 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
             t2 = time.perf_counter()
             try:
                 views = [fin._view(f) for f in fusion.integrated_frames]
-                tri_uv, tex, nv = texture_mesh(V, T, views)
+                tri_uv, tex, nv, filled = texture_mesh(V, T, views, colors_bgr=C[:, ::-1].astype(np.float64))
                 Vs = V[T.reshape(-1)]
                 Ns = N[T.reshape(-1)]
                 Ps = cls[T.reshape(-1)]
                 Ts = np.arange(len(Vs), dtype=np.uint32).reshape(-1, 3)
                 write_glb(out_dir / "model.glb", Vs, Ts, Ns, uv=tri_uv.reshape(-1, 2), texture_bgr=tex, provenance=Ps, extras=glb_extras)
                 cv2.imwrite(str(out_dir / "texture.png"), tex)
-                tex_info = {"status": "ok", "views": nv, "size": int(tex.shape[0]), "seconds": time.perf_counter() - t2}
+                tex_info = {"status": "ok", "views": nv, "size": int(tex.shape[0]), "seconds": time.perf_counter() - t2,
+                            "filled_from_vertex_colours": filled}
             except Exception as exc:  # documented fallback: vertex colours
                 tex_info = {"status": "failed_fallback_vertex_colors", "error": repr(exc)}
         if tex_info["status"] != "ok":
             write_glb(out_dir / "model.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
         write_glb(out_dir / "model_vertexcolor.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
+        # Presentation variant: the dish alone, table removed. Same measured geometry, nothing added.
+        try:
+            keep_t = isolate_dish(V, T)
+            if 0 < keep_t.sum() < len(T):
+                used = np.unique(T[keep_t])
+                remap = -np.ones(len(V), np.int64)
+                remap[used] = np.arange(len(used))
+                write_glb(out_dir / "plat_seul.glb", V[used], remap[T[keep_t]].astype(np.uint32), N[used], colors=C[used],
+                          provenance=cls[used].astype(np.float32), extras={**glb_extras, "table_removed": True})
+                dish_info = {"status": "ok", "triangles": int(keep_t.sum()), "removed_triangles": int((~keep_t).sum())}
+            else:
+                dish_info = {"status": "nothing_to_remove"}
+        except Exception as exc:
+            dish_info = {"status": "failed", "error": repr(exc)}
     # Final inspectable geometry for the phone (decimated if needed).
     disp = (V, C, N, cls, T)
     if len(T) > 150000:
@@ -161,11 +218,12 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 960
         "mesh": {"vertices": int(len(V)), "triangles": int(len(T)), "surface": areas,
                  "provenance_vertices": {"measured": int((cls == MEASURED).sum()), "interpolated": int((cls == INTERPOLATED).sum()),
                                          "estimated": int((cls == ESTIMATED).sum())}},
+        "pose_refinement": pose_info, "dish_only": dish_info,
         "completion": {"provider": "none", "applied": completion is not None},
         "texture": tex_info, "footprint_width": fw, "scale_check": scale,
         "live": engine.metrics(), "snapshots": engine.snapshot_log, "timings_s": {**timings, "total": time.perf_counter() - t0},
         "notes": [
-            "Global pose refinement (bundle adjustment) is NOT implemented in P1; per-pair relative pose verification/correction only.",
+            "Global pose refinement (bundle adjustment on SIFT tracks) runs when finishing; it is applied only if it lowers the reprojection error and stays close to ARKit (see pose_refinement).",
             "Underside in contact with the table is never observed and is not completed.",
             "Holes are left open: no hole filling, no watertight closing.",
         ],

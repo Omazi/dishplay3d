@@ -66,6 +66,7 @@ def main():
     ap.add_argument("--frames", type=int, default=110)
     ap.add_argument("--no-finish", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--no-refine", action="store_true", help="skip the global pose refinement when finishing")
     a = ap.parse_args()
     from reconstruction.engine import Box, EngineConfig, SessionEngine
     from reconstruction.preview_format import decode_geometry
@@ -107,7 +108,8 @@ def main():
         from reconstruction.refinement import finish_session
         import open3d as o3d
         t1 = time.perf_counter()
-        finish_session(eng, out / "final", texture=False)
+        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine)
+        res["pose_refinement"] = rep_final["pose_refinement"]
         gf = decode_geometry((out / "final" / "final_preview.dpg").read_bytes())
         res["final"] = metrics(sc, gf["verts"].astype(np.float64), gf["tris"], vis_pts, vis_mat, gf["vert_rgbc"][:, 3])
         res["finish_seconds"] = time.perf_counter() - t1
@@ -115,6 +117,8 @@ def main():
     for k in ("live", "final"):
         if k in res:
             print(k, json.dumps({a: (round(b, 2) if isinstance(b, float) else b) for a, b in res[k].items()}))
+    if "pose_refinement" in res:
+        print("pose_refinement", {k: (round(v, 2) if isinstance(v, float) else v) for k, v in res["pose_refinement"].items()})
     print("frames", res["engine_metrics"]["frames"], "live_s", round(live_s, 1), "finish_s", round(res.get("finish_seconds", 0), 1))
 
 

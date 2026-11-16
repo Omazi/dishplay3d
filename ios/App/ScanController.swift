@@ -329,7 +329,13 @@ final class ScanController: ObservableObject {
         case "frame":
             if let s = ev.status { serverFrames[s, default: 0] += 1 }
         case "finish_progress":
-            finishText = "Finition : \(ev.step ?? "") \(ev.done ?? 0)/\(ev.total ?? 0)"
+            let names = ["poses": "recalage des vues", "depth": "calcul fin des profondeurs", "mesh": "surface", "texture": "texture"]
+            let step = names[ev.step ?? ""] ?? (ev.step ?? "")
+            if let total = ev.total, total > 1 {
+                finishText = "\(step.prefix(1).uppercased() + step.dropFirst()) : \(ev.done ?? 0)/\(total)"
+            } else {
+                finishText = "\(step.prefix(1).uppercased() + step.dropFirst())…"
+            }
         case "artifacts":
             phase = .done
             preview.followPhone = false
@@ -343,7 +349,7 @@ final class ScanController: ObservableObject {
 
     private func downloadResults(_ files: [String]) async {
         guard let sid = serverSessionID, let store else { return }
-        for name in files where ["model.glb", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
+        for name in files where ["model.glb", "plat_seul.glb", "apercu.png", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
             if let d = try? await transport.download("sessions/\(sid)/artifacts/\(name)"), let u = try? store.saveArtifact(name: name, data: d) {
                 resultFiles.append(u)
             }

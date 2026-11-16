@@ -56,6 +56,7 @@ class StereoParams:
     box_margin_m: float = 0.01
     coarse_fill: bool = True            # half-resolution pass for weakly textured areas
     clahe_clip: float = 3.0             # >0: local contrast normalisation before matching
+    glare_level: int = 250              # >0: pixels at/above this brightness (0-255) are reflections, not measured
     full_paths: bool = False            # 8-direction SGBM (slower, steadier on weak texture): used for finishing
     edge_rel_jump: float = 0.02         # neighbour depth jump (relative) marking an occlusion border
     sparse_rel_tol: float = 0.03
@@ -309,6 +310,11 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     Rr = right[y0:y1, x0:x1]
     gl = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY)
     gr = cv2.cvtColor(Rr, cv2.COLOR_BGR2GRAY)
+    # Blown-out highlights (reflections on sauce, glaze, plastic, cutlery) slide over the surface when the
+    # camera moves: matching them gives a wrong depth. They are left unknown, with a small safety border.
+    glare = None
+    if params.glare_level > 0:
+        glare = cv2.dilate((L.max(axis=2) >= params.glare_level).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
     if params.clahe_clip > 0:
         # Local contrast normalisation: in weakly textured areas the matching cost is tiny compared with
         # the smoothness penalties, so the matcher just extends its neighbours. Equalising local
@@ -331,6 +337,9 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
         report.timings_ms["coarse_filled"] = float(fill.sum())
     report.timings_ms["sgbm"] = (time.perf_counter() - t1) * 1000
     yy, xx = np.mgrid[0:dl.shape[0], 0:dl.shape[1]]
+    if glare is not None:
+        report.timings_ms["glare_pixels"] = float((glare & valid).sum())
+        valid &= ~glare
     if params.min_texture > 0:
         valid &= _texture_mask(gl, params.min_texture)
     valid &= roi_l[y0:y1, x0:x1] > 0

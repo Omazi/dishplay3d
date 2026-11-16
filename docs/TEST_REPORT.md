@@ -110,6 +110,21 @@ Image : `docs/evidence/qualite_avant_apres.png`.
 téléphone, boîte accrochée à un repère ARKit, exposition fixe et obturateur ≤ 1/100 s pendant le scan ; 1.3.0 —
 reprise d'un scan interrompu (envoi des vues restantes puis finition).
 
+## Mise à jour du 16 novembre (nuit) — lacunes traitées une par une
+
+Mesures sur le banc `tools/bench_quality.py` (bol synthétique, deux tirages aléatoires), 38 tests automatiques passés.
+Rien de ceci n'est vérifié sur un vrai plat.
+
+| # | Lacune | État | Ce qui a été fait / mesuré |
+|---|---|---|---|
+| 1 | Surfaces unies non mesurées | **non corrigeable par cette méthode** | Elles restent interpolées et signalées (bleu, `_PROVENANCE = 1`), erreur P90 ≈ 4–5 mm sur le banc. Les mesurer demande une autre source (LiDAR : chemin codé, jamais testé). |
+| 2 | Brillant | **partiel** | Les reflets saturés (≥ 250/255) et leur bord sont exclus du calcul de profondeur (test dédié). Les reflets non saturés et le transparent ne sont pas traités. |
+| 3 | Détail fin | **partiel** | Finition à 1152 px de large (au lieu de 960), aperçu en direct jusqu'à 100 000 points / 60 000 triangles. Effet non mesurable sur le banc (images 640 px). `captureHighResolutionFrame` toujours non utilisé. |
+| 4 | Dérive du suivi | **corrigé en finition** | Recalage global des poses (`reconstruction/bundle.py`, ajustement de faisceaux sur traces SIFT, liens fermes aux mouvements ARKit consécutifs, première caméra fixe). Erreur de position des caméras 3,9 → 1,6 mm (médiane) ; décalage global du modèle 3,5 → 2,3 mm et 0,6 mm selon le tirage. Appliqué seulement s'il réduit l'erreur de reprojection et reste proche d'ARKit ; sinon poses ARKit conservées (`report.json › pose_refinement`). ~22 s pour 110 vues. Pas appliqué à l'aperçu en direct. |
+| 5 | Dessous / zones cachées | **par conception** | Rien n'est inventé. Ajout : `final/plat_seul.glb`, le même modèle sans la table autour du plat (rien d'ajouté, dessous ouvert). Base estimée : non faite, décision produit. |
+| 6 | Texture finale jamais vérifiée | **2 défauts trouvés et corrigés** | (a) la texture était retournée verticalement dans le GLB (convention glTF) ; (b) ~30 % de la surface restait noire. Désormais 36 vues projetées, zones non couvertes remplies par la couleur fusionnée ; contrôle automatique : < 0,1 % de noir, erreur de couleur moyenne ≈ 11/255 lue comme un visualiseur glTF. |
+| 7 | Aucun réglage sur données réelles | **outillé, en attente** | `tools/pack_session.py` produit un zip compact (≈ 6 Mo pour 110 vues) rejouable tel quel ; `final/apercu.png` écrit à chaque finition. |
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

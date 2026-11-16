@@ -175,3 +175,43 @@ def test_confirmation_rejects_a_contradicted_depth():
     bad = [view(1, 0.03, 0.60), view(2, -0.03, 0.60)]   # both neighbours see 10 cm farther: ref is a floater
     out, agree, st = confirmed_depth(ref, bad, 1)
     assert st["confirmed"] == 0 and st["violated"] > 0.8 * st["valid"]
+
+
+def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
+    """The exported GLB, read with the glTF convention (v from the top), shows the real colours and has
+    no black patches; the dish-only variant and the result picture are written; poses were refined."""
+    import cv2
+    import open3d as o3d
+    from reconstruction.exports import glb_accessor, read_glb
+    from reconstruction.refinement import finish_session
+    from tests.synthetic import surface_color
+    eng, _ = run(session, limit=45)
+    rep = finish_session(eng, tmp_path / "final")
+    assert rep["texture"]["status"] == "ok"
+    assert (tmp_path / "final" / "apercu.png").exists() and (tmp_path / "final" / "plat_seul.glb").exists()
+    assert "applied" in rep["pose_refinement"]
+    js, b = read_glb(tmp_path / "final" / "model.glb")
+    at = js["meshes"][0]["primitives"][0]["attributes"]
+    P = glb_accessor(js, b, at["POSITION"]).astype(np.float64)
+    N = glb_accessor(js, b, at["NORMAL"]).astype(np.float64)
+    UV = glb_accessor(js, b, at["TEXCOORD_0"])
+    v = js["bufferViews"][js["images"][0]["bufferView"]]
+    tex = cv2.imdecode(np.frombuffer(b[v["byteOffset"]: v["byteOffset"] + v["byteLength"]], np.uint8), 1)
+    H, W = tex.shape[:2]
+    sel = np.random.default_rng(0).choice(len(P), min(8000, len(P)), replace=False)
+    P, N, UV = P[sel], N[sel], UV[sel]
+    seen = tex[np.clip((UV[:, 1] * (H - 1)).round().astype(int), 0, H - 1), np.clip((UV[:, 0] * (W - 1)).round().astype(int), 0, W - 1)][:, ::-1].astype(float)
+    sc = SyntheticScene()
+    org = P + N * 0.006
+    ans = sc.scene.cast_rays(o3d.core.Tensor(np.concatenate([org, -N], 1).astype(np.float32)))
+    t = ans["t_hit"].numpy()
+    hit = np.isfinite(t) & (t < 0.02)
+    geom = ans["geometry_ids"].numpy()
+    mat = np.zeros(len(geom), int)
+    for gid, k in sc.ids.items():
+        mat[geom == gid] = k
+    X = org - N * np.where(hit, t, 0)[:, None]
+    light = np.array([0.3, 1.0, 0.2]) / np.linalg.norm([0.3, 1.0, 0.2])
+    truth = np.clip(surface_color(X, mat) * (0.55 + 0.45 * np.abs(ans["primitive_normals"].numpy().astype(float) @ light))[:, None], 0, 1) * 255
+    assert (seen.sum(1) < 15)[hit].mean() < 0.05, "no black (unprojected) patches"
+    assert np.abs(seen[hit] - truth[hit]).mean() < 30, "texture colours match the scene when read as glTF"

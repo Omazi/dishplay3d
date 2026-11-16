@@ -34,8 +34,8 @@ class EngineConfig:
     retry_limit: int = 4
     snapshot_min_interval_s: float = 2.0
     snapshot_every_frames: int = 3
-    max_snapshot_points: int = 80000
-    max_snapshot_triangles: int = 40000
+    max_snapshot_points: int = 100000
+    max_snapshot_triangles: int = 60000
     mesh_min_frames: int = 3
     use_lidar: bool = False
     lidar_min_confidence: int = 2
@@ -111,6 +111,7 @@ class SessionEngine:
         self.frames_since_snapshot = 0
         self.pair_reports: list[dict] = []
         self.alignments: list[dict] = []
+        self.pose_overrides: dict[int, np.ndarray] = {}   # refined T_obj_from_cam (finishing only)
         self._model_mesh = None
         self._depth_cache: list[DepthView] = []     # recent raw depth maps (bounded window)
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
@@ -172,6 +173,8 @@ class SessionEngine:
             K = K_full
         T_w_c = mat4_from_rowmajor(rec.meta["T_world_from_cameraAR"])
         v = View(fid, img, K, object_from_camera_cv(self.box.T_world_from_object, T_w_c))
+        if fid in self.pose_overrides:
+            v.T_obj_from_cam = self.pose_overrides[fid]
         self.views[fid] = v
         if len(self.views) > 400:  # bounded cache; images are reloaded from disk on demand
             for old in sorted(self.views)[: len(self.views) - 400]:
