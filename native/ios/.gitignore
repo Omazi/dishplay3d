@@ -1,6 +1,0 @@
-# Share the project and scheme for Xcode Cloud onboarding; exclude per-user state.
-xcuserdata/
-*.xcuserstate
-build/
-DerivedData/
-*.xcresult

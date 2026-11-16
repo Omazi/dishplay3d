@@ -1,1 +1,0 @@
-../../../scripts/apple/validate-bundle.py

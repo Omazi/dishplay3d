@@ -3,9 +3,7 @@ name: DishPlay Scan — checks
 # Backend tests on Linux + ScanCore unit tests and an unsigned iOS device build on macOS.
 on:
   push:
-    paths: ['dishplay-scan/**', 'scripts/apple/install-xcodegen.sh', '.github/workflows/ios-check.yml']
   pull_request:
-    paths: ['dishplay-scan/**', '.github/workflows/ios-check.yml']
   workflow_dispatch:
   workflow_call:
 
@@ -22,7 +20,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: dishplay-scan/backend
+        working-directory: backend
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install pinned dependencies (system Python 3.12 of ubuntu-24.04)
@@ -48,12 +46,12 @@ jobs:
           xcodebuild -showsdks | grep -i iphoneos
           swift --version
       - name: ScanCore unit tests (coordinates, wire formats, capture heuristics; Python golden vectors)
-        working-directory: dishplay-scan/ios/ScanCore
+        working-directory: ios/ScanCore
         run: swift test
       - name: Install pinned XcodeGen (2.46.0, SHA-256 verified)
-        run: echo "XCODEGEN=$(bash scripts/apple/install-xcodegen.sh)" >> "$GITHUB_ENV"
+        run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
       - name: Generate project and build for iPhone (unsigned)
-        working-directory: dishplay-scan/ios
+        working-directory: ios
         run: |
           set -o pipefail
           mkdir -p build
@@ -64,7 +62,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build > build/xcodebuild.log 2>&1 || { grep -E "error:" build/xcodebuild.log; tail -40 build/xcodebuild.log; exit 1; }
           grep -E "warning: .*\.swift|BUILD SUCCEEDED" build/xcodebuild.log || true
       - name: Check bundle contents
-        working-directory: dishplay-scan/ios
+        working-directory: ios
         run: |
           APP=$(find build/DerivedData/Build/Products -name "DishPlayScan.app" -maxdepth 3 | head -1)
           test -f "$APP/default.metallib"
@@ -75,5 +73,5 @@ jobs:
         if: always()
         with:
           name: scan-ios-build-log
-          path: dishplay-scan/ios/build/xcodebuild.log
+          path: ios/build/xcodebuild.log
           retention-days: 7

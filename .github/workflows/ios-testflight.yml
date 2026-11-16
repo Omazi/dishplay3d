@@ -2,7 +2,7 @@ name: DishPlay Scan — TestFlight
 
 # Manual: Actions -> "DishPlay Scan — TestFlight" -> Run workflow.
 # Publishes to the EXISTING App Store Connect record "DishPlay Capture" (ID 6814221035, bundle
-# app.dishplay.capture) with the signing secrets already used for 0.1.0-0.6.0 (see dishplay-scan/docs/TESTFLIGHT.md).
+# app.dishplay.capture) with the signing secrets already used for 0.1.0-0.6.0 (see docs/TESTFLIGHT.md).
 on:
   workflow_dispatch:
     inputs:
@@ -52,7 +52,7 @@ jobs:
             echo "IOS_PROVISION_PROFILE_BASE64=$EXISTING_PROFILE" >> "$GITHUB_ENV"
           else
             python3 -m venv "$RUNNER_TEMP/asc" && "$RUNNER_TEMP/asc/bin/pip" install -q cryptography==46.0.3
-            "$RUNNER_TEMP/asc/bin/python" dishplay-scan/tools/asc_profile.py --bundle "$IOS_BUNDLE_ID" --name "DishPlay Capture" \
+            "$RUNNER_TEMP/asc/bin/python" tools/asc_profile.py --bundle "$IOS_BUNDLE_ID" --name "DishPlay Capture" \
               --out "$RUNNER_TEMP/scan.mobileprovision" --github-env
           fi
       - name: Validate and install signing material (shared script)
@@ -60,11 +60,11 @@ jobs:
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
           IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
-        run: python3 scripts/apple/install-signing.py
+        run: python3 ios/ci/install-signing.py
       - name: Install pinned XcodeGen
-        run: echo "XCODEGEN=$(bash scripts/apple/install-xcodegen.sh)" >> "$GITHUB_ENV"
+        run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
       - name: Archive (signed)
-        working-directory: dishplay-scan/ios
+        working-directory: ios
         run: |
           "$XCODEGEN" generate --spec project.yml
           xcodebuild -project DishPlayScan.xcodeproj -scheme DishPlayScan -configuration Release \
@@ -76,14 +76,14 @@ jobs:
             "PROVISIONING_PROFILE_SPECIFIER=$SIGNING_PROFILE_UUID" \
             "OTHER_CODE_SIGN_FLAGS=--keychain $SIGNING_KEYCHAIN" archive
       - name: Export signed IPA
-        working-directory: dishplay-scan/ios
+        working-directory: ios
         run: |
           xcodebuild -exportArchive -archivePath build/DishPlayScan.xcarchive \
             -exportPath build/export -exportOptionsPlist "$APPLE_EXPORT_OPTIONS"
           ls -la build/export
       - name: Validate with Apple and upload for TestFlight
         if: inputs.upload
-        working-directory: dishplay-scan/ios
+        working-directory: ios
         run: |
           export API_PRIVATE_KEYS_DIR="$(dirname "$APPLE_API_KEY_PATH")"
           IPA=$(ls build/export/*.ipa | head -1)
@@ -93,10 +93,10 @@ jobs:
         with:
           name: dishplay-scan-ipa-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
-            dishplay-scan/ios/build/export/*.ipa
-            dishplay-scan/ios/build/DishPlayScan.xcarchive/dSYMs
+            ios/build/export/*.ipa
+            ios/build/DishPlayScan.xcarchive/dSYMs
           if-no-files-found: error
           retention-days: 7
       - name: Remove temporary signing material
         if: always()
-        run: python3 scripts/apple/cleanup-signing.py
+        run: python3 ios/ci/cleanup-signing.py
