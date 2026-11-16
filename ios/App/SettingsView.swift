@@ -1,45 +1,36 @@
 import SwiftUI
 import UIKit
 
-/// Home: connect to the computer, then open the scanner. One clear next action at the bottom.
-struct ConnectionView: View {
+/// Calculator link and capture options.
+struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @State private var manual = false
 
     var body: some View {
-        ZStack {
-            LinearGradient(colors: [Color(red: 0.10, green: 0.09, blue: 0.13), .black], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    header
-                    computerCard
-                    if model.pendingScan != nil || model.pendingText != nil { pendingCard }
-                    if model.lidarSupported || !model.trackingSupported { deviceCard }
-                    measureCard
+        NavigationStack {
+            ZStack {
+                AmbientBackground()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        computerCard
+                        if model.pendingScan != nil || model.pendingText != nil { PendingScanCard() }
+                        if model.lidarSupported || !model.trackingSupported { deviceCard }
+                        measureCard
+                        Text("DishPlay Scan \(version)")
+                            .font(.footnote).foregroundStyle(.white.opacity(0.45))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 28)
                 }
-                .padding(.horizontal, 20).padding(.top, 28).padding(.bottom, 120)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
-            VStack {
-                Spacer()
-                PrimaryButton(title: "Scanner un plat", icon: "viewfinder", enabled: model.paired && model.trackingSupported) {
-                    model.screen = .scan
-                }
-                .padding(.horizontal, 20).padding(.bottom, 12)
-            }
+            .navigationTitle("Réglages")
         }
-        .preferredColorScheme(.dark)
         .task { await model.checkHealth() }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "cube.transparent").font(.system(size: 40, weight: .medium)).foregroundStyle(Theme.accent).accessibilityHidden(true)
-            Text("DishPlay Scan").font(.system(size: 34, weight: .bold, design: .rounded))
-            Text("Tourne autour d’un plat, sa forme 3D se construit en direct.")
-                .font(.body).foregroundStyle(.secondary)
-        }
+    private var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     }
 
     private var computerCard: some View {
@@ -56,8 +47,8 @@ struct ConnectionView: View {
                     Spacer(minLength: 0)
                 }
                 HStack(spacing: 10) {
-                    smallButton("Tester", "arrow.clockwise") { Task { await model.checkHealth() } }
-                    smallButton("Changer d’ordinateur", "xmark") { model.forget() }
+                    SmallButton(title: "Tester", icon: "arrow.clockwise") { Task { await model.checkHealth() } }
+                    SmallButton(title: "Changer d’ordinateur", icon: "xmark") { model.forget() }
                 }
             } else {
                 Text("Relier l’ordinateur").font(.headline)
@@ -71,7 +62,7 @@ struct ConnectionView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if model.messageIsError {
-                    smallButton("Réglages › Réseau local", "gear") {
+                    SmallButton(title: "Réglages › Réseau local", icon: "gear") {
                         if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
                     }
                 }
@@ -80,35 +71,12 @@ struct ConnectionView: View {
                         field("https://192.168.1.20:8765", text: $model.baseURLText, keyboard: .URL)
                         field("Code à 6 chiffres", text: $model.code, keyboard: .numberPad)
                         field("Empreinte (64 caractères)", text: $model.fingerprint, keyboard: .asciiCapable)
-                        smallButton(model.busy ? "Jumelage…" : "Jumeler", "link") { Task { await model.pair() } }
+                        SmallButton(title: model.busy ? "Jumelage…" : "Jumeler", icon: "link") { Task { await model.pair() } }
                             .disabled(model.busy)
                     }
                     .padding(.top, 10)
                 }
                 .font(.subheadline).tint(.secondary)
-            }
-        }
-    }
-
-    private var pendingCard: some View {
-        card {
-            if let p = model.pendingScan {
-                Label("Scan interrompu", systemImage: "exclamationmark.arrow.triangle.2.circlepath").font(.headline).foregroundStyle(Theme.warn)
-                Text(p.pending > 0 ? "\(p.pending) vues sur \(p.total) n’ont pas été envoyées au PC." : "Les \(p.total) vues sont sur le PC, mais la finition n’a pas été lancée.")
-                    .font(.subheadline).fixedSize(horizontal: false, vertical: true)
-            }
-            if let t = model.pendingText {
-                HStack(spacing: 10) {
-                    if model.pendingBusy { ProgressView() }
-                    Text(t).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            if model.pendingScan != nil {
-                HStack(spacing: 10) {
-                    smallButton("Envoyer et terminer", "arrow.up.circle") { Task { await model.resumePending() } }
-                        .disabled(model.pendingBusy || !model.paired)
-                    smallButton("Ignorer", "trash") { model.discardPending() }.disabled(model.pendingBusy)
-                }
             }
         }
     }
@@ -155,14 +123,6 @@ struct ConnectionView: View {
         HStack(alignment: .top, spacing: 12) {
             Text("\(n)").font(.footnote.bold()).frame(width: 24, height: 24).background(Theme.accent, in: Circle()).foregroundStyle(.black)
             Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func smallButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon).font(.footnote.weight(.semibold))
-                .padding(.horizontal, 14).frame(height: 38)
-                .background(Color.white.opacity(0.10), in: Capsule()).foregroundStyle(.white)
         }
     }
 

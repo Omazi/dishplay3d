@@ -15,17 +15,36 @@ struct DishPlayScanApp: App {
 
 struct RootView: View {
     @EnvironmentObject var model: AppModel
+    @AppStorage("onboarding.done") private var onboarded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        switch model.screen {
-        case .connect: ConnectionView()
-        case .scan:
-            if let t = model.transport {
-                ScannerHost(transport: t, useLidar: model.useLidar && model.lidarSupported,
-                            referenceWidthCm: Double(model.referenceWidthCm.replacingOccurrences(of: ",", with: ".")))
-            } else {
-                ConnectionView()
+        ZStack {
+            switch model.screen {
+            case .connect:
+                home
+            case .scan:
+                if let t = model.transport {
+                    ScannerHost(transport: t, useLidar: model.useLidar && model.lidarSupported,
+                                referenceWidthCm: Double(model.referenceWidthCm.replacingOccurrences(of: ",", with: ".")))
+                        .transition(.opacity)
+                } else {
+                    home
+                }
             }
+        }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: model.screen)
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder private var home: some View {
+        if onboarded {
+            RootTabView().transition(.opacity)
+        } else {
+            OnboardingView {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { onboarded = true }
+            }
+            .transition(.opacity)
         }
     }
 }

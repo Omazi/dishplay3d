@@ -1,3 +1,7 @@
-DishPlay Scan 1.4.3 — finition plus lisible
-- Pendant le calcul final, la progression avance vue par vue et affiche le temps restant estimé.
-- Côté calculateur (mettre le PC à jour) : le calcul final se limite à 140 vues bien réparties, même après un long scan, et la table autour du plat n'apparaît plus dans le modèle.
+DishPlay Scan 1.5.0 — nouvelle app
+- Nouvel écran d'ouverture : un plat se forme à partir d'un nuage de points.
+- Trois pages de présentation au premier lancement.
+- Barre d'onglets : Scanner, Mes plats, Réglages.
+- « Mes plats » : tous les plats scannés, avec leur image, leur nom modifiable, le partage du modèle 3D et la suppression.
+- Derniers plats en carrousel sur l'accueil.
+- Pendant le calcul final : progression vue par vue et temps restant estimé.

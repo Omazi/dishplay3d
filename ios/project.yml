@@ -13,7 +13,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"  # record already supports iPad; an update cannot drop it
     SUPPORTS_MACCATALYST: NO
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    MARKETING_VERSION: "1.4.3"
+    MARKETING_VERSION: "1.5.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: XQGND2V48C
 targets:
