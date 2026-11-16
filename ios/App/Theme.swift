@@ -61,10 +61,11 @@ struct PrimaryButton: View {
                     Capsule().fill(LinearGradient(colors: [tint, tint.opacity(0.82)], startPoint: .top, endPoint: .bottom))
                         .shadow(color: tint.opacity(0.45), radius: 14, y: 6)
                 } else {
-                    Capsule().fill(Color.white.opacity(0.14))
+                    // Material, not a plain tint: stays readable over a bright table.
+                    Capsule().fill(.ultraThinMaterial)
                 }
             }
-            .foregroundStyle(enabled ? Color.black : Color.white.opacity(0.45))
+            .foregroundStyle(enabled ? Color.black : Color.white.opacity(0.6))
             .animation(.easeInOut(duration: 0.3), value: tint)
         }
         .buttonStyle(PressableStyle())
