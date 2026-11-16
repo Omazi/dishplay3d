@@ -48,6 +48,13 @@ Le titulaire du compte doit accepter le contrat Apple mis à jour (developer.app
 Accords). Puis modifier `ios/RELEASE_NOTES.txt` sur `main` pour relancer. Le workflow échoue désormais explicitement
 dans ce cas (altool terminait sans code d'erreur).
 
+## Envoi réussi (16 nov. 2026)
+Run [43800091684](https://github.com/Omazi/dishplay3d/actions/runs/43800091684) : **DishPlay Scan 1.0.0 (build 6.1)**,
+fiche DishPlay Capture (`app.dishplay.capture`). Apple : `VERIFY SUCCEEDED with no errors, 1 warning`,
+`UPLOAD SUCCEEDED with no errors, 1 warning`, Delivery UUID `a60678d3-3862-4036-8343-df53091bdc32`.
+Corrections nécessaires en chemin : contrat Apple renouvelé (titulaire du compte), orientations iPad déclarées,
+groupes de concurrence CI séparés, puis deux erreurs passagères de checkout GitHub.
+
 ## Limites honnêtes
 - Ce workflow de distribution **n'a pas été exécuté** dans cette livraison : il tourne avec vos secrets depuis `main`. Le précédent pipeline équivalent (mêmes scripts de signature) avait réussi pour 0.6.0.
 - Un historique du dépôt mentionne un refus de démarrage de job macOS pour plafond de dépenses GitHub ; si cela se
