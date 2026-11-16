@@ -229,6 +229,11 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
         ],
     }
     (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=float))
+    # Poses actually used for the final model (refined when the global refinement was applied): lets other
+    # tools (tools/export_splat_dataset.py) start from the best cameras instead of the raw tracker poses.
+    (out_dir / "poses.json").write_text(json.dumps({
+        "convention": "T_object_from_cameraCV, 4x4 row-major, metres",
+        "T_object_from_cameraCV": {str(f): fin._view(f).T_obj_from_cam.reshape(-1).tolist() for f in sorted(fusion.integrated_frames)}}))
     manifest = {"schema": "dishplay.manifest/1", "files": sorted(p.name for p in out_dir.iterdir() if p.is_file() and p.name != "manifest.json"),
                 "frame": "object (box): origin centre of box base, +y up, metres", "engine": ENGINE_VERSION,
                 "box": {"T_world_from_object": engine.box.T_world_from_object.reshape(-1).tolist(), "size_m": list(engine.box.size_m),

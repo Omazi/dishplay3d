@@ -190,6 +190,16 @@ Résultat visuel, sans complaisance : table complète, formes reconnaissables (p
 tasse), mais corps brillants ou unis absents ou troués, surfaces grossières. **Ce n'est pas un rendu de qualité
 produit.** La méthode (paires d'images à 640–1152 px, appariement par blocs) plafonne sur le brillant et l'uni.
 
+## Mise à jour du 16 novembre — préparation d'un essai de reconstruction neuronale
+
+Décision : la méthode par paires d'images plafonne sur la nourriture (brillant, uni, translucide). Essai prévu d'une
+reconstruction par Gaussian splatting sur le PC de l'utilisateur (GTX 1650, 4 Go), voir `docs/ESSAI_NEURONAL.md`.
+- `tools/export_splat_dataset.py` : session → jeu de données au format Nerfstudio (images, masques de la boîte,
+  caméras dans le repère de la boîte, points initiaux). La finition écrit désormais `final/poses.json` (poses affinées).
+- Vérifié : test automatique (les coins de la boîte se projettent au même pixel, à 0,05 px près, avec la convention
+  exportée et avec celle du moteur) ; sur une vraie capture, 99,6 % des points du modèle retombent dans les masques.
+- **Non exécuté : l'entraînement lui-même** (pas de carte graphique dans l'environnement de développement).
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

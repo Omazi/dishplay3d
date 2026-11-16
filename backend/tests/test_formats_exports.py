@@ -112,3 +112,44 @@ def test_isolate_dish_removes_table_keeps_low_plate_floor():
     rc = np.hypot(V[T][:, :, 0].mean(1), V[T][:, :, 2].mean(1))
     assert keep[rc < 0.07].all(), "the low floor inside the plate is part of the dish"
     assert not keep[rc > 0.125].any(), "the table around the plate is removed"
+
+
+def test_splat_dataset_cameras_match_the_engine(tmp_path):
+    """The Nerfstudio-format export, read back with the OpenGL convention, sees the box where the engine does."""
+    import json
+    import sys
+    from pathlib import Path
+
+    import cv2
+    import numpy as np
+
+    from reconstruction.coordinates import box_corners, invert_rigid, mat4_from_rowmajor, object_from_camera_cv
+    from tests.helpers import BOX_SIZE, write_session
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+    from export_splat_dataset import export
+
+    sdir = write_session(tmp_path, n=6)
+    out = tmp_path / "ds"
+    info = export(sdir, out, max_width=320)
+    assert info["views"] == 6 and info["width"] == 320
+    scene = json.loads((out / "transforms.json").read_text())
+    C = box_corners(BOX_SIZE)
+    for fr in scene["frames"]:
+        meta = json.loads((sdir / "frames" / (Path(fr["file_path"]).stem + ".json")).read_text())
+        # engine convention (OpenCV camera) at the original size
+        T = invert_rigid(object_from_camera_cv(np.eye(4), mat4_from_rowmajor(meta["T_world_from_cameraAR"])))
+        pc = C @ T[:3, :3].T + T[:3, 3]
+        k = meta["intrinsics"]
+        s = fr["w"] / k["width"]
+        u_cv = (pc[:, 0] / pc[:, 2] * k["fx"] + k["cx"] + 0.5) * s
+        v_cv = (pc[:, 1] / pc[:, 2] * k["fy"] + k["cy"] + 0.5) * s
+        # exported convention: camera-to-world, camera looks along -z, +y up, pixel corners at integers
+        w2c = np.linalg.inv(np.array(fr["transform_matrix"]))
+        q = C @ w2c[:3, :3].T + w2c[:3, 3]
+        u_gl = fr["fl_x"] * q[:, 0] / -q[:, 2] + fr["cx"]
+        v_gl = fr["fl_y"] * -q[:, 1] / -q[:, 2] + fr["cy"]
+        assert np.abs(u_gl - u_cv).max() < 0.05 and np.abs(v_gl - v_cv).max() < 0.05
+        mask = cv2.imread(str(out / fr["file_path"].replace("images", "masks").replace(".jpg", ".png")), 0)
+        assert mask is not None and mask.shape == (fr["h"], fr["w"]) and 0 < (mask > 0).mean() < 1
+        inside = (u_gl >= 0) & (u_gl < fr["w"]) & (v_gl >= 0) & (v_gl < fr["h"])
+        assert (mask[v_gl[inside].astype(int), u_gl[inside].astype(int)] > 0).all()
