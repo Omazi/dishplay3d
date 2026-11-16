@@ -3,4 +3,4 @@ DishPlay Scan 1.4.1 — pause plus claire
 - Boutons de pause plus lisibles : « Boîte », reprendre, « Terminer ».
 - Aperçu 3D agrandi : la carte de consignes se retire pour laisser voir la caméra.
 - Bouton « Démarrer le scan » lisible sur une table claire.
-- Côté calculateur (mettre le PC à jour) : surface moins froissée, moins de points flottants.
+- Côté calculateur (mettre le PC à jour) : surface moins froissée, moins de points flottants, beaucoup plus de vues utilisées.

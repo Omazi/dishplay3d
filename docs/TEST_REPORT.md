@@ -165,6 +165,31 @@ monte de 0,5 mm parce que la surface reconstruite est plus étendue. Image : `do
 Non traité dans cette passe : motifs fins de l'assiette absents de l'aperçu en direct (couleur par voxel de 2,5 mm ; la
 texture n'est calculée qu'à la finition), trous sur la sauce brillante, table affichée avec le plat dans l'aperçu.
 
+## Mise à jour du 16 novembre — premières vraies captures iPhone rejouées dans le moteur
+
+Jusqu'ici tous les réglages venaient de scènes de synthèse. `tools/import_objectron.py` convertit une capture du jeu
+public Objectron (vidéo iPhone tenue à la main, poses ARKit réelles, boîte 3D annotée) en session rejouable. Trois
+captures de la catégorie « cup » ont été rejouées (aperçu + finition). Les données ne sont pas dans le dépôt.
+Limites : ce ne sont pas des plats, la vidéo est compressée (H.264) et le tour autour de l'objet est partiel (≈ 9 s).
+
+Défaut trouvé, invisible en synthèse : les points d'intérêt n'étaient cherchés que dans la boîte ; sur de vraies images
+il y en a trop peu, et une paire sans assez de correspondances était **rejetée** au lieu d'utiliser la pose ARKit.
+
+| Gobelet métal, 89 vues | Avant | Après |
+|---|---|---|
+| Paires d'images acceptées (aperçu) | 53 / 338 | 96 / 113 |
+| Vues intégrées à l'aperçu | 51 | 88 |
+| Vues intégrées au modèle final | 34 | 89 |
+| Paires acceptées en finition | 49 / 320 | 185 / 195 |
+
+Correction : détection sur toute l'image ; si la pose ne peut pas être vérifiée faute de correspondances, elle est
+utilisée telle quelle (`pose_source = arkit_unverified`) et la profondeur doit toujours passer le contrôle
+gauche-droite et la confirmation par d'autres vues. 40 tests passés, banc synthétique inchangé.
+
+Résultat visuel, sans complaisance : table complète, formes reconnaissables (pied et bord du gobelet, bord et anse de la
+tasse), mais corps brillants ou unis absents ou troués, surfaces grossières. **Ce n'est pas un rendu de qualité
+produit.** La méthode (paires d'images à 640–1152 px, appariement par blocs) plafonne sur le brillant et l'uni.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

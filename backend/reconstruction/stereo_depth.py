@@ -52,7 +52,8 @@ class StereoParams:
     min_matches: int = 40
     max_residual_px: float = 1.5       # Sampson residual allowed after (optional) correction
     accept_arkit_below_px: float = 0.6  # keep ARKit relative pose when already this consistent
-    sift_features: int = 2500
+    sift_features: int = 4000
+    trust_unverified_pose: bool = True  # too few matches to check the tracker's pose: use it as given
     box_margin_m: float = 0.01
     coarse_fill: bool = True            # half-resolution pass for weakly textured areas
     clahe_clip: float = 3.0             # >0: local contrast normalisation before matching
@@ -107,9 +108,10 @@ def _box_mask(view: View, size_m, margin: float) -> np.ndarray:
 
 def _features(view: View, size_m, params: StereoParams):
     if view.features is None:
+        # Whole image, not only the box: the relative pose is a property of the two cameras, and the
+        # surroundings (table, floor, background) usually carry far more features than a small dish.
         sift = cv2.SIFT_create(nfeatures=params.sift_features)
-        mask = cv2.dilate(_box_mask(view, size_m, params.box_margin_m), np.ones((15, 15), np.uint8))
-        kps, desc = sift.detectAndCompute(view.gray_image(), mask)
+        kps, desc = sift.detectAndCompute(view.gray_image(), None)
         pts = np.array([k.pt for k in kps], np.float64).reshape(-1, 2)
         view.features = (pts, desc)
     return view.features
@@ -141,16 +143,26 @@ def verify_relative_pose(ref: View, other: View, size_m, params: StereoParams, r
     R_a, t_a = T_other_from_ref[:3, :3], T_other_from_ref[:3, 3]
     p1, d1 = _features(ref, size_m, params)
     p2, d2 = _features(other, size_m, params)
+    none = np.zeros((0, 2))
+
+    def unverified(reason: str):
+        """Not enough matches to check the tracker's pose. That says the scene is poor in features,
+        not that the pose is wrong: the pose is used as given and the depth must still pass the
+        left-right check and the confirmation by other views."""
+        if not params.trust_unverified_pose:
+            report.status, report.reason = "rejected", reason
+            return None
+        report.pose_source, report.reason = "arkit_unverified", reason
+        return R_a, t_a, none, none
+
     if d1 is None or d2 is None or len(p1) < params.min_matches or len(p2) < params.min_matches:
-        report.status, report.reason = "rejected", "few_features"
-        return None
+        return unverified("few_features")
     matcher = cv2.BFMatcher(cv2.NORM_L2)
     knn = matcher.knnMatch(d1, d2, k=2)
     good = [m[0] for m in knn if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
     report.matches = len(good)
     if len(good) < params.min_matches:
-        report.status, report.reason = "rejected", "few_matches"
-        return None
+        return unverified("few_matches")
     m1 = p1[[g.queryIdx for g in good]]
     m2 = p2[[g.trainIdx for g in good]]
     n1, n2 = _normalize(m1, ref.K), _normalize(m2, other.K)
@@ -161,14 +173,12 @@ def verify_relative_pose(ref: View, other: View, size_m, params: StereoParams, r
     # find one from scratch. (Unbounded, it took more than half of the per-view time.)
     E, inl = cv2.findEssentialMat(n1, n2, np.eye(3), method=cv2.RANSAC, prob=0.99, threshold=1.0 / f, maxIters=250)
     if E is None or E.shape != (3, 3):
-        report.status, report.reason = "rejected", "essential_failed"
-        return None
+        return unverified("essential_failed")
     _, R_e, t_e, inl2 = cv2.recoverPose(E, n1, n2, np.eye(3), mask=inl.copy())
     inliers = inl2.ravel() > 0
     report.inliers = int(inliers.sum())
     if report.inliers < params.min_matches * 0.6:
-        report.status, report.reason = "rejected", "few_inliers"
-        return None
+        return unverified("few_inliers")
     # Residual of the ARKit pose on matches that agree with *some* rigid motion.
     report.residual_arkit_px = float(np.median(res_a[inliers]))
     t_e = t_e.ravel()
@@ -263,7 +273,7 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     dmax = int(np.ceil(f_rect * B / zmin)) + 2
     # Only if the box range is too wide for the matcher, narrow it around the disparities of
     # verified matches (robust percentiles + generous margin). Saturated disparities are rejected below.
-    if dmax - dmin > params.max_disparities:
+    if dmax - dmin > params.max_disparities and len(in1) >= 20:
         r1 = cv2.undistortPoints(in1.reshape(-1, 1, 2), ref.K, None, R=R1, P=P1).reshape(-1, 2)
         r2 = cv2.undistortPoints(in2.reshape(-1, 1, 2), other.K, None, R=R2, P=P2).reshape(-1, 2)
         md = np.abs(r1[:, axis] - r2[:, axis])
@@ -401,8 +411,11 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     # Validate dense depth against independently triangulated verified matches.
     P_ref = ref.K @ np.hstack([np.eye(3), np.zeros((3, 1))])
     P_oth = other.K @ np.hstack([R, t.reshape(3, 1)])
-    X = cv2.triangulatePoints(P_ref, P_oth, in1.T.astype(np.float64), in2.T.astype(np.float64))
-    zs = X[2] / X[3]
+    if len(in1):
+        X = cv2.triangulatePoints(P_ref, P_oth, in1.T.astype(np.float64), in2.T.astype(np.float64))
+        zs = X[2] / X[3]
+    else:
+        zs = np.zeros(0)
     ui1 = np.round(in1[:, 0]).astype(int)
     vi1 = np.round(in1[:, 1]).astype(int)
     okp = (ui1 >= 0) & (ui1 < w) & (vi1 >= 0) & (vi1 < h) & (zs > 0)
