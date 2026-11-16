@@ -10,7 +10,7 @@
     {"properties": {"type": {"const": "status"}, "state": {"enum": ["capturing", "paused", "processing", "finishing", "done", "failed", "box_revised", "worker_restarted"]}, "queue": {"type": "integer"}}, "required": ["type", "state"]},
     {"properties": {"type": {"const": "frame"}, "frame_id": {"type": "integer"}, "status": {"enum": ["received", "integrated", "waiting_partner", "rejected", "deferred", "other_epoch"]}, "reason": {"type": "string"}, "points": {"type": "integer"}, "pairs": {"type": "array"}}, "required": ["type", "frame_id", "status"]},
     {"properties": {"type": {"const": "geometry"}, "url": {"type": "string"}, "header": {"$ref": "#/$defs/geometry_header"}}, "required": ["type", "url", "header"]},
-    {"properties": {"type": {"const": "finish_progress"}, "step": {"enum": ["poses", "depth", "mesh", "texture", "done"]}, "done": {"type": "integer"}, "total": {"type": "integer"}}, "required": ["type", "step"]},
+    {"properties": {"type": {"const": "finish_progress"}, "step": {"enum": ["poses", "depth", "mesh", "texture", "done", "neural"]}, "done": {"type": "integer"}, "total": {"type": "integer"}}, "required": ["type", "step"]},
     {"properties": {"type": {"const": "artifacts"}, "files": {"type": "array", "items": {"type": "string"}}, "report": {"type": "object"}}, "required": ["type", "files"]},
     {"properties": {"type": {"const": "error"}, "code": {"type": "string"}, "message": {"type": "string"}}, "required": ["type", "code"]}
   ],

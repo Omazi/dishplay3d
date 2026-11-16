@@ -5,7 +5,7 @@ mêmes images que le scan actuel. C'est un essai manuel, pas encore intégré à
 
 État honnête :
 - **Testé** : la préparation du jeu de données (test automatique + vérification sur une vraie capture iPhone) ;
-  le programme d'entraînement `tools/splat_train.py` en essai à blanc sur processeur (lecture des données, repère
+  le programme d'entraînement `backend/reconstruction/splat_train.py` en essai à blanc sur processeur (lecture des données, repère
   des caméras, boucle, évaluation, export du modèle, vidéo), avec un rendu factice à la place de la carte graphique.
 - **Jamais exécuté** : le vrai rendu sur carte graphique, donc aucun résultat visuel n'existe encore.
   Le premier sortira chez vous.

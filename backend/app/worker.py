@@ -65,6 +65,18 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
                           "header": {"version": 1_000_000 + engine.version, "kind": "final"}})
                     emit({"type": "artifacts", "files": files, "report": {k: rep[k] for k in ("mesh", "texture", "scale_check", "footprint_width", "timings_s")}})
                     emit({"type": "status", "state": "done", "queue": 0})
+                    # Optional neural model, after the classic one has been delivered. Only on a machine with
+                    # an NVIDIA GPU, PyTorch and gsplat; a failure here never affects the classic result.
+                    if settings.get("neural", True):
+                        from reconstruction.neural import neural_available, run_neural
+                        ok, why = neural_available()
+                        if ok:
+                            try:
+                                nrep = run_neural(sdir, sdir / "final", emit, steps=int(settings.get("neural_steps", 7000)))
+                                emit({"type": "artifacts", "files": sorted(p.name for p in (sdir / "final").iterdir() if p.is_file()),
+                                      "neural": {k: nrep.get(k) for k in ("heldout_psnr_db", "gaussians", "total_seconds", "files")}})
+                            except Exception as exc:
+                                emit({"type": "error", "code": "neural_failed", "message": repr(exc), "trace": traceback.format_exc()[-2000:]})
                 elif kind == "stop":
                     return
             except Exception as exc:  # never die silently: report and continue

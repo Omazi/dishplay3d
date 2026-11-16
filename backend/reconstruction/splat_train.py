@@ -3,7 +3,7 @@
 
 Needs an NVIDIA GPU (Google Colab, a cloud machine, or a local card) with PyTorch and gsplat:
   pip install gsplat imageio imageio-ffmpeg
-  python tools/splat_train.py --data <folder or zip> --out <folder> [--steps 7000]
+  python backend/reconstruction/splat_train.py --data <folder or zip> --out <folder> [--steps 7000]
 
 Outputs in --out:
   splat.ply         the model (standard 3DGS PLY, object frame, metres, +y up), cropped to the scan box
@@ -192,7 +192,8 @@ def render(params, viewmats, Ks, w, h, sh_degree, rasterize, bg=None, **kw):
 
 
 def train(data, out: Path, steps: int = 7000, sh_degree: int = 3, pose_opt: bool = True, test_every: int = 8,
-          device: str = "cuda", rasterize=None, log_every: int = 250, seed: int = 0, max_gaussians: int = 1_500_000) -> dict:
+          device: str = "cuda", rasterize=None, log_every: int = 250, seed: int = 0, max_gaussians: int = 1_500_000,
+          progress=None) -> dict:
     from gsplat.strategy import DefaultStrategy
     if rasterize is None:
         from gsplat import rasterization as rasterize
@@ -252,6 +253,8 @@ def train(data, out: Path, steps: int = 7000, sh_degree: int = 3, pose_opt: bool
             rec = {"step": step, "loss": float(loss.detach()), "gaussians": int(len(params["means"])), "seconds": round(time.time() - t0, 1)}
             log.append(rec)
             print(json.dumps(rec), flush=True)
+            if progress is not None:
+                progress(step + 1, steps)
     train_s = time.time() - t0
     report = {"steps": steps, "train_seconds": round(train_s, 1), "images": int(n), "train_views": int(len(train_idx)),
               "test_views": int(len(test_idx)), "width": int(w), "height": int(h), "gaussians": int(len(params["means"])),

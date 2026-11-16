@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build colab/essai_neuronal.ipynb. The notebook is self-contained: it embeds tools/splat_train.py, so it
+"""Build colab/essai_neuronal.ipynb. The notebook is self-contained: it embeds backend/reconstruction/splat_train.py, so it
 works without access to this (private) repository.   python tools/make_colab_notebook.py [--check]"""
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def code(s):
 
 
 def build() -> dict:
-    trainer = (ROOT / "tools" / "splat_train.py").read_text()
+    trainer = (ROOT / "backend" / "reconstruction" / "splat_train.py").read_text()
     cells = [
         md("""
 # DishPlay Scan — essai de reconstruction neuronale

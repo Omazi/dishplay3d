@@ -200,6 +200,15 @@ reconstruction par Gaussian splatting sur le PC de l'utilisateur (GTX 1650, 4 Go
   exportée et avec celle du moteur) ; sur une vraie capture, 99,6 % des points du modèle retombent dans les masques.
 - **Non exécuté : l'entraînement lui-même** (pas de carte graphique dans l'environnement de développement).
 
+## Mise à jour du 16 novembre — étape neurale automatique dans le calculateur
+
+Après « Terminer » et la livraison du modèle classique, le calculateur lance tout seul la reconstruction neuronale
+(`reconstruction/neural.py`) **si** la machine a une carte NVIDIA avec PyTorch et gsplat. Sinon rien ne change.
+Sorties ajoutées au dossier `final/` : `splat.ply`, `turntable.mp4`, `neural_compare.jpg`, `neural_report.json`.
+- Vérifié : 42 tests ; mécanique complète (export, boucle, évaluation, fichiers, événements de progression) sur
+  processeur avec un rendu factice à la place de la carte graphique.
+- **Non vérifié : le rendu réel sur carte graphique** (aucune disponible) ; l'app n'affiche pas encore ces fichiers.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

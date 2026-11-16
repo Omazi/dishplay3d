@@ -125,8 +125,7 @@ def test_splat_dataset_cameras_match_the_engine(tmp_path):
 
     from reconstruction.coordinates import box_corners, invert_rigid, mat4_from_rowmajor, object_from_camera_cv
     from tests.helpers import BOX_SIZE, write_session
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-    from export_splat_dataset import export
+    from reconstruction.splat_export import export
 
     sdir = write_session(tmp_path, n=6)
     out = tmp_path / "ds"
@@ -156,10 +155,10 @@ def test_splat_dataset_cameras_match_the_engine(tmp_path):
 
 
 def test_colab_notebook_embeds_the_current_trainer():
-    """The notebook must carry exactly tools/splat_train.py (it cannot fetch it from the private repository)."""
+    """The notebook must carry exactly backend/reconstruction/splat_train.py (it cannot fetch it from the private repository)."""
     import json
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
     nb = json.loads((root / "colab" / "essai_neuronal.ipynb").read_text())
     cell = next("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code" and "".join(c["source"]).startswith("%%writefile"))
-    assert cell.split("\n", 1)[1].rstrip("\n") == (root / "tools" / "splat_train.py").read_text().rstrip("\n")
+    assert cell.split("\n", 1)[1].rstrip("\n") == (root / "backend" / "reconstruction" / "splat_train.py").read_text().rstrip("\n")
