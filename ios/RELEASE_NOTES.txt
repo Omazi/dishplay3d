@@ -1,6 +1,3 @@
-DishPlay Scan 1.4.2 — accessibilité
-- VoiceOver : tous les boutons à icône ont maintenant un nom (pause, reprendre, quitter, agrandir l'aperçu).
-- Curseurs de la boîte lus avec leur nom et leur valeur en centimètres.
-- Zones tactiles agrandies à 44 points (fermer, agrandir l'aperçu, replacer la boîte).
-- Réglage « Réduire les animations » respecté.
-- Petits textes un peu plus grands.
+DishPlay Scan 1.4.3 — finition plus lisible
+- Pendant le calcul final, la progression avance vue par vue et affiche le temps restant estimé.
+- Côté calculateur (mettre le PC à jour) : le calcul final se limite à 140 vues bien réparties, même après un long scan, et la table autour du plat n'apparaît plus dans le modèle.

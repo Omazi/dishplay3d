@@ -212,6 +212,30 @@ def test_preview_points_stay_close_to_the_surface(session):
     assert eng.metrics()["depth_scale"]["applied"] > 0
 
 
+def test_long_scans_are_finished_on_a_spread_subset(tmp_path):
+    """300 views around the dish: the finishing step keeps 140, covering every side."""
+    from reconstruction.refinement import spread_subset
+    sdir = write_session(tmp_path, n=6)
+    sj = json.loads((sdir / "session.json").read_text())
+    eng = SessionEngine(sdir, Box.from_json(sj["box"]), EngineConfig())
+    meta0 = json.loads(sorted((sdir / "frames").glob("*.json"))[0].read_text())
+    poses = orbit_poses(300)
+    for i, T in enumerate(poses):
+        m = {**meta0, "frame_id": i, "T_world_from_cameraAR": [float(v) for v in np.asarray(T).reshape(-1)]}
+        eng.add_frame(m, sdir / "frames" / "000000.jpg", received_at=0.0)
+    ids = list(range(300))
+    sub = spread_subset(eng, ids, 140)
+    assert len(sub) == 140 and sub == sorted(set(sub)) and set(sub) <= set(ids)
+    assert spread_subset(eng, ids[:100], 140) == ids[:100]
+    az = lambda f: np.degrees(np.arctan2(*eng._geometry(f)[0][[2, 0], 3])) % 360
+    covered = {int(az(f) // 30) for f in sub}
+    assert covered == {int(az(f) // 30) for f in ids}, "no side of the dish is dropped"
+    # metadata-only geometry equals the geometry of the decoded view
+    T, K, size = eng._geometry(0)
+    v = eng._view(0)
+    assert np.allclose(T, v.T_obj_from_cam) and np.allclose(K, v.K) and size == (v.image.shape[1], v.image.shape[0])
+
+
 def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     """The exported GLB, read with the glTF convention (v from the top), shows the real colours and has
     no black patches; the dish-only variant and the result picture are written; poses were refined."""

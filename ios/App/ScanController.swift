@@ -28,6 +28,17 @@ final class ScanController: ObservableObject {
     @Published private(set) var tourComplete = false
     private var lastVisitedBins = 0
     private var revisionBackup: BoundingBoxController.Saved?
+    /// First progress report of the current finishing step: lets the app estimate the time left.
+    private var finishStep: (name: String, since: Date, done: Int)?
+
+    /// " · encore ~4 min", once enough of the step has run for the estimate to mean something.
+    private func remainingText(done: Int, total: Int) -> String {
+        guard let s = finishStep, done - s.done >= 5, done < total else { return "" }
+        let perItem = Date().timeIntervalSince(s.since) / Double(done - s.done)
+        let left = perItem * Double(total - done)
+        if left < 50 { return " · moins d’une minute" }
+        return " · encore ~\(Int((left / 60).rounded(.up))) min"
+    }
 
     let ar = ARSessionController()
     let box = BoundingBoxController()
@@ -356,13 +367,20 @@ final class ScanController: ObservableObject {
         case "frame":
             if let s = ev.status { serverFrames[s, default: 0] += 1 }
         case "finish_progress":
-            let names = ["poses": "recalage des vues", "depth": "calcul fin des profondeurs", "mesh": "surface", "texture": "texture"]
-            let step = names[ev.step ?? ""] ?? (ev.step ?? "")
+            guard phase != .done else { break }   // late progress of an optional step must not replace "ready"
+            let names = ["poses": "recalage des vues", "depth": "calcul fin des profondeurs", "mesh": "surface", "texture": "texture",
+                         "neural": "rendu neuronal"]
+            let key = ev.step ?? ""
+            let step = names[key] ?? key
+            let label = step.prefix(1).uppercased() + step.dropFirst()
             finishFraction = (ev.total ?? 0) > 1 ? min(1, Double(ev.done ?? 0) / Double(ev.total ?? 1)) : nil
             if let total = ev.total, total > 1 {
-                finishText = "\(step.prefix(1).uppercased() + step.dropFirst()) : \(ev.done ?? 0)/\(total)"
+                let done = ev.done ?? 0
+                if finishStep?.name != key { finishStep = (key, Date(), done) }
+                finishText = "\(label) : \(done)/\(total)\(remainingText(done: done, total: total))"
             } else {
-                finishText = "\(step.prefix(1).uppercased() + step.dropFirst())…"
+                finishStep = nil
+                finishText = "\(label)…"
             }
         case "artifacts":
             phase = .done

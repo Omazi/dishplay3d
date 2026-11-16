@@ -50,6 +50,7 @@ class EngineConfig:
     confirm_neighbours: int = 5
     # Baseline-length correction: each depth map is rescaled (one number) to agree with the views
     # already accepted, see consistency.depth_scale_from_views.
+    view_cache: int = 400        # decoded views kept in memory (the rest is reloaded from disk when needed)
     hide_table: bool = True      # the box is rectangular, a plate is not: bare table in the corners is not shown
     scale_to_views: bool = True
     scale_max_dev: float = 0.06
@@ -124,6 +125,7 @@ class SessionEngine:
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
         self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
         self.scale_stats = {"applied": 0, "skipped": 0, "abs_dev_sum": 0.0}
+        self._geom: dict = {}
         self._scale_raw: list[float] = []
         self.latencies: list[float] = []
         self.snapshot_log: list[dict] = []
@@ -139,6 +141,7 @@ class SessionEngine:
         self._depth_cache = []
         self._awaiting = []
         self._scale_raw = []
+        self._geom = {}
         self.views.clear()
         if reprocess:
             for rec in self.frames.values():
@@ -186,18 +189,47 @@ class SessionEngine:
         if fid in self.pose_overrides:
             v.T_obj_from_cam = self.pose_overrides[fid]
         self.views[fid] = v
-        if len(self.views) > 400:  # bounded cache; images are reloaded from disk on demand
-            for old in sorted(self.views)[: len(self.views) - 400]:
+        cap = self.cfg.view_cache
+        if len(self.views) > cap:  # bounded cache; images are reloaded from disk on demand
+            # Keep the views nearest in capture order to the one in use: those are its partners.
+            for old in sorted(self.views, key=lambda f: abs(f - fid), reverse=True)[: len(self.views) - cap]:
                 if old != fid:
                     del self.views[old]
         return v
+
+    def _geometry(self, fid: int):
+        """(T_obj_from_cam, K, (w, h)) of a frame at the working resolution, from its metadata alone.
+        Choosing partners among hundreds of frames must not load hundreds of images."""
+        v = self.views.get(fid)
+        if v is not None:
+            return v.T_obj_from_cam, v.K, (v.image.shape[1], v.image.shape[0])
+        g = self._geom.get(fid)
+        if g is None:
+            meta = self.frames[fid].meta
+            im = meta.get("image", {})
+            if not im.get("width") or not im.get("height"):
+                v = self._view(fid)
+                return v.T_obj_from_cam, v.K, (v.image.shape[1], v.image.shape[0])
+            w0, h0 = int(im["width"]), int(im["height"])
+            intr = meta["intrinsics"]
+            K = intrinsics_matrix(intr["fx"], intr["fy"], intr["cx"], intr["cy"])
+            if (intr.get("width", w0), intr.get("height", h0)) != (w0, h0):
+                K = scale_intrinsics(K, (intr["width"], intr["height"]), (w0, h0))
+            w = min(self.cfg.preview_width, w0)
+            h = int(round(h0 * w / w0))
+            if (w, h) != (w0, h0):
+                K = scale_intrinsics(K, (w0, h0), (w, h))
+            T = object_from_camera_cv(self.box.T_world_from_object, mat4_from_rowmajor(meta["T_world_from_cameraAR"]))
+            g = self._geom[fid] = (T, K, (w, h))
+        if fid in self.pose_overrides:
+            return self.pose_overrides[fid], g[1], g[2]
+        return g
 
     def _candidates(self) -> dict:
         out = {}
         for fid, rec in self.frames.items():
             if rec.epoch == self.box.epoch and rec.status not in ("rejected", "other_epoch"):
-                v = self._view(fid)
-                out[fid] = (v.T_obj_from_cam, v.K, (v.image.shape[1], v.image.shape[0]))
+                out[fid] = self._geometry(fid)
         return out
 
     def pending(self) -> list[int]:

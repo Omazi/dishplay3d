@@ -72,16 +72,35 @@ def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_
     return uv, tex, len(sel), filled
 
 
+def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) -> list[int]:
+    """At most max_frames views, spread as evenly as possible around the dish.
+
+    A long scan can hold several hundred views, most of them near-duplicates of their neighbours:
+    finishing them all multiplies the waiting time without adding information. Views are picked one
+    by one, each time the one farthest from those already chosen (camera position in the box frame).
+    """
+    if max_frames <= 0 or len(frame_ids) <= max_frames:
+        return list(frame_ids)
+    C = np.stack([engine._geometry(f)[0][:3, 3] for f in frame_ids])
+    chosen = [0]
+    d = np.linalg.norm(C - C[0], axis=1)
+    for _ in range(max_frames - 1):
+        k = int(np.argmax(d))
+        chosen.append(k)
+        d = np.minimum(d, np.linalg.norm(C - C[k], axis=1))
+    return [frame_ids[i] for i in sorted(chosen)]
+
+
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
                    texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True,
-                   remove_table: bool = True) -> dict:
+                   remove_table: bool = True, max_frames: int = 140) -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     timings = {}
     cfg = replace(engine.cfg, preview_width=finish_width, max_partners=3, confirm_min_views=2, confirm_lag=4,
-                  confirm_window=16, confirm_neighbours=6,
+                  confirm_window=16, confirm_neighbours=6, view_cache=96,
                   fusion=FusionConfig(voxel_m=0.002, point_voxel_m=0.002, trunc_voxels=3.0))
     cfg.stereo = replace(cfg.stereo, max_disparities=384, coarse_fill=True)
     progress = {"done": 0}
@@ -89,12 +108,14 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     def fin_emit(ev):
         if ev.get("type") == "frame" and ev.get("status") in ("integrated", "rejected"):
             progress["done"] += 1
-            if progress["done"] % 5 == 0:
-                emit({"type": "finish_progress", "step": "depth", "done": progress["done"], "total": len(usable)})
+            emit({"type": "finish_progress", "step": "depth", "done": min(progress["done"], len(usable)), "total": len(usable)})
 
     fin = SessionEngine(engine.dir, engine.box, cfg, emit=fin_emit)
     usable = [fid for fid, r in sorted(engine.frames.items())
               if r.epoch == engine.box.epoch and r.reason not in ("tracking_not_normal", "blurred", "image_decode_failed")]
+    available = len(usable)
+    usable = spread_subset(engine, usable, max_frames)
+    engine.views.clear()   # the live engine's decoded images are no longer needed: free the memory
     for fid in usable:
         r = engine.frames[fid]
         fin.add_frame(r.meta, r.image_path, r.depth_path, r.conf_path, r.received_at)
@@ -111,6 +132,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 except ValueError:
                     pass
             res = refine_poses(ba_views, engine.box.size_m, cfg.stereo)
+            del ba_views
             pose_info = {"applied": res.applied, **res.info}
             if res.applied:
                 fin.pose_overrides = res.poses
@@ -221,7 +243,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
         emit({"type": "error", "code": "render_failed", "message": repr(exc)})
     report = {
         "schema": "dishplay.report/1", "engine": ENGINE_VERSION, "finish_width": finish_width,
-        "frames_used": len(usable), "frames_integrated_final": len(fusion.integrated_frames),
+        "frames_available": available, "frames_used": len(usable), "frames_integrated_final": len(fusion.integrated_frames),
         "pairs": pair_stats, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
         "mesh": {"vertices": int(len(V)), "triangles": int(len(T)), "surface": areas,
                  "provenance_vertices": {"measured": int((cls == MEASURED).sum()), "interpolated": int((cls == INTERPOLATED).sum()),

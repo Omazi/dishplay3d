@@ -222,6 +222,28 @@ l'étape neurale (masques et découpe suivent l'emprise). Rien n'est ajouté ni 
 - Limites : un aliment plat de moins de 6 mm posé directement sur la table serait pris pour la table ; pas vérifié
   sur un vrai plat scanné par l'utilisateur.
 
+## Mise à jour du 16 novembre — finition trop longue sur un long scan
+
+Constat utilisateur : 272 vues, finition affichée « 165/272 » une vingtaine de minutes après « Terminer », perçue
+comme bloquée. Rien n'indique un blocage : la finition traitait toutes les vues, la progression ne s'affichait que
+toutes les 5 vues et sans durée restante.
+
+Corrections : la finition travaille sur au plus 140 vues réparties autour du plat (`refinement.spread_subset`,
+choix par éloignement mutuel des positions de caméra) ; progression émise à chaque vue ; le choix des paires ne
+charge plus toutes les images (géométrie lue dans les métadonnées, cache d'images réduit à 96) ; l'app affiche le
+temps restant estimé (1.4.3).
+
+| Vraie capture iPhone du jeu public, 245 vues, finition sans texture, même machine (4 cœurs) | Toutes les vues | 140 vues |
+|---|---|---|
+| Durée de la finition | 383 s | 219 s |
+| Vues intégrées | 229 | 140 |
+| Triangles du modèle | 26 146 | 21 267 |
+| Mémoire maximale | 1,6 Go | 1,5 Go |
+
+Lecture honnête : −43 % de temps, pour un modèle un peu moins dense. Sur le PC de l'utilisateur (environ 7 s par
+vue d'après sa capture d'écran, contre 1,6 s ici), 140 vues représentent encore de l'ordre d'un quart d'heure : la
+durée reste liée à la puissance du processeur. 44 tests passés.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
