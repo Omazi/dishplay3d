@@ -13,6 +13,8 @@ struct DishRecord: Identifiable, Hashable {
     let frames: Int
     let picture: URL?
     let model: URL?
+    /// The final model in the app's own format, shown turning in the dish screen.
+    let geometry: URL?
 }
 
 /// Reads the dishes from the session folders. Several dishes can be scanned one after another; each keeps
@@ -27,6 +29,8 @@ enum DishLibrary {
             let results = root.appendingPathComponent("results", isDirectory: true)
             let picture = results.appendingPathComponent("apercu.png")
             let model = results.appendingPathComponent("model.glb")
+            let geometry = results.appendingPathComponent("final_preview.dpg")
+            let hasGeometry = fm.fileExists(atPath: geometry.path)
             let hasPicture = fm.fileExists(atPath: picture.path)
             let hasModel = fm.fileExists(atPath: model.path)
             let frameNames = (try? fm.contentsOfDirectory(atPath: root.appendingPathComponent("frames").path)) ?? []
@@ -47,14 +51,19 @@ enum DishLibrary {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let name = (stored?.isEmpty == false) ? stored! : defaultName(date)
             out.append(DishRecord(id: id, root: root, name: name, date: date, state: state, frames: frames,
-                                  picture: hasPicture ? picture : nil, model: hasModel ? model : nil))
+                                  picture: hasPicture ? picture : nil, model: hasModel ? model : nil,
+                                  geometry: hasGeometry ? geometry : nil))
         }
         return out
     }
 
-    static func rename(_ dish: DishRecord, to name: String) {
+    static func rename(_ dish: DishRecord, to name: String) { rename(id: dish.id, to: name) }
+
+    static func rename(id: String, to name: String) {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        try? Data(clean.utf8).write(to: dish.root.appendingPathComponent("name.txt"), options: .atomic)
+        guard !clean.isEmpty else { return }
+        let root = SessionStore.sessionsDirectory.appendingPathComponent(id, isDirectory: true)
+        try? Data(clean.utf8).write(to: root.appendingPathComponent("name.txt"), options: .atomic)
     }
 
     static func delete(_ dish: DishRecord) {

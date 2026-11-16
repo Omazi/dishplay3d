@@ -8,6 +8,8 @@ final class AppModel: ObservableObject {
     enum Screen { case connect, scan }
 
     @Published var screen: Screen = .connect
+    /// Tab to show the next time the tab bar appears (e.g. the library right after a scan).
+    var nextTab: AppTab?
     @Published var baseURLText: String = UserDefaults.standard.string(forKey: "calc.url") ?? ""
     @Published var fingerprint: String = UserDefaults.standard.string(forKey: "calc.fp") ?? ""
     @Published var code = ""

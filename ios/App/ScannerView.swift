@@ -20,6 +20,8 @@ struct ScannerView: View {
     @State private var mode: PreviewMode = .both
     @State private var shareURL: URL?
     @State private var now = Date()
+    @State private var askName = false
+    @State private var dishName = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -60,6 +62,20 @@ struct ScannerView: View {
         .preferredColorScheme(.dark)
         .onReceive(ticker) { now = $0 }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
+        .onChange(of: controller.phase) { _, phase in
+            if phase == .done { askName = true }
+        }
+        .alert("Nom du plat", isPresented: $askName) {
+            TextField("Par exemple : Tajine aux pruneaux", text: $dishName)
+            Button("Enregistrer", action: saveDishName)
+            Button("Plus tard", role: .cancel) {}
+        } message: {
+            Text("Il apparaîtra sous ce nom dans Mes plats.")
+        }
+    }
+
+    private func saveDishName() {
+        if let id = controller.store?.localID { DishLibrary.rename(id: id, to: dishName) }
     }
 
     private var placing: Bool { controller.phase == .placing || controller.phase == .needsNewBox }
@@ -127,7 +143,7 @@ struct ScannerView: View {
         case .finishing:
             return ("Finition du modèle", "Le calculateur assemble le modèle final.", .white)
         case .done:
-            return ("Modèle prêt", "Fais-le tourner du doigt dans l’aperçu.", Theme.good)
+            return ("Modèle prêt", "Fais-le tourner du doigt, puis retrouve-le dans Mes plats.", Theme.good)
         case .scanning:
             if !controller.calculatorOnline {
                 return ("PC injoignable", "Les vues restent sur l’iPhone ; l’aperçu est figé.", Theme.bad)
@@ -159,6 +175,8 @@ struct ScannerView: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(i.title).font(.headline).foregroundStyle(i.color).lineLimit(1).minimumScaleFactor(0.8)
+                        .id(i.title)
+                        .transition(reduceMotion ? .opacity : .blurReplace)
                     if scanning, i.color == .white, let hint = sideHint {
                         Text(hint).font(.subheadline.weight(.semibold))
                             .foregroundStyle(controller.tourComplete ? Theme.good : Theme.accent).lineLimit(1).minimumScaleFactor(0.8)
@@ -180,6 +198,7 @@ struct ScannerView: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
         .glass(RoundedRectangle(cornerRadius: 20))
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: i.title)
     }
 
     /// Which way to walk: the ring keeps the phone at the bottom, so "right" on the ring is the user's right.
@@ -293,7 +312,12 @@ struct ScannerView: View {
                 }
                 .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
             case .done:
-                PrimaryButton(title: "Exporter le modèle", icon: "square.and.arrow.up") { shareURL = controller.exportZip() }
+                GlassIconButton(icon: "square.and.arrow.up", name: "Exporter le dossier du scan") { shareURL = controller.exportZip() }
+                PrimaryButton(title: "Voir dans Mes plats", icon: "square.grid.2x2.fill", tint: Theme.good) {
+                    saveDishName()
+                    model.nextTab = .library
+                    model.screen = .connect
+                }
             }
         }
     }

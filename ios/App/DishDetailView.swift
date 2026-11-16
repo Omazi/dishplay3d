@@ -1,3 +1,4 @@
+import ScanCore
 import SwiftUI
 
 /// One dish: its picture, its name, and what can be done with its files.
@@ -10,6 +11,9 @@ struct DishDetailView: View {
     @State private var confirmDelete = false
     @State private var exportURL: URL?
     @State private var exportError: String?
+    @StateObject private var renderer = PreviewRenderer()
+    @State private var modelShown = false
+    @State private var mode: PreviewMode = .surface
 
     init(dish: DishRecord, changed: @escaping () -> Void) {
         self.dish = dish
@@ -46,6 +50,13 @@ struct DishDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear(perform: save)
         .task {
+            if let url = dish.geometry, let data = try? Data(contentsOf: url), let geometry = try? PreviewGeometry.decode(data) {
+                renderer.followPhone = false
+                renderer.mode = mode
+                renderer.show(geometry)
+                modelShown = true
+                return
+            }
             let url = dish.picture
             picture = await Task.detached(priority: .userInitiated) { url.flatMap { UIImage(contentsOfFile: $0.path) } }.value
         }
@@ -62,7 +73,19 @@ struct DishDetailView: View {
     }
 
     @ViewBuilder private var preview: some View {
-        if let picture {
+        if modelShown {
+            VStack(spacing: 10) {
+                PreviewView(renderer: renderer)
+                    .frame(height: 330)
+                    .clipShape(.rect(cornerRadius: 22))
+                    .accessibilityLabel("Modèle 3D du plat. Glisser pour le tourner, pincer pour zoomer.")
+                Picker("Affichage", selection: $mode) {
+                    ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: mode) { _, m in renderer.mode = m }
+            }
+        } else if let picture {
             Image(uiImage: picture).resizable().scaledToFit()
                 .clipShape(.rect(cornerRadius: 22))
                 .accessibilityLabel("Quatre vues du modèle 3D")
