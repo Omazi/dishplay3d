@@ -36,12 +36,12 @@ final class ScanTransport: NSObject, @unchecked Sendable {
     var onEvent: ((ServerEvent) -> Void)?
     var onSocketState: ((Bool) -> Void)?
 
-    init(baseURL: URL, fingerprint: String, token: String?) {
+    init(baseURL: URL, fingerprint: String, token: String?, requestTimeout: TimeInterval = 15) {
         self.baseURL = baseURL
         self.fingerprint = fingerprint
         self.token = token
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 15
+        cfg.timeoutIntervalForRequest = requestTimeout
         cfg.timeoutIntervalForResource = 120
         cfg.waitsForConnectivity = false
         cfg.httpMaximumConnectionsPerHost = 3

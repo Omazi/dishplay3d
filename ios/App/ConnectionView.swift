@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// "Connexion au calculateur": pairing (QR link or manual entry), diagnosis, scan settings.
 struct ConnectionView: View {
@@ -21,9 +22,27 @@ struct ConnectionView: View {
                         TextField("Code de jumelage (6 chiffres)", text: $model.code).keyboardType(.numberPad)
                         TextField("Empreinte TLS (64 caractères)", text: $model.fingerprint)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().font(.footnote.monospaced())
-                        Button(model.busy ? "Jumelage…" : "Jumeler") { Task { await model.pair() } }.disabled(model.busy)
+                        Button {
+                            Task { await model.pair() }
+                        } label: {
+                            HStack {
+                                if model.busy { ProgressView() }
+                                Text(model.busy ? "Jumelage en cours…" : "Jumeler").bold()
+                            }
+                        }
+                        .disabled(model.busy)
                     }
-                    if let m = model.message { Text(m).font(.footnote).foregroundStyle(.secondary) }
+                    if let st = model.step { Label(st, systemImage: "antenna.radiowaves.left.and.right").font(.callout) }
+                    if let m = model.message {
+                        Text(m).font(.callout.weight(.semibold))
+                            .foregroundStyle(model.messageIsError ? Color.red : Color.green)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if model.messageIsError {
+                        Button("Ouvrir les réglages de l’app (Réseau local)") {
+                            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                        }
+                    }
                 }
                 Section("Capacités de cet iPhone") {
                     Label(model.trackingSupported ? "Suivi ARKit disponible" : "Suivi ARKit indisponible",
