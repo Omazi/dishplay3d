@@ -5,3 +5,4 @@ DishPlay Scan 1.2.0
 - Pendant le scan : exposition et balance des blancs fixes, obturateur plus rapide (moins de flou de mouvement).
 - Boîte : glisser pour déplacer, pincer pour agrandir, sol teinté (1.1.1).
 - « Terminer » attend toutes les vues ; annulation possible si le PC est injoignable.
+- Correctif de compilation du guide en anneau.
