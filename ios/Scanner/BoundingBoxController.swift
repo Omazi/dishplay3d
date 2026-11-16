@@ -5,7 +5,7 @@ import ScanCore
 import UIKit
 
 /// The resizable capture box: tap the table to place it, drag the base disc to move it,
-/// drag side handles for width/depth, the top handle for height, two-finger rotate for yaw.
+/// drag side handles for width/depth, the top handle for height, pinch to scale; rotation is a slider.
 /// Its base always stays on the chosen plane.
 @MainActor
 final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecognizerDelegate {
@@ -15,6 +15,7 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
     @Published var depth: Float = 0.30 { didSet { clampAndRebuild() } }
     @Published var height: Float = 0.10 { didSet { clampAndRebuild() } }
     @Published private(set) var yaw: Float = 0
+    private var placedYaw: Float = 0
     @Published private(set) var planeSource = ""
     private(set) var centre = SIMD3<Float>(0, 0, 0)  // centre of the base, world coordinates
 
@@ -34,9 +35,10 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         let tap = UITapGestureRecognizer(target: self, action: #selector(onTap(_:)))
         let pan = UIPanGestureRecognizer(target: self, action: #selector(onPan(_:)))
         pan.maximumNumberOfTouches = 1
-        let rot = UIRotationGestureRecognizer(target: self, action: #selector(onRotate(_:)))
+        // No two-finger rotation gesture: it competed with the pinch and turned the box when the user
+        // wanted to resize it. Rotation is an explicit control (yawDegrees).
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(onPinch(_:)))
-        for g in [tap, pan, rot, pinch] as [UIGestureRecognizer] { g.delegate = self; view.addGestureRecognizer(g) }
+        for g in [tap, pan, pinch] as [UIGestureRecognizer] { g.delegate = self; view.addGestureRecognizer(g) }
     }
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
@@ -68,9 +70,12 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         let t = hit.worldTransform.columns.3
         centre = SIMD3(t.x, t.y, t.z)
         if let cam = view.session.currentFrame?.camera.transform {
-            // face the box towards the user
-            let fwd = SIMD3<Float>(-cam.columns.2.x, 0, -cam.columns.2.z)
-            yaw = atan2(fwd.x, fwd.z)
+            // Face the box towards the user. The viewing direction (-z) alone is ill-defined when the phone
+            // points straight down; the top of the portrait screen (-x of the ARKit camera) completes it.
+            let dir = -cam.columns.2 - cam.columns.0
+            let h = SIMD2<Float>(dir.x, dir.z)
+            if simd_length(h) > 1e-3 { yaw = atan2(h.x, h.y) }
+            placedYaw = yaw
         }
         placed = true
         rebuild()
@@ -95,11 +100,14 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         root.children.removeAll()
     }
 
-    @objc private func onRotate(_ g: UIRotationGestureRecognizer) {
-        guard placed, !locked else { return }
-        yaw -= Float(g.rotation)
-        g.rotation = 0
-        rebuild()
+    /// Rotation of the box on the table, in degrees, relative to how it was placed (facing the user).
+    var yawDegrees: Float {
+        get { (yaw - placedYaw) * 180 / .pi }
+        set {
+            guard placed, !locked else { return }
+            yaw = placedYaw + newValue * .pi / 180
+            rebuild()
+        }
     }
 
     @objc private func onPan(_ g: UIPanGestureRecognizer) {
@@ -158,7 +166,9 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
     /// When unlocking for a revision, continue from where the anchored box is drawn now.
     func adopt(anchorTransform t: simd_float4x4) {
         centre = SIMD3(t.columns.3.x, t.columns.3.y, t.columns.3.z)
+        let keep = yaw - placedYaw
         yaw = atan2(t.columns.2.x, t.columns.2.z)
+        placedYaw = yaw - keep
     }
 
     /// Drag point: on the table plane for moves/width/depth, on a vertical plane facing the camera for height.
@@ -198,7 +208,7 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         anchor.transform = Transform(scale: .one, rotation: simd_quatf(angle: yaw, axis: [0, 1, 0]), translation: centre)
         let edge: UIColor = locked ? UIColor.systemGreen : UIColor.white
         let mat = UnlitMaterial(color: edge)
-        let t: Float = 0.003
+        let t: Float = 0.004
         let w = width, d = depth, h = height
         func bar(_ size: SIMD3<Float>, _ pos: SIMD3<Float>) {
             let e = ModelEntity(mesh: .generateBox(size: size), materials: [mat])

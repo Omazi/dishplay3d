@@ -107,7 +107,7 @@ struct ScannerView: View {
         switch controller.phase {
         case .placing:
             return box.placed
-                ? ("Centre la boîte sur le plat", "Glisse pour déplacer · pince pour agrandir · boules : chaque côté.", .white)
+                ? ("Centre la boîte sur le plat", "Glisse pour déplacer · pince pour réduire ou agrandir · boules : chaque côté.", .white)
                 : ("Place la boîte", "Touche la table au pied du plat.", .white)
         case .needsNewBox:
             return ("Replace la boîte", "Le suivi a redémarré : touche la table au pied du plat.", Theme.warn)
@@ -209,6 +209,10 @@ struct ScannerView: View {
                 dimSlider("L", value: $box.width, range: 0.05...0.8)
                 dimSlider("P", value: $box.depth, range: 0.05...0.8)
                 dimSlider("H", value: $box.height, range: 0.01...0.4)
+                HStack(spacing: 10) {
+                    Image(systemName: "rotate.right").font(.footnote.weight(.bold)).frame(width: 16)
+                    Slider(value: Binding(get: { box.yawDegrees }, set: { box.yawDegrees = $0 }), in: -90...90).tint(Theme.accent)
+                }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
