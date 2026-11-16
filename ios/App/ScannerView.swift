@@ -107,10 +107,10 @@ struct ScannerView: View {
         switch controller.phase {
         case .placing:
             return box.placed
-                ? ("Centre la boîte sur le plat", "Glisse un doigt pour la déplacer, pince pour l’agrandir, tire les boules pour chaque côté. Elle doit entourer tout le plat.", .white)
-                : ("Place la boîte", "Touche la table au pied du plat. Tu pourras ensuite la faire glisser dessus.", .white)
+                ? ("Centre la boîte sur le plat", "Glisse pour déplacer · pince pour agrandir · boules : chaque côté.", .white)
+                : ("Place la boîte", "Touche la table au pied du plat.", .white)
         case .needsNewBox:
-            return ("Replace la boîte", "Le suivi a redémarré. Touche la table à côté du plat ; les vues déjà prises sont conservées.", Theme.warn)
+            return ("Replace la boîte", "Le suivi a redémarré : touche la table au pied du plat.", Theme.warn)
         case .paused:
             return ("En pause", box.locked ? "Ta session est conservée." : "Modifie la boîte puis applique : le modèle sera recalculé.", .white)
         case .uploadingRest:
@@ -121,7 +121,7 @@ struct ScannerView: View {
             return ("Modèle prêt", "Fais-le tourner du doigt dans l’aperçu.", Theme.good)
         case .scanning:
             if !controller.calculatorOnline {
-                return ("PC injoignable", "Les vues restent sur l’iPhone et partiront au retour du réseau. L’aperçu est figé.", Theme.bad)
+                return ("PC injoignable", "Les vues restent sur l’iPhone ; l’aperçu est figé.", Theme.bad)
             }
             switch controller.status.guidance {
             case .trackingLost?: return ("Suivi perdu", "Reviens lentement vers le plat.", Theme.bad)
@@ -137,43 +137,39 @@ struct ScannerView: View {
         }
     }
 
+    /// Compact on purpose: it sits on top of the camera image and must not hide the dish.
     private var instructionCard: some View {
         let i = instruction
+        let scanning = controller.phase == .scanning || controller.phase == .paused
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 ForEach(0..<4, id: \.self) { k in
                     Capsule().fill(k <= stepIndex ? Theme.accent : Color.white.opacity(0.22)).frame(height: 4)
                 }
             }
-            Text(i.title).font(.title3.weight(.bold)).foregroundStyle(i.color)
-            if let d = i.detail, !d.isEmpty {
-                Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
-            }
-            if controller.phase == .scanning || controller.phase == .paused {
-                let ring = controller.scheduler.ring
-                HStack(spacing: 14) {
-                    CoverageRingView(counts: ring.counts, azimuthDeg: controller.cameraAzimuthDeg).frame(width: 74, height: 74)
-                    VStack(alignment: .leading, spacing: 4) {
-                        legendRow(Theme.accent, "Tour : \(ring.visitedAzimuths)/12 côtés")
-                        legendRow(Theme.good, "Vues hautes : \(min(ring.highViews, 6))/6")
-                        if let hint = sideHint {
-                            Text(hint).font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
-                        }
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(i.title).font(.headline).foregroundStyle(i.color).lineLimit(1).minimumScaleFactor(0.8)
+                    if scanning, i.color == .white, let hint = sideHint {
+                        Text(hint).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).lineLimit(1).minimumScaleFactor(0.8)
+                    } else if let d = i.detail, !d.isEmpty {
+                        Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85)).lineLimit(2).minimumScaleFactor(0.85)
                     }
-                    Spacer(minLength: 0)
+                    if scanning {
+                        let ring = controller.scheduler.ring
+                        Text("Tour \(ring.visitedAzimuths)/12 · vues hautes \(min(ring.highViews, 6))/6")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.7))
+                    }
                 }
-                .padding(.top, 2)
+                Spacer(minLength: 0)
+                if scanning {
+                    CoverageRingView(counts: controller.scheduler.ring.counts, azimuthDeg: controller.cameraAzimuthDeg)
+                        .frame(width: 60, height: 60)
+                }
             }
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .glass(RoundedRectangle(cornerRadius: 22))
-    }
-
-    private func legendRow(_ color: Color, _ text: String) -> some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 10, height: 10)
-            Text(text).font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.85))
-        }
+        .padding(.horizontal, 14).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+        .glass(RoundedRectangle(cornerRadius: 20))
     }
 
     /// Which way to walk: the ring keeps the phone at the bottom, so "right" on the ring is the user's right.
@@ -181,10 +177,10 @@ struct ScannerView: View {
         let az = controller.cameraAzimuthDeg * .pi / 180
         let h = Double(box.height)
         guard let s = controller.scheduler.ring.suggestion(currentCameraInObject: [cos(az), h / 2, sin(az)], boxHeight: h) else {
-            return "Tour complet : tu peux terminer."
+            return "Tour complet : tu peux terminer"
         }
-        if s.0 == .goHigher { return "Passe au-dessus pour voir l’intérieur." }
-        return s.direction >= 0 ? "← Zones vides vers ta gauche" : "Zones vides vers ta droite →"
+        if s.0 == .goHigher { return "↑ Passe au-dessus du plat" }
+        return s.direction >= 0 ? "← Va vers ta gauche" : "Va vers ta droite →"
     }
 
     // MARK: box dimensions

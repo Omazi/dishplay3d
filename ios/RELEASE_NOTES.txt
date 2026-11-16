@@ -1,8 +1,3 @@
-DishPlay Scan 1.2.0
-- Guide en anneau : vue de dessus du tour autour du plat, toi en bas ; les secteurs vides indiquent où aller (gauche/droite, vues hautes).
-- L'aperçu 3D montre le modèle du même côté que la caméra pendant le scan.
-- Boîte accrochée à un repère ARKit : elle ne glisse plus quand le suivi se corrige.
-- Pendant le scan : exposition et balance des blancs fixes, obturateur plus rapide (moins de flou de mouvement).
-- Boîte : glisser pour déplacer, pincer pour agrandir, sol teinté (1.1.1).
-- « Terminer » attend toutes les vues ; annulation possible si le PC est injoignable.
-- Correctif de compilation du guide en anneau.
+DishPlay Scan 1.2.1
+- Carte de consigne compacte : elle ne cache plus le plat pendant le scan (anneau à droite, une ligne « va vers ta gauche/droite »).
+- 1.2.0 : guide en anneau, aperçu 3D qui suit le téléphone, boîte accrochée à un repère ARKit, exposition fixe et obturateur rapide pendant le scan.
