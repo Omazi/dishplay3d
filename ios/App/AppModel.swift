@@ -76,6 +76,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Dishes whose calculation was started but whose model is not on the iPhone yet (the scanner screen
+    /// was closed, or the app was): ask the calculator and download what is ready. Returns true if
+    /// at least one dish received its model.
+    func collectResults() async -> Bool {
+        guard let t = transport else { return false }
+        var received = false
+        for dish in DishLibrary.all() where dish.state == .processing {
+            guard let data = try? Data(contentsOf: dish.root.appendingPathComponent("server_session.txt")),
+                  let sid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !sid.isEmpty,
+                  let files = try? await t.artifacts(sessionID: sid), files.contains("manifest.json"),
+                  let store = try? SessionStore(resuming: dish.id) else { continue }
+            for name in ["final_preview.dpg", "apercu.png", "model.glb", "report.json"] where files.contains(name) {
+                if let d = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: d)) != nil {
+                    received = true
+                }
+            }
+        }
+        return received
+    }
+
     var lidarSupported: Bool { ARSessionController.lidarSupported }
     var trackingSupported: Bool { ARSessionController.worldTrackingSupported }
 

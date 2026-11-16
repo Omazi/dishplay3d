@@ -37,6 +37,10 @@ struct LibraryView: View {
                         }
                         .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
                     }
+                    .refreshable {
+                        _ = await model.collectResults()
+                        reload()
+                    }
                 }
             }
             .navigationTitle("Mes plats")
@@ -53,6 +57,9 @@ struct LibraryView: View {
             }
         }
         .onAppear(perform: reload)
+        .task {
+            if await model.collectResults() { reload() }
+        }
     }
 
     private func reload() { dishes = DishLibrary.all() }

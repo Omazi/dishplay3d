@@ -21,6 +21,7 @@ struct ScannerView: View {
     @State private var shareURL: URL?
     @State private var now = Date()
     @State private var askName = false
+    @State private var confirmClose = false
     @State private var dishName = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -65,12 +66,62 @@ struct ScannerView: View {
         .onChange(of: controller.phase) { _, phase in
             if phase == .done { askName = true }
         }
+        .confirmationDialog(closeTitle, isPresented: $confirmClose, titleVisibility: .visible) {
+            switch controller.phase {
+            case .scanning:
+                Button("Mettre en pause") { controller.pause() }
+                Button("Abandonner le scan", role: .destructive) { leave(abandon: true) }
+                Button("Continuer le scan", role: .cancel) {}
+            case .uploadingRest:
+                Button("Quitter") { leave(abandon: false) }
+                Button("Rester", role: .cancel) {}
+            default:
+                Button("Quitter l’écran") { leave(abandon: false) }
+                Button("Rester", role: .cancel) {}
+            }
+        } message: {
+            Text(closeMessage)
+        }
         .alert("Nom du plat", isPresented: $askName) {
             TextField("Par exemple : Tajine aux pruneaux", text: $dishName)
             Button("Enregistrer", action: saveDishName)
             Button("Plus tard", role: .cancel) {}
         } message: {
             Text("Il apparaîtra sous ce nom dans Mes plats.")
+        }
+    }
+
+    private func closeTapped() {
+        Haptics.tap()
+        switch controller.phase {
+        case .scanning, .uploadingRest, .finishing: confirmClose = true
+        case .placing, .needsNewBox, .paused, .done: leave(abandon: true)
+        }
+    }
+
+    /// Back to the home screen. `abandon` marks an unfinished scan as dropped; without it the views
+    /// stay on the iPhone and the scan can be sent later from the home screen.
+    private func leave(abandon: Bool) {
+        if abandon { controller.abandonIfUnfinished() }
+        if controller.phase == .scanning { controller.pause() }
+        model.refreshPending()
+        if controller.phase == .finishing || controller.phase == .done { model.nextTab = .library }
+        model.screen = .connect
+    }
+
+    private var closeTitle: String {
+        switch controller.phase {
+        case .scanning: return "Arrêter ce scan ?"
+        case .uploadingRest: return "Quitter pendant l’envoi ?"
+        default: return "Quitter pendant le calcul ?"
+        }
+    }
+
+    private var closeMessage: String {
+        switch controller.phase {
+        case .scanning: return "Vous pouvez le mettre en pause pour le reprendre, ou l’abandonner."
+        case .uploadingRest: return "Les vues restantes sont gardées sur l’iPhone. Vous pourrez les envoyer depuis l’accueil."
+        default: return "Le calcul continue sur le calculateur. Le plat apparaîtra dans Mes plats quand son modèle sera prêt."
         }
     }
 
@@ -84,12 +135,12 @@ struct ScannerView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Button { controller.abandonIfUnfinished(); model.refreshPending(); model.screen = .connect } label: {
+            // Always answers a tap. While something is running it asks first instead of doing nothing.
+            Button(action: closeTapped) {
                 Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).glass(Circle())
             }
             .accessibilityLabel("Quitter le scan")
-            .disabled(controller.phase == .scanning || controller.phase == .finishing || controller.phase == .uploadingRest)
             HStack(spacing: 14) {
                 StatusDot(text: trackingText.0, color: trackingText.1)
                 StatusDot(text: computerText.0, color: computerText.1)
