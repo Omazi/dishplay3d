@@ -28,7 +28,7 @@ from .mono_depth import align_and_fill
 from .stereo_depth import StereoParams, View, _box_mask, combine_depths, compute_pair_depth
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.6.1"
+ENGINE_VERSION = "p1-0.6.2"
 
 
 @dataclass

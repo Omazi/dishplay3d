@@ -370,6 +370,29 @@ direct, qui a moins de vues (non mesuré). Ce qui manque encore sur ces objets (
 brillant) n'est mesuré par aucune paire. Rendu en vraies couleurs : `docs/evidence/tasses_reelles_avant_apres.jpg`.
 64 tests passés, 1 sauté.
 
+## Mise à jour du 17 novembre (soir) — objets texturés réels : toutes les vues étaient écartées (moteur `p1-0.6.2`)
+
+Essai sur des captures réelles d'objets texturés (Objectron : livre, paire de chaussures, boîtes imprimées), plus
+proches d'un plat garni que les tasses. Résultat initial : 0 vue utilisée sur 94 pour le livre, 10 sur 85 pour les
+chaussures. Cause mesurée : la sélection des paires exigeait que chaque vue montre 60 % de la boîte ; à 26–31 cm
+d'une boîte de 53 ou 64 cm, aucune vue ne le fait (visibilité médiane 0,36 et 0,41), alors que des centaines de
+paires avaient une géométrie correcte. Les vues restaient « en attente de partenaire », sans message.
+Correction : la vue de référence doit montrer une partie de la boîte (12 %) et le partenaire voir 60 % de ce que
+la référence voit.
+
+| | Avant | Après |
+|---|---|---|
+| Livre : vues utilisées | 0 / 94 | toutes (essai sur 32) |
+| Chaussures : vues utilisées / surface reconstruite | 10 / 85 — 865 cm² | 81 / 85 — 1 863 cm² |
+| Boîtes imprimées | 67 / 75 vues | faces vues complètes, impression lisible |
+
+Conséquence probable pour les scans de l'app (non vérifiée, je n'ai aucun de ces scans) : une assiette de 28–30 cm
+filmée à 25–30 cm est dans le même cas.
+
+Ce qui reste, constaté sur le livre : sa couverture rouge unie ne reçoit aucune profondeur (appariement brut
+compris). Le remplissage par profondeur apprise, prévu pour ce cas, n'a pas pu être exécuté ici (installation
+refusée par la protection de la session, trois fois). 66 tests passés, 1 sauté.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
