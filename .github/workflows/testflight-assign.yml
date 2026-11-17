@@ -37,3 +37,23 @@ jobs:
             BUILD="--build ${{ github.event.workflow_run.run_number }}.${{ github.event.workflow_run.run_attempt }}"
           fi
           "$RUNNER_TEMP/asc/bin/python" tools/asc_testflight.py --bundle "${{ vars.IOS_BUNDLE_ID || 'app.dishplay.capture' }}" --group "DishPlay - Tests iPhone" $BUILD
+
+  # Asked by the owner: the repository is public only for the time of a release. Once the build is
+  # processed by Apple and given to the testers, it is made private again. Needs a repository secret
+  # REPO_ADMIN_TOKEN (fine-grained token, this repository only, permission "Administration: write");
+  # without it this job only prints a reminder.
+  make-private:
+    needs: assign
+    if: github.event_name == 'workflow_run' && needs.assign.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Make the repository private again
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::REPO_ADMIN_TOKEN is not set: the repository stays public. Make it private by hand (Settings > Danger Zone)."
+            exit 0
+          fi
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY" -F private=true --jq '"visibility: " + .visibility'

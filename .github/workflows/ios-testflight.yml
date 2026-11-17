@@ -26,6 +26,8 @@ concurrency:
 jobs:
   check:
     uses: ./.github/workflows/ios-check.yml
+    with:
+      release: true
   distribute:
     needs: check
     runs-on: macos-15
