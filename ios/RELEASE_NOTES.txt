@@ -5,4 +5,4 @@ DishPlay Scan 1.6.0 — savoir si le scan est réussi avant de terminer
 - Quitter pendant le calcul final ne perd plus le plat : il apparaît dans Mes plats quand son modèle est prêt.
 - Mes plats : chaque plat a une photo, même sans modèle ; un plat en cours affiche sa progression (« Calcul du modèle · 86/140 ») ; un plat interrompu se termine avec « Terminer ce plat ».
 - Réglages ne contient plus rien sur les plats.
-- Nécessite le calculateur à jour (moteur p1-0.4.0).
+- Nécessite le calculateur à jour (moteur p1-0.4.0 ou plus récent).
