@@ -346,6 +346,30 @@ Réglages. Écrit, **non compilé**.
 Limites : deux captures réelles seulement, des tasses (noire brillante, rouge), aucun plat ; le remplissage par
 profondeur apprise n'a toujours pas tourné sur de vraies images. 63 tests passés, 1 sauté.
 
+## Mise à jour du 17 novembre (suite) — le contrôle aller-retour perdait les côtés de l'image (moteur `p1-0.6.1`)
+
+Suite du diagnostic sur vraies captures : pourquoi une paire ne donne une profondeur que sur un tiers de la boîte.
+Écartés par la mesure : seuil d'unicité (0, 3 ou 8 : aucun effet), tolérance aller-retour (1 → 1,5 px : aucun
+effet), images plus détaillées (1920 px : aucun gain). Regardé paire par paire : l'appariement brut répond sur 65 à
+72 % de la zone, puis le contrôle aller-retour en supprime 27 à 49 %. Les vrais désaccords ne font que 4 à 6 % ;
+le reste vient de ce que la carte « retour » n'a pas de valeur dans une bande aussi large que la plus grande
+disparité cherchée (200 à 360 px), l'appariement ne pouvant pas explorer le bord de son image de gauche.
+Correction : les deux images sont élargies d'autant avant l'appariement, puis recoupées.
+
+| | Avant | Après |
+|---|---|---|
+| Test dédié : pixels vus par les deux images et validés | 78 % | > 95 % |
+| Tasse réelle : part de la boîte avec profondeur, par paire | 33 % | 52 % |
+| Tasse réelle, modèle final reconstruit : surface / morcellement | 646 cm² / 27,1 | 689 cm² / 23,7 |
+| Gobelet réel, modèle final reconstruit : surface / morcellement | 691 cm² / 22,3 | 702 cm² / 21,2 |
+| Bol de synthèse, final : bord / parois / points à > 6 mm | 99,3 % / 80,6 % / 3,0 % | 99,4 % / 78,9 % / 3,0 % |
+
+Le gain par paire (+58 %) ne se retrouve que partiellement dans le modèle final (+2 à +7 % de surface) : avec 80
+vues et trois paires par vue, d'autres paires couvraient déjà ces zones ; il doit surtout profiter à l'aperçu en
+direct, qui a moins de vues (non mesuré). Ce qui manque encore sur ces objets (intérieur blanc, corps noir
+brillant) n'est mesuré par aucune paire. Rendu en vraies couleurs : `docs/evidence/tasses_reelles_avant_apres.jpg`.
+64 tests passés, 1 sauté.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
