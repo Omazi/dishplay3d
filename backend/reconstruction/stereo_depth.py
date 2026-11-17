@@ -225,8 +225,15 @@ def _sgbm(min_disp, num_disp, params: StereoParams):
 def _lr_checked_disparity(gl: np.ndarray, gr: np.ndarray, dmin: int, num: int, params: "StereoParams", stages: dict | None = None):
     """SGBM disparity of the left image with an explicit left-right consistency check."""
     matcher = _sgbm(dmin, num, params)
-    dl = matcher.compute(gl, gr).astype(np.float32) / 16.0
-    dr = matcher.compute(np.ascontiguousarray(gr[:, ::-1]), np.ascontiguousarray(gl[:, ::-1])).astype(np.float32)[:, ::-1] / 16.0
+    # The matcher gives no value in the first columns of its 'left' picture, as wide as the largest disparity
+    # it searches. For the return map the roles are swapped and that band falls on the other side, where the
+    # round trip then fails for lack of a value. Both pictures are widened by that much on both sides (plain
+    # border), matched, and cut back: every real column can be searched over the whole range, both ways.
+    pad = max(int(dmin + num), 0) + 1
+    pl = cv2.copyMakeBorder(gl, 0, 0, pad, pad, cv2.BORDER_CONSTANT, value=0)
+    pr = cv2.copyMakeBorder(gr, 0, 0, pad, pad, cv2.BORDER_CONSTANT, value=0)
+    dl = matcher.compute(pl, pr).astype(np.float32)[:, pad:-pad] / 16.0
+    dr = matcher.compute(np.ascontiguousarray(pr[:, ::-1]), np.ascontiguousarray(pl[:, ::-1])).astype(np.float32)[:, ::-1][:, pad:-pad] / 16.0
     # Disparities at the ends of the search range are saturated (true value may lie outside).
     valid = (dl > dmin + 1.0) & (dl < dmin + num - 2.0)
     yy, xx = np.mgrid[0:dl.shape[0], 0:dl.shape[1]]

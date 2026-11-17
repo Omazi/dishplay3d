@@ -94,3 +94,23 @@ def test_reflections_are_left_unknown(scene):
     res = compute_pair_depth(va, vb, SIZE)
     assert res.depth is not None
     assert (res.depth[cy - 8:cy + 9, cx - 8:cx + 9] > 0).mean() < 0.02
+
+
+def test_round_trip_check_does_not_lose_the_sides_of_the_picture():
+    """The matcher cannot search the first columns of its 'left' picture (as wide as the largest disparity).
+    For the return map the roles are swapped, so that band falls on the other side. Found on real captures:
+    25 to 45 % of correctly matched pixels were rejected only because the return map had no value there."""
+    import cv2
+    from reconstruction.stereo_depth import StereoParams, _lr_checked_disparity
+    rng = np.random.default_rng(0)
+    H, W, d, dmin, num = 240, 600, 100, 60, 96
+    tex = cv2.GaussianBlur((rng.uniform(0, 255, (H, W + 400))).astype(np.float32), (0, 0), 1.2)
+    tex = cv2.normalize(tex, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    left = np.ascontiguousarray(tex[:, 150:150 + W])
+    right = np.ascontiguousarray(tex[:, 150 + d:150 + d + W])      # the same surface, shifted by d pixels
+    disp, valid = _lr_checked_disparity(left, right, dmin, num, StereoParams())
+    seen_by_both = np.zeros((H, W), bool)
+    seen_by_both[:, d:] = True                                      # a left pixel x has its partner at x - d
+    assert valid[seen_by_both].mean() > 0.95, valid[seen_by_both].mean()
+    assert np.abs(disp[valid] - d).max() < 1.0
+    assert valid[~seen_by_both].mean() < 0.02                       # what only one picture sees is not given a depth
