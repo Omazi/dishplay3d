@@ -12,6 +12,9 @@
 - Ne jamais annoncer un test ou un résultat qui n'a pas été réellement exécuté ; dire ce qui est vérifié et ce qui ne l'est pas.
 - Secrets (jetons, certificats, clés) : jamais dans le dépôt ni dans le chat.
 - Pas de pull request sans demande explicite.
+- Licences : uniquement des composants à licence permissive (MIT, BSD, Apache-2.0 ou équivalent). Rien sous GPL ou AGPL,
+  rien de « non commercial », rien avec partage à l'identique (CC BY-SA) ni condition de vente. Vérifier la licence
+  avant d'ajouter une dépendance, un modèle d'IA ou une ressource, et tenir `compliance/THIRD_PARTY_NOTICES.md` à jour.
 
 ## Skills à utiliser (dans `.claude/skills/`, sources dans `SOURCES.md`)
 - App iPhone : `swiftui-pro` pour toute lecture ou écriture de SwiftUI ; `ui-review` et `accessibility-audit` avant

@@ -18,14 +18,24 @@ Security) soumis au contrat Apple Developer Program, et le paquet local `ScanCor
 | cryptography | 46.0.3 | Apache-2.0 OR BSD-3 | certificat TLS local, JWT App Store Connect |
 | segno | 1.6.6 | BSD-3 | QR code de jumelage |
 | jsonschema | 4.26.0 | MIT | validation des contrats |
+| ONNX Runtime (onnxruntime) | 1.31.1 | MIT | exécution du modèle de profondeur sur processeur |
+| Depth Anything V2 **Small** (poids ONNX, téléchargés au démarrage, hors dépôt) | export onnx-community | Apache-2.0 | comble les surfaces unies ou brillantes |
 Dépendances d'Open3D (dash, plotly, flask, matplotlib, pandas, scikit-learn, ipywidgets…) : licences permissives
 (MIT/BSD/PSF/MPL-2.0 pour certifi et tqdm) ; requises à l'import d'Open3D, non utilisées par DishPlay.
 
 Outils de build (non distribués) : XcodeGen 2.46.0 (MIT), Xcode (Apple).
 
 ## Décisions
-- Aucun moteur 3D payant, aucune licence non commerciale, aucun poids IA (la complétion est une interface
-  désactivée). Pas de COLMAP/OpenMVS/Object Capture.
+- **Règle du propriétaire (17 novembre) : licences permissives uniquement** (MIT, BSD, Apache-2.0 ou équivalent). Rien
+  sous GPL/AGPL, rien de « non commercial », rien avec partage à l'identique ou condition de vente.
+- Écartés pour cette raison : OpenMVS (AGPL-3.0) ; les variantes Base/Large/Giant de Depth Anything V2
+  (CC BY-NC) — seule la variante Small (Apache-2.0) est utilisée.
+- Compatibles, non intégrés au calculateur livré : COLMAP / pycolmap (BSD-3, essai de positions à partir des photos),
+  gsplat (Apache-2.0) et PyTorch (BSD-3) pour l'étape neuronale optionnelle sur carte graphique.
+- Aucun moteur 3D payant. Pas d'Object Capture d'Apple (réservé aux iPhone Pro).
+- À remplacer avant toute vente, côté site web (branche `main1`) : le modèle 3D de burger de démonstration
+  (Ehsan Abbasi, CC BY-SA 4.0, partage à l'identique).
+- Tolérés car ni modifiés ni redistribués : certifi et tqdm (MPL-2.0), tirés par Open3D.
 - Point ouvert : la roue opencv-python embarque FFmpeg (LGPL). Usage local, sans redistribution par DishPlay : sans
   objet pour P1. Si le calculateur est un jour redistribué en binaire, construire OpenCV minimal sans videoio
   (modules core, imgproc, imgcodecs, features2d, calib3d) et sans nonfree.
