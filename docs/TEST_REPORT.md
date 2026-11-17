@@ -393,6 +393,25 @@ Ce qui reste, constaté sur le livre : sa couverture rouge unie ne reçoit aucun
 compris). Le remplissage par profondeur apprise, prévu pour ce cas, n'a pas pu être exécuté ici (installation
 refusée par la protection de la session, trois fois). 66 tests passés, 1 sauté.
 
+## Mise à jour du 17 novembre (nuit) — le fichier 3D texturé vu comme sur le site (moteur `p1-0.6.3`)
+
+Contrôle de bout en bout sur deux captures réelles d'objets texturés : finition complète (table retirée, texture
+photo), puis `model.glb` affiché dans un navigateur par model-viewer (Apache-2.0), captures d'écran dans
+`docs/evidence/objets_textures_reels_glb.jpg`.
+
+- Boîtes imprimées : faces vues complètes, impression nette et lisible, bords irréguliers, un reste d'étagère.
+- Paire de chaussures : reconnaissable et texturée du côté scanné (lacets, tissu, logo) ; côtés non scannés absents,
+  morceaux du décor voisin conservés (la boîte faisait 2,2 fois l'objet).
+- Défaut trouvé : sur les chaussures, la texture photo échouait (« UVAtlasPartition: Non-manifold ») et le modèle
+  retombait sans le dire sur les couleurs par sommet. Cause : une arête partagée par trois triangles, venue des
+  rustines de fermeture. Corrigé (rustines filtrées, garde avant l'atlas), avec tests.
+- Constat produit : `model.glb` des chaussures pèse 25 Mo (112 000 triangles, texture PNG 2048) — trop lourd pour
+  un menu en ligne ; allègement à faire.
+
+Jugement honnête : sur un objet texturé, le résultat est maintenant un vrai modèle reconnaissable, ce qui n'était
+pas le cas ce matin ; il n'a pas la propreté d'un produit du commerce (bords, fragments, zones unies vides).
+33 tests des modules touchés passés ; suite complète précédente : 66 passés, 1 sauté.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
