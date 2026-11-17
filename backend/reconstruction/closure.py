@@ -19,7 +19,7 @@ import numpy as np
 import open3d as o3d
 from scipy.spatial import cKDTree
 
-from .mesh_preview import ESTIMATED
+from .mesh_preview import ESTIMATED, edge_manifold_triangles
 
 
 def close_surface(V, C, N, cls, T, box_size_m, floor_y: float | None = None, floor_xz: np.ndarray | None = None,
@@ -81,6 +81,9 @@ def close_surface(V, C, N, cls, T, box_size_m, floor_y: float | None = None, flo
     touching = np.zeros(len(counts), bool)
     np.logical_or.at(touching, lab, (d_vert[PT] <= 2.5 * cell_m).any(1))
     PT = PT[touching[lab]]
+    if len(PT) == 0:
+        return V, C, N, cls, T, info
+    PT = PT[edge_manifold_triangles(PT)]     # the texture atlas refuses an edge shared by three triangles
     if len(PT) == 0:
         return V, C, N, cls, T, info
     pu = np.unique(PT)

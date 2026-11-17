@@ -110,3 +110,21 @@ def test_nothing_to_close_changes_nothing():
     empty = (np.zeros((0, 3), np.float32), np.zeros((0, 3), np.uint8), np.zeros((0, 3), np.float32), np.zeros(0, np.uint8), np.zeros((0, 3), np.uint32))
     out = close_surface(*empty, box_size_m=(0.2, 0.1, 0.2))
     assert len(out[0]) == 0 and out[5]["added_triangles"] == 0
+
+
+def test_triangles_on_an_edge_shared_by_three_are_dropped():
+    """The texture atlas refuses a mesh with an edge shared by more than two triangles (found on a real
+    capture: one such edge made the whole photo texture fall back to vertex colours)."""
+    from reconstruction.mesh_preview import edge_manifold_triangles
+    T = np.array([[0, 1, 2], [0, 1, 3], [0, 1, 4], [5, 6, 7], [5, 6, 8]], np.uint32)   # edge 0-1 has three triangles
+    keep = edge_manifold_triangles(T)
+    assert keep.tolist() == [False, False, False, True, True]
+    assert edge_manifold_triangles(T[3:]).all()
+
+
+def test_closing_never_creates_an_edge_shared_by_three_triangles():
+    centre = on_sphere([1.0, 0.8, 0.3])
+    V, C, N, cls, T = dome(hole_at=centre)
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2), max_gap_m=0.02)
+    from reconstruction.mesh_preview import edge_manifold_triangles
+    assert edge_manifold_triangles(T2[len(T):]).all()

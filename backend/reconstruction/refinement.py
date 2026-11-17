@@ -19,7 +19,7 @@ from .coordinates import invert_rigid
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply
 from .fusion import FusionConfig
-from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, drop_small_pieces,
+from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, drop_small_pieces, edge_manifold_triangles,
                            supported_mesh, surface_area)
 from .preview_format import encode_geometry
 
@@ -218,6 +218,9 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
             t2 = time.perf_counter()
             try:
                 views = [fin._view(f) for f in fusion.integrated_frames]
+                ok_t = edge_manifold_triangles(T)     # the atlas refuses an edge shared by three triangles
+                if not ok_t.all():
+                    T = T[ok_t]
                 tri_uv, tex, nv, filled = texture_mesh(V, T, views, colors_bgr=C[:, ::-1].astype(np.float64))
                 Vs = V[T.reshape(-1)]
                 Ns = N[T.reshape(-1)]

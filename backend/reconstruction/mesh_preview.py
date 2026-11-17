@@ -207,6 +207,25 @@ class DishFootprint:
         return cv2.convexHull(pts.astype(np.float32)).reshape(-1, 2).astype(np.float64)
 
 
+def edge_manifold_triangles(T: np.ndarray) -> np.ndarray:
+    """Mask of the triangles to keep so that no edge is shared by more than two triangles."""
+    keep = np.ones(len(T), bool)
+    T = np.asarray(T, np.int64)
+    for _ in range(5):
+        idx = np.nonzero(keep)[0]
+        if len(idx) == 0:
+            break
+        t = T[idx]
+        e = np.sort(np.concatenate([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]]), axis=1)
+        key = e[:, 0] * (int(T.max()) + 1) + e[:, 1]
+        _, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
+        bad = (cnt[inv] > 2).reshape(3, -1).any(0)
+        if not bad.any():
+            break
+        keep[idx[bad]] = False
+    return keep
+
+
 def drop_small_pieces(V, C, N, cls, T, min_triangles: int = 300):
     """Remove the crumbs: connected pieces of fewer than min_triangles triangles (a few cm2), typically scraps
     of table left around the dish. A separate item of food is far larger and stays."""
