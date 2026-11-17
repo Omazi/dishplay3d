@@ -306,6 +306,46 @@ bibliothèque et télécharge le modèle, somme SHA-256 vérifiée ; `DISHPLAY_M
 `final/report.json` → `mono_fill` dit combien de vues ont été remplies, combien de pixels gardés, et le temps passé.
 51 tests passés, 1 sauté (celui du vrai réseau, absent ici). Script Windows modifié mais non exécuté (pas de PowerShell ici).
 
+## Mise à jour du 17 novembre — travail sur de vraies captures d'iPhone (moteur `p1-0.6.0`)
+
+Changement de méthode : diagnostic étape par étape sur de vraies captures (Objectron, tasses filmées à l'iPhone
+avec poses ARKit), plus sur la synthèse. Faute de modèle de référence, deux mesures objectives : la table est
+plane (dispersion de ses points autour d'un plan = erreur géométrique entre vues) et le morcellement de la surface.
+
+**Constats mesurés (tasse noire, 41 vues, finition).**
+- Une paire d'images ne donne une profondeur que sur ~1/3 de la zone de la boîte : l'appariement par blocs refuse
+  les surfaces unies. Ni la plage de recherche, ni le recouvrement des images, ni le rognage à la boîte n'en sont
+  la cause (vérifiés un par un). Le mode 8 directions et un bloc plus grand n'apportent que 1,59 → 1,39 mm de bruit.
+- Deux paires d'une même vue diffèrent de plusieurs % de façon lisse : la table est inclinée de 1,9° en médiane
+  (jusqu'à 8°) d'une paire à l'autre. Cause : erreur de pose relative (suivi, obturateur déroulant), ≈ 1 px de
+  disparité. Le moteur supprimait le désaccord au lieu de corriger le biais.
+
+**Correction** (`consistency.depth_bias_from_views`) : le biais de chaque paire (échelle, décalage, inclinaison en
+profondeur inverse) est estimé contre les vues acceptées et retiré avant la comparaison des paires. Un premier
+ajustement par moindres carrés était mal conditionné sur une table vue de biais (corrections fantômes de 11 % sur
+le bol de synthèse, bord du bol 99 → 91 %) ; stabilisé par une régularisation sur colonnes normalisées.
+
+| | Avant | Après |
+|---|---|---|
+| Gobelet réel : dispersion de la table | 1,35 mm | 0,37 mm |
+| Gobelet réel : morcellement | 46,2 | 22,3 |
+| Gobelet réel : surface au-dessus de la table | 283 cm² | 390 cm² |
+| Tasse réelle : dispersion / morcellement | 1,67 mm / 30,1 | 1,26 mm / 27,1 |
+| Bol de synthèse, modèle final : bord / parois / précision p90 | 99,2 % / 80,0 % / 4,12 mm | 99,4 % / 79,8 % / 4,22 mm |
+
+**Fermeture de la surface** (`closure.py`, Poisson d'Open3D) : rustines étiquetées « estimé » sur les trous et base
+plate sous le plat ; les sommets reconstruits ne sont pas modifiés ; `model_mesure.glb` garde le modèle tel que
+reconstruit. Réglage généreux (3 cm) : enveloppe gonflée autour de l'objet sur la capture réelle — rejeté. Réglage
+retenu (8 mm) : ne bouche que les petits trous. Sur le bol de synthèse, les sommets estimés sont à 1,9 mm (médiane)
+de la vraie forme, p90 4,4 mm. **Les grands trous restent** : sur ces captures les deux tiers de la zone ne sont pas
+mesurés, et cela ne se rebouche pas proprement après coup.
+
+**App** : les zones interpolées ou estimées gardent leurs vraies couleurs ; la teinte bleue devient une option des
+Réglages. Écrit, **non compilé**.
+
+Limites : deux captures réelles seulement, des tasses (noire brillante, rouge), aucun plat ; le remplissage par
+profondeur apprise n'a toujours pas tourné sur de vraies images. 63 tests passés, 1 sauté.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
