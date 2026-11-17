@@ -17,7 +17,8 @@ import open3d as o3d
 
 from .coordinates import (box_corners, inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
                           scale_intrinsics, transform_points)
-from .consistency import DepthView, confirmed_depth, depth_scale_from_views, pick_neighbours
+from .consistency import (DepthView, confirmed_depth, depth_bias_between, depth_bias_from_views, depth_scale_from_views,
+                          pick_neighbours)
 from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
 from .mesh_preview import INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, supported_mesh, surface_area
 from .pair_selector import PairLimits, select_partners
@@ -54,6 +55,11 @@ class EngineConfig:
     # already accepted, see consistency.depth_scale_from_views.
     view_cache: int = 400        # decoded views kept in memory (the rest is reloaded from disk when needed)
     hide_table: bool = True      # the box is rectangular, a plate is not: bare table in the corners is not shown
+    # Smooth bias of each pair's depth map (scale, offset and tilt in inverse depth, see consistency.py):
+    # estimated against the accepted views and removed BEFORE the pairs of a view are compared.
+    pair_bias_fit: bool = True
+    bias_gain: float = 0.8       # share of the correction applied (the rest keeps the tracker's own geometry)
+    bias_max_rel: float = 0.08   # no depth is moved by more than this
     scale_to_views: bool = True
     scale_max_dev: float = 0.06
     scale_gain: float = 0.8
@@ -127,6 +133,7 @@ class SessionEngine:
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
         self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
         self.scale_stats = {"applied": 0, "skipped": 0, "abs_dev_sum": 0.0}
+        self.bias_stats = {"applied": 0, "skipped": 0, "centre_sum": 0.0, "tilt_sum": 0.0}
         # Optional learned single-image depth (see mono_depth.py): fills what stereo cannot measure.
         self.mono = None
         self.mono_stats = {"views": 0, "views_filled": 0, "filled_px": 0, "kept_px": 0, "errors": 0, "skipped": {}}
@@ -302,8 +309,9 @@ class SessionEngine:
                 rec.reason = reports[-1]["reason"] if reports else "no_partner_geometry_yet"
             self._frame_event(rec, reports)
             return 0
+        aligned = self.cfg.pair_bias_fit and self._align_pairs(fid, depths, ref)
         depth, support = combine_depths(depths)
-        if self.cfg.scale_to_views:
+        if self.cfg.scale_to_views and not aligned:
             depth = self._rescale(fid, depth, ref)
         if self.mono is not None:
             depth = self._fill_from_mono(fid, depth, ref)
@@ -314,6 +322,35 @@ class SessionEngine:
         self._awaiting.append((fid, support))
         rec.status, rec.reason = "depth_ready", ""
         return self._fuse_ready(flush=False)
+
+    def _align_pairs(self, fid: int, depths: list[np.ndarray], ref: View) -> bool:
+        """Remove the smooth bias of each pair depth map (in place). True when the accepted views were the
+        reference, in which case the one-number rescaling that follows would only repeat the work."""
+        st = self.bias_stats
+        others = []
+        if self._depth_cache:
+            biggest = max(depths, key=lambda d: int((d > 0).sum()))
+            others = pick_neighbours(DepthView(fid, biggest, ref.K, ref.T_obj_from_cam), self._depth_cache, self.cfg.confirm_neighbours)
+        used_views = False
+        anchor = None
+        for i, d in enumerate(depths):
+            bias = depth_bias_from_views(DepthView(fid, d, ref.K, ref.T_obj_from_cam), others, self.cfg.bias_max_rel) if others else None
+            if bias is not None:
+                used_views = True
+            elif anchor is not None:
+                # No accepted view covers this pair yet: at least bring the pairs of this view together.
+                bias = depth_bias_between(anchor, d, self.cfg.bias_max_rel)
+            if bias is None:
+                st["skipped"] += 1
+                anchor = d if anchor is None else anchor
+                continue
+            zmed = float(np.median(d[d > 0]))
+            st["applied"] += 1
+            st["centre_sum"] += bias.centre_change(zmed)
+            st["tilt_sum"] += bias.tilt_change(zmed)
+            depths[i] = bias.apply(d, self.cfg.bias_gain, self.cfg.bias_max_rel)
+            anchor = depths[i] if anchor is None else anchor
+        return used_views
 
     def _rescale(self, fid: int, depth: np.ndarray, ref: View) -> np.ndarray:
         probe = DepthView(fid, depth, ref.K, ref.T_obj_from_cam)
@@ -546,6 +583,9 @@ class SessionEngine:
                           if any(a.get("applied") for a in self.alignments) else None},
             "confirmation": dict(self.confirm_stats),
             "mono_fill": self.mono_report(),
+            "pair_bias": {"applied": self.bias_stats["applied"], "skipped": self.bias_stats["skipped"],
+                          "mean_centre_correction_pct": round(100 * self.bias_stats["centre_sum"] / max(1, self.bias_stats["applied"]), 3),
+                          "mean_tilt_correction_pct": round(100 * self.bias_stats["tilt_sum"] / max(1, self.bias_stats["applied"]), 3)},
             "depth_scale": {"applied": self.scale_stats["applied"], "skipped": self.scale_stats["skipped"],
                             "mean_abs_correction_pct": round(100 * self.scale_stats["abs_dev_sum"] / max(1, self.scale_stats["applied"]), 3)},
             "pairs": {"total": len(pr), "ok": sum(p["status"] == "ok" for p in pr),

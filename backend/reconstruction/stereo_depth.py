@@ -79,6 +79,7 @@ class PairReport:
     dir_correction_deg: float = 0.0
     valid_pixels: int = 0
     timings_ms: dict = field(default_factory=dict)
+    stages: dict = field(default_factory=dict)   # box pixels left after each step of the matcher (diagnostics)
 
 
 @dataclass
@@ -221,7 +222,7 @@ def _sgbm(min_disp, num_disp, params: StereoParams):
         speckleRange=params.speckle_range, mode=cv2.STEREO_SGBM_MODE_HH if params.full_paths else cv2.STEREO_SGBM_MODE_SGBM_3WAY)
 
 
-def _lr_checked_disparity(gl: np.ndarray, gr: np.ndarray, dmin: int, num: int, params: "StereoParams"):
+def _lr_checked_disparity(gl: np.ndarray, gr: np.ndarray, dmin: int, num: int, params: "StereoParams", stages: dict | None = None):
     """SGBM disparity of the left image with an explicit left-right consistency check."""
     matcher = _sgbm(dmin, num, params)
     dl = matcher.compute(gl, gr).astype(np.float32) / 16.0
@@ -233,6 +234,10 @@ def _lr_checked_disparity(gl: np.ndarray, gr: np.ndarray, dmin: int, num: int, p
     inb = valid & (xr >= 0) & (xr < dl.shape[1])
     lr_ok = np.zeros_like(valid)
     lr_ok[inb] = np.abs(dl[inb] - dr[yy[inb], xr[inb]]) <= params.lr_max_diff
+    if stages is not None and "sgbm_any" not in stages:   # first (fine) pass only
+        stages["sgbm_any"] = int((dl > dmin - 1).sum())    # the matcher itself gave a value (uniqueness, speckle passed)
+        stages["not_saturated"] = int(valid.sum())
+        stages["lr_ok"] = int((valid & lr_ok).sum())
     return dl, valid & lr_ok
 
 
@@ -331,7 +336,10 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
         # contrast lets faint real texture (ridges, shading, grain) drive the match.
         clahe = cv2.createCLAHE(clipLimit=params.clahe_clip, tileGridSize=(8, 8))
         gl, gr = clahe.apply(cv2.GaussianBlur(gl, (0, 0), 0.8)), clahe.apply(cv2.GaussianBlur(gr, (0, 0), 0.8))
-    dl, valid = _lr_checked_disparity(gl, gr, dmin, num, params)
+    dl, valid = _lr_checked_disparity(gl, gr, dmin, num, params, report.stages)
+    in_roi = roi_l[y0:y1, x0:x1] > 0
+    report.stages["roi"] = int(in_roi.sum())
+    report.stages["fine"] = int((valid & in_roi).sum())
     if params.coarse_fill:
         # Weak texture: a half-resolution pass sees a wider neighbourhood and matches where the fine pass
         # cannot. Its (coarser) disparities only fill pixels the fine pass left unknown; like every
@@ -352,7 +360,8 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
         valid &= ~glare
     if params.min_texture > 0:
         valid &= _texture_mask(gl, params.min_texture)
-    valid &= roi_l[y0:y1, x0:x1] > 0
+    valid &= in_roi
+    report.stages["matched"] = int(valid.sum())
     # Undo crop / mirror / transpose to rectified reference coordinates.
     x_full = xx + x0
     y_full = yy + y0
@@ -376,6 +385,7 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     keep = ((np.abs(pts_obj[:, 0]) <= size_m[0] / 2 + m) & (np.abs(pts_obj[:, 2]) <= size_m[2] / 2 + m)
             & (pts_obj[:, 1] >= -m) & (pts_obj[:, 1] <= size_m[1] + m) & (pts_ref[:, 2] > 0.05))
     pts_ref = pts_ref[keep]
+    report.stages["in_box"] = int(keep.sum())
     # Rasterise into the reference image grid (nearest surface wins).
     uv_ref = pts_ref[:, :2] / pts_ref[:, 2:3] * [ref.K[0, 0], ref.K[1, 1]] + [ref.K[0, 2], ref.K[1, 2]]
     ui = np.round(uv_ref[:, 0]).astype(np.int64)
@@ -431,6 +441,7 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
             report.status, report.reason = "rejected", "dense_sparse_mismatch"
             return StereoResult(report)
     report.valid_pixels = int((depth > 0).sum())
+    report.stages["final"] = report.valid_pixels
     report.timings_ms["total"] = (time.perf_counter() - t0) * 1000
     if report.valid_pixels < 200:
         report.status, report.reason = "rejected", "too_few_valid_pixels"

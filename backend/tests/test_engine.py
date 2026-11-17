@@ -209,7 +209,8 @@ def test_preview_points_stay_close_to_the_surface(session):
     d = point_to_mesh_distance(m, g["points"])
     assert d.max() <= eng.cfg.outlier_dist_m + 1e-4
     assert header["hidden_inconsistent_points"] > 0
-    assert eng.metrics()["depth_scale"]["applied"] > 0
+    m = eng.metrics()
+    assert m["pair_bias"]["applied"] > 0     # each pair is brought onto the accepted views before fusion
 
 
 def test_quality_verdict_follows_the_model(session):
