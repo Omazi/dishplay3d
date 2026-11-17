@@ -96,3 +96,37 @@ def test_a_view_seen_only_in_a_corner_gets_no_tilt():
     bias = depth_bias_from_views(wrong, [other], min_samples=300)
     assert bias is not None and bias.gu == 0.0 and bias.gv == 0.0
     assert np.percentile(rel_err(bias.apply(wrong.depth), truth.depth), 99) < 0.004
+
+
+def scene_view(i, cam_x, noise=0.0, seed=0):
+    """A slanted table seen obliquely, with a block standing 4 cm above it in the middle of the image:
+    what a dish on a table looks like to the fit (one dominant plane, a smaller part off that plane)."""
+    T = np.eye(4)
+    T[0, 3] = cam_x
+    v, u = np.mgrid[0:H, 0:W]
+    dx, dy = (u - K[0, 2]) / K[0, 0], (v - K[1, 2]) / K[1, 1]
+    # table: p_z = 0.45 - 0.5 * p_y (depth falls towards the bottom of the image) ; ray p = c + z * (dx, dy, 1)
+    z = 0.45 / (1.0 + 0.5 * dy)
+    block = (np.abs(cam_x + z * dx) < 0.04) & (np.abs(z * dy + 0.02) < 0.03)      # footprint of the block, in the world
+    z = np.where(block, z - 0.04, z)
+    if noise:
+        z = z * (1.0 + np.random.default_rng(seed + i).normal(scale=noise, size=z.shape))
+    return DepthView(i, z.astype(np.float32), K, T), block
+
+
+def test_a_dominant_plane_does_not_bend_what_stands_on_it():
+    """On an obliquely seen table, depth is itself a ramp across the image: scale and tilt are then nearly
+    the same thing for the table, and a careless fit trades one against the other with huge opposite
+    values that cancel on the table but throw the dish off. Found on the synthetic bowl (rim lost)."""
+    truth, block = scene_view(0, 0.0)
+    others = [scene_view(1, 0.03, noise=0.003)[0], scene_view(2, -0.03, noise=0.003)[0], scene_view(3, 0.05, noise=0.003)[0]]
+    noisy = scene_view(0, 0.0, noise=0.003, seed=9)[0]
+    bias = depth_bias_from_views(noisy, others)
+    fixed = bias.apply(noisy.depth)
+    moved = rel_err(fixed, noisy.depth)
+    assert moved[block].max() < 0.002 and moved.max() < 0.002, (moved[block].max(), moved.max())   # nothing to correct: nothing moves
+    # and a real bias is still removed, on the table and on the block alike
+    wrong = bent(noisy, scale=1.015, tilt_rel=(0.02, 0.01))
+    bias = depth_bias_from_views(wrong, others)
+    err = rel_err(bias.apply(wrong.depth), truth.depth)
+    assert np.median(err[block]) < 0.004 and np.median(err[~block]) < 0.004, (np.median(err[block]), np.median(err[~block]))

@@ -8,6 +8,7 @@ struct PreviewUniforms {
     var lightDir: SIMD3<Float>
     var pointSize: Float
     var showMesh: UInt32
+    var showProvenance: UInt32
 }
 
 enum PreviewMode: String, CaseIterable, Identifiable {
@@ -90,7 +91,8 @@ final class PreviewRenderer: NSObject, MTKViewDelegate, ObservableObject {
         let eye = target + radius * SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw))
         let vp = perspective(fovy: 0.75, aspect: aspect, near: 0.01, far: 10) * lookAt(eye: eye, target: target, up: [0, 1, 0])
         var u = PreviewUniforms(viewProj: vp, lightDir: simd_normalize(SIMD3(0.3, 1.0, 0.4)),
-                                pointSize: Float(view.contentScaleFactor) * 2.2, showMesh: mode == .points ? 0 : 1)
+                                pointSize: Float(view.contentScaleFactor) * 2.2, showMesh: mode == .points ? 0 : 1,
+                                showProvenance: UserDefaults.standard.bool(forKey: "preview.showProvenance") ? 1 : 0)
         enc.setDepthStencilState(depthState)
         if mode != .points { mesh?.draw(enc, uniforms: &u) }
         if mode != .surface || (mesh?.indexCount ?? 0) == 0 { points?.draw(enc, uniforms: &u, showTracking: showTracking) }

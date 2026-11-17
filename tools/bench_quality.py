@@ -42,8 +42,11 @@ def metrics(scene, verts, tris, vis_pts, vis_mat, cls=None):
     wall = (vis_mat == 1) & (vis_pts[:, 1] <= 0.047) & (vis_pts[:, 1] > 0.008)
     extra = {}
     if cls is not None and len(cls) == len(d):
-        meas, interp = cls == 0, cls == 1
-        extra = {"measured_vertices_pct": float(meas.mean() * 100),
+        meas, interp, est = cls == 0, cls == 1, cls == 2
+        if est.any():
+            extra = {"estimated_vertices_pct": float(est.mean() * 100), "estimated_median_mm": float(np.median(d[est]) * 1000),
+                     "estimated_p90_mm": float(np.percentile(d[est], 90) * 1000)}
+        extra = {**extra, "measured_vertices_pct": float(meas.mean() * 100),
                  "measured_p90_mm": float(np.percentile(d[meas], 90) * 1000) if meas.any() else None,
                  "measured_floaters_pct(>6mm)": float((d[meas] > 0.006).mean() * 100) if meas.any() else None,
                  "interpolated_p90_mm": float(np.percentile(d[interp], 90) * 1000) if interp.any() else None}
@@ -69,6 +72,7 @@ def main():
     ap.add_argument("--no-refine", action="store_true", help="skip the global pose refinement when finishing")
     ap.add_argument("--jitter-mm", type=float, default=0.0, help="independent per-frame position noise on reported poses")
     ap.add_argument("--jitter-deg", type=float, default=0.0, help="independent per-frame rotation noise on reported poses")
+    ap.add_argument("--no-close", action="store_true", help="do not close the surface when finishing")
     ap.add_argument("--dump", action="store_true", help="save the raw fused mesh and the point store for offline experiments")
     ap.add_argument("--mono-oracle", action="store_true",
                     help="fill stereo gaps from a SIMULATED single-image depth (true depth, damaged): upper bound of the fill step, not a result of the real network")
@@ -141,7 +145,7 @@ def main():
         from reconstruction.refinement import finish_session
         import open3d as o3d
         t1 = time.perf_counter()
-        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine, remove_table=False, mono=mono)
+        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine, remove_table=False, mono=mono, close=not a.no_close)
         res["pose_refinement"] = rep_final["pose_refinement"]
         res["mono_fill_final"] = rep_final["mono_fill"]
         gf = decode_geometry((out / "final" / "final_preview.dpg").read_bytes())

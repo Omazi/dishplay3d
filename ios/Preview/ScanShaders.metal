@@ -6,6 +6,7 @@ struct Uniforms {
     float3 lightDir;
     float pointSize;
     uint showMesh;
+    uint showProvenance;   // 1: tint what is interpolated or estimated; 0 (default): real colours everywhere
 };
 
 struct PointOut {
@@ -27,7 +28,7 @@ vertex PointOut pointVertex(uint vid [[vertex_id]],
     float alpha = 1.0;
     float size = u.pointSize;
     if (cls == 4) { rgb = mix(rgb, float3(0.55), 0.35); alpha = 0.75; }            // provisional single view
-    if (cls == 1) { rgb = mix(rgb, float3(0.25, 0.45, 0.95), 0.45); }               // interpolated (weak texture)
+    if (cls == 1 && u.showProvenance != 0) { rgb = mix(rgb, float3(0.25, 0.45, 0.95), 0.45); }   // interpolated (weak texture)
     if (cls == 3) { rgb = float3(0.75, 0.75, 0.80); alpha = 0.6; size *= 0.7; }     // ARKit tracking points
     if (u.showMesh != 0 && cls == 0) { size *= 0.6; }
     o.color = float4(rgb, alpha);
@@ -65,7 +66,9 @@ fragment float4 meshFragment(MeshOut in [[stage_in]], constant Uniforms &u [[buf
     float3 n = normalize(in.normal);
     float shade = 0.45 + 0.55 * abs(dot(n, normalize(u.lightDir)));
     float3 rgb = in.color * shade;
-    if (in.cls > 0.5 && in.cls < 1.5) {          // interpolated by fusion: visibly tinted
+    if (u.showProvenance == 0) {
+        // real colours: the model is shown as it looks; the provenance view is a choice in Settings
+    } else if (in.cls > 0.5 && in.cls < 1.5) {   // interpolated by fusion: visibly tinted
         rgb = mix(rgb, float3(0.25, 0.45, 0.95), 0.45);
     } else if (in.cls > 1.5 && in.cls < 2.5) {   // estimated (completion): magenta stripes
         float s = step(0.5, fract((in.position.x + in.position.y) * 0.08));

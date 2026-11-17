@@ -13,12 +13,14 @@ import cv2
 import numpy as np
 import open3d as o3d
 
+from .closure import close_surface
 from .completion import NoCompletion
 from .coordinates import invert_rigid
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply
 from .fusion import FusionConfig
-from .mesh_preview import ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, supported_mesh, surface_area
+from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, drop_small_pieces,
+                           supported_mesh, surface_area)
 from .preview_format import encode_geometry
 
 
@@ -93,7 +95,8 @@ def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) 
 
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
                    texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True,
-                   remove_table: bool = True, max_frames: int = 140, mono=None, mono_reason: str = "") -> dict:
+                   remove_table: bool = True, max_frames: int = 140, mono=None, mono_reason: str = "",
+                   close: bool = True) -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -164,6 +167,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     # The box is rectangular, the dish is not: the bare table caught in the corners is not part of the
     # delivered model. The version with the table is kept beside it; nothing is added or closed.
     dish_info = {"status": "no_mesh"}
+    fp = None
     if len(T):
         dish_info = {"status": "nothing_to_remove"}
         try:
@@ -173,6 +177,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 write_glb(out_dir / "model_avec_table.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
                 removed = int((~keep_t).sum())
                 V, C, N, cls, T = crop_mesh(V, C, N, cls, T, keep_t)
+                V, C, N, cls, T, crumbs = drop_small_pieces(V, C, N, cls, T)
                 kp = fp.keep(xyz)
                 xyz, rgb, pcls, nframes, weak = xyz[kp], rgb[kp], pcls[kp], nframes[kp], weak[kp]
                 glb_extras = {**glb_extras, "table_removed": True}
@@ -180,9 +185,29 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 (out_dir / "dish_footprint.json").write_text(json.dumps({
                     "frame": "object", "units": "m", "table_y": fp.table_y, "top_y": float(V[:, 1].max()),
                     "hull_xz": hull.tolist()}))
-                dish_info = {"status": "ok", "triangles": int(len(T)), "removed_triangles": removed, "table_y_m": fp.table_y}
+                dish_info = {"status": "ok", "triangles": int(len(T)), "removed_triangles": removed, "crumb_triangles": crumbs, "table_y_m": fp.table_y}
         except Exception as exc:
             dish_info = {"status": "failed", "error": repr(exc)}
+    # Close the surface: a smooth patch across each hole and, when the table was removed, a flat base under the
+    # dish. What was reconstructed is kept as it is (also delivered alone, model_mesure.glb); what is added is
+    # labelled ESTIMATED. See closure.py.
+    closure_info = {"status": "disabled"}
+    if close and len(T):
+        try:
+            write_glb(out_dir / "model_mesure.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
+            on_table = dish_info.get("status") == "ok" and fp is not None
+            floor_xz = None
+            if on_table:   # the base goes strictly under the dish: the inner part of its footprint, not its outline
+                under = fp.core if fp.core is not None and fp.core.any() else fp.grid
+                ii, jj = np.nonzero(under)
+                floor_xz = (np.stack([ii, jj], 1) + 0.5) * fp.cell_m + fp.origin
+            V, C, N, cls, T, closure_info = close_surface(
+                V, C, N, cls, T, engine.box.size_m, floor_y=fp.table_y if on_table else None, floor_xz=floor_xz,
+                floor_slope=(fp.slope_x, fp.slope_z) if on_table else (0.0, 0.0))
+            if closure_info.get("added_triangles"):
+                glb_extras = {**glb_extras, "closed": True}
+        except Exception as exc:   # never lose a scan because the closing failed: the open model is delivered
+            closure_info = {"status": "failed", "error": repr(exc)}
     completion = NoCompletion().propose(V, T, cls, engine.box.size_m)
     write_points_ply(out_dir / "points.ply", xyz, rgb, pcls, nframes)
     write_mesh_ply(out_dir / "mesh.ply", V, C, N, cls, T)
@@ -245,7 +270,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     report = {
         "schema": "dishplay.report/1", "engine": ENGINE_VERSION, "finish_width": finish_width,
         "frames_available": available, "frames_used": len(usable), "frames_integrated_final": len(fusion.integrated_frames),
-        "pairs": pair_stats, "mono_fill": {**fin.mono_report(), **({"reason": mono_reason} if mono is None and mono_reason else {})}, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
+        "closure": closure_info, "pairs": pair_stats, "pair_bias": fin.metrics()["pair_bias"], "mono_fill": {**fin.mono_report(), **({"reason": mono_reason} if mono is None and mono_reason else {})}, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
         "mesh": {"vertices": int(len(V)), "triangles": int(len(T)), "surface": areas,
                  "provenance_vertices": {"measured": int((cls == MEASURED).sum()), "interpolated": int((cls == INTERPOLATED).sum()),
                                          "estimated": int((cls == ESTIMATED).sum())}},

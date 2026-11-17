@@ -273,6 +273,10 @@ def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     P = glb_accessor(js, b, at["POSITION"]).astype(np.float64)
     N = glb_accessor(js, b, at["NORMAL"]).astype(np.float64)
     UV = glb_accessor(js, b, at["TEXCOORD_0"])
+    prov = glb_accessor(js, b, at["_PROVENANCE"]).reshape(-1)
+    assert (tmp_path / "final" / "model_mesure.glb").exists()     # the model as reconstructed, before closing
+    reconstructed = prov < 1.5                                     # the estimated parts (closed holes, base) have no true colour to compare with
+    P, N, UV = P[reconstructed], N[reconstructed], UV[reconstructed]
     v = js["bufferViews"][js["images"][0]["bufferView"]]
     tex = cv2.imdecode(np.frombuffer(b[v["byteOffset"]: v["byteOffset"] + v["byteLength"]], np.uint8), 1)
     H, W = tex.shape[:2]

@@ -191,18 +191,9 @@ class DepthBias:
         corr = np.clip(corr, -max_rel * w, max_rel * w)
         return np.where(valid, 1.0 / (w + corr), 0.0).astype(np.float32)
 
-    def centre_change(self, depth_m: float) -> float:
-        """Relative change this correction makes to a depth of depth_m at the image centre (for statistics)."""
-        w = 1.0 / depth_m
-        return float(abs((self.scale - 1.0) * w + self.offset) / w)
-
-    def tilt_change(self, depth_m: float) -> float:
-        """Relative difference of the change between two opposite image corners (for statistics)."""
-        return float(np.hypot(self.gu, self.gv) * depth_m)
-
 
 def _fit_depth_bias(un: np.ndarray, vn: np.ndarray, w_ref: np.ndarray, w_tgt: np.ndarray, max_rel: float,
-                    min_samples: int) -> DepthBias | None:
+                    min_samples: int, ridge: float = 0.02) -> DepthBias | None:
     """Robust fit of w_tgt = scale * w_ref + offset + gu * un + gv * vn."""
     ratio = w_tgt / w_ref
     centre = 1.0
@@ -215,27 +206,40 @@ def _fit_depth_bias(un: np.ndarray, vn: np.ndarray, w_ref: np.ndarray, w_tgt: np
     un, vn, w_ref, w_tgt = un[sel], vn[sel], w_ref[sel], w_tgt[sel]
     wbar = float(np.median(w_ref))
     y = (w_tgt - w_ref) / wbar
-    cols = [np.ones(len(y))]
     use_scale = float(np.std(w_ref / wbar)) > 0.03                      # enough depth variation to tell a scale from an offset
     use_tilt = float(np.std(un)) > 0.06 and float(np.std(vn)) > 0.06    # enough spread to see a tilt
+    cols = []
     if use_scale:
         cols.append(w_ref / wbar - 1.0)
     if use_tilt:
         cols += [un, vn]
-    A = np.stack(cols, 1)
     keep = np.ones(len(y), bool)
-    co = np.zeros(A.shape[1])
+    e0, beta, mad = 0.0, np.zeros(len(cols)), 0.0
+    X = np.stack(cols, 1) if cols else np.zeros((len(y), 0))
     for _ in range(4):
         if keep.sum() < min_samples:
             return None
-        co, *_ = np.linalg.lstsq(A[keep], y[keep], rcond=None)
-        r = y - A @ co
+        if cols:
+            # On a table seen obliquely the depth is itself a ramp across the image: scale and tilt are then
+            # almost the same column, and plain least squares trades one against the other with huge opposite
+            # values that cancel on the table and throw off whatever stands on it. The columns are brought
+            # to unit variance and a small ridge removes exactly those undetermined combinations; a
+            # direction the data does determine is shrunk by `ridge` (2 %) at most.
+            mu, sd = X[keep].mean(0), X[keep].std(0) + 1e-12
+            Z = (X[keep] - mu) / sd
+            ym = float(y[keep].mean())
+            C = Z.T @ Z / len(Z)
+            g = Z.T @ (y[keep] - ym) / len(Z)
+            beta = np.linalg.solve(C + ridge * np.eye(len(cols)), g) / sd
+            e0 = ym - float(mu @ beta)
+        else:
+            e0 = float(np.median(y[keep]))
+        r = y - e0 - X @ beta
         mad = 1.4826 * float(np.median(np.abs(r[keep] - np.median(r[keep])))) + 1e-9
         keep = np.abs(r) < 2.5 * mad
-    e0 = co[0]
-    e1 = co[1] if use_scale else 0.0
-    gu, gv = (co[-2], co[-1]) if use_tilt else (0.0, 0.0)
-    return DepthBias(scale=1.0 + float(e1), offset=float((e0 - e1) * wbar), gu=float(gu * wbar), gv=float(gv * wbar),
+    e1 = float(beta[0]) if use_scale else 0.0
+    gu, gv = (float(beta[-2]), float(beta[-1])) if use_tilt else (0.0, 0.0)
+    return DepthBias(scale=1.0 + e1, offset=float((e0 - e1) * wbar), gu=gu * wbar, gv=gv * wbar,
                      samples=int(keep.sum()), residual_rel=float(mad))
 
 

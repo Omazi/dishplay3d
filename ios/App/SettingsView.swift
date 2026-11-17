@@ -3,6 +3,7 @@ import UIKit
 
 /// Calculator link and capture options.
 struct SettingsView: View {
+    @AppStorage("preview.showProvenance") private var showProvenance = false
     @EnvironmentObject var model: AppModel
     @State private var manual = false
 
@@ -85,6 +86,14 @@ struct SettingsView: View {
             if !model.trackingSupported {
                 Label("Cet iPhone ne prend pas en charge le suivi AR.", systemImage: "xmark.octagon").foregroundStyle(Theme.bad)
             }
+            Toggle(isOn: $showProvenance) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Colorer les zones estimées").font(.subheadline.weight(.semibold))
+                    Text("Teinte en bleu ce qui n’a pas été mesuré directement. Sinon, le modèle garde ses vraies couleurs.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .tint(Theme.accent)
             if model.lidarSupported {
                 Toggle(isOn: $model.useLidar) {
                     VStack(alignment: .leading, spacing: 2) {

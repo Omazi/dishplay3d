@@ -133,7 +133,7 @@ class SessionEngine:
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
         self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
         self.scale_stats = {"applied": 0, "skipped": 0, "abs_dev_sum": 0.0}
-        self.bias_stats = {"applied": 0, "skipped": 0, "centre_sum": 0.0, "tilt_sum": 0.0}
+        self.bias_stats = {"applied": 0, "skipped": 0, "moved_sum": 0.0, "moved_max": 0.0}
         # Optional learned single-image depth (see mono_depth.py): fills what stereo cannot measure.
         self.mono = None
         self.mono_stats = {"views": 0, "views_filled": 0, "filled_px": 0, "kept_px": 0, "errors": 0, "skipped": {}}
@@ -344,11 +344,13 @@ class SessionEngine:
                 st["skipped"] += 1
                 anchor = d if anchor is None else anchor
                 continue
-            zmed = float(np.median(d[d > 0]))
+            fixed = bias.apply(d, self.cfg.bias_gain, self.cfg.bias_max_rel)
+            sub = d[::4, ::4]
+            moved = np.abs(fixed[::4, ::4][sub > 0] - sub[sub > 0]) / sub[sub > 0]
             st["applied"] += 1
-            st["centre_sum"] += bias.centre_change(zmed)
-            st["tilt_sum"] += bias.tilt_change(zmed)
-            depths[i] = bias.apply(d, self.cfg.bias_gain, self.cfg.bias_max_rel)
+            st["moved_sum"] += float(moved.mean())
+            st["moved_max"] = max(st["moved_max"], float(np.percentile(moved, 95)))
+            depths[i] = fixed
             anchor = depths[i] if anchor is None else anchor
         return used_views
 
@@ -584,8 +586,8 @@ class SessionEngine:
             "confirmation": dict(self.confirm_stats),
             "mono_fill": self.mono_report(),
             "pair_bias": {"applied": self.bias_stats["applied"], "skipped": self.bias_stats["skipped"],
-                          "mean_centre_correction_pct": round(100 * self.bias_stats["centre_sum"] / max(1, self.bias_stats["applied"]), 3),
-                          "mean_tilt_correction_pct": round(100 * self.bias_stats["tilt_sum"] / max(1, self.bias_stats["applied"]), 3)},
+                          "mean_correction_pct": round(100 * self.bias_stats["moved_sum"] / max(1, self.bias_stats["applied"]), 3),
+                          "largest_correction_pct": round(100 * self.bias_stats["moved_max"], 3)},
             "depth_scale": {"applied": self.scale_stats["applied"], "skipped": self.scale_stats["skipped"],
                             "mean_abs_correction_pct": round(100 * self.scale_stats["abs_dev_sum"] / max(1, self.scale_stats["applied"]), 3)},
             "pairs": {"total": len(pr), "ok": sum(p["status"] == "ok" for p in pr),

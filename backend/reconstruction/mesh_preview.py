@@ -207,6 +207,19 @@ class DishFootprint:
         return cv2.convexHull(pts.astype(np.float32)).reshape(-1, 2).astype(np.float64)
 
 
+def drop_small_pieces(V, C, N, cls, T, min_triangles: int = 300):
+    """Remove the crumbs: connected pieces of fewer than min_triangles triangles (a few cm2), typically scraps
+    of table left around the dish. A separate item of food is far larger and stays."""
+    if len(T) == 0:
+        return V, C, N, cls, T, 0
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(V.astype(np.float64)), o3d.utility.Vector3iVector(T.astype(np.int32)))
+    lab, counts, _ = m.cluster_connected_triangles()
+    keep_t = np.asarray(counts)[np.asarray(lab)] >= min(min_triangles, int(np.max(counts)))
+    if keep_t.all():
+        return V, C, N, cls, T, 0
+    return (*crop_mesh(V, C, N, cls, T, keep_t), int((~keep_t).sum()))
+
+
 def crop_mesh(V, C, N, cls, T, keep_t: np.ndarray):
     """Keep the selected triangles and only the vertices they use."""
     used = np.unique(T[keep_t])
