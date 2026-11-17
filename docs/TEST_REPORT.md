@@ -412,6 +412,31 @@ Jugement honnête : sur un objet texturé, le résultat est maintenant un vrai m
 pas le cas ce matin ; il n'a pas la propreté d'un produit du commerce (bords, fragments, zones unies vides).
 33 tests des modules touchés passés ; suite complète précédente : 66 passés, 1 sauté.
 
+## Mise à jour du 18 novembre — le modèle livré : contour propre, fichier léger, texture pleine résolution (moteur `p1-0.7.0`)
+
+`reconstruction/delivery.py` et l'étape de texture de la finition. Vérifié sur deux captures réelles en affichant
+`model.glb` dans un navigateur (model-viewer), avant et après : `docs/evidence/livraison_web_objets_reels.jpg`.
+
+| | Avant | Après |
+|---|---|---|
+| Boîtes imprimées : poids de `model.glb` | 12,8 Mo | 2,8 Mo |
+| Chaussures : poids de `model.glb` | 25,6 Mo | 3,4 Mo |
+| Triangles livrés | 71 000 / 167 000 | 60 000 / 60 000 |
+| Source de la texture | images réduites à 1152 px | photos d'origine, 1920 px |
+| Format de la texture | PNG | JPEG qualité 88 |
+
+- Gros plan dans le navigateur : même netteté de lecture des marques après allègement.
+- Défaut trouvé à l'affichage : un liseré de la couleur du fond autour de chaque trou refermé. Vérifié en changeant
+  la couleur de la page : c'était une fente entre la rustine et la surface. Les rustines chevauchent maintenant le
+  bord du trou (test dédié).
+- Contour : les dents et languettes d'un triangle de large sont retirées (843 et 2 831 triangles), les morceaux de
+  moins de 2 % de la surface aussi. Les gros morceaux de décor voisins (linge à côté des chaussures) restent : ce
+  sont de vrais objets dans la boîte, pas des débris.
+- Le maillage complet reste disponible (`mesh.ply`, `model_vertexcolor.glb`, `model_mesure.glb`).
+
+Limites inchangées : surfaces unies non mesurées ; aucun plat réel ; remplissage par profondeur apprise non exécuté.
+73 tests passés, 1 sauté.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
