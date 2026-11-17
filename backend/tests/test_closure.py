@@ -128,3 +128,19 @@ def test_closing_never_creates_an_edge_shared_by_three_triangles():
     V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2), max_gap_m=0.02)
     from reconstruction.mesh_preview import edge_manifold_triangles
     assert edge_manifold_triangles(T2[len(T):]).all()
+
+
+def test_no_crack_is_left_between_a_patch_and_the_surface_around_it():
+    """Seen in a browser on a real capture: a thin line of background showing all around each closed hole."""
+    centre = on_sphere([1.0, 0.8, 0.3])
+    hole_r = 0.015
+    V, C, N, cls, T = dome(hole_at=centre, hole_radius=hole_r)
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2), max_gap_m=0.02)
+    # points of the true sphere in a band around the rim of the hole
+    rng = np.random.default_rng(1)
+    P = rng.normal(size=(60000, 3))
+    P = R * P / np.linalg.norm(P, axis=1, keepdims=True)
+    d = np.linalg.norm(P - centre, axis=1)
+    band = P[(d > hole_r - 0.004) & (d < hole_r + 0.004) & (P[:, 1] > 0.006)]
+    assert len(band) > 200
+    assert np.percentile(dist_to_mesh(V2, T2, band), 99) < 0.0008

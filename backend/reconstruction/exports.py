@@ -47,7 +47,8 @@ def write_mesh_ply(path: Path, V, colors, normals, classes, T):
 
 def write_glb(path: Path, V: np.ndarray, T: np.ndarray, normals: np.ndarray | None = None,
               colors: np.ndarray | None = None, uv: np.ndarray | None = None, texture_bgr: np.ndarray | None = None,
-              provenance: np.ndarray | None = None, extras: dict | None = None) -> dict:
+              provenance: np.ndarray | None = None, extras: dict | None = None,
+              texture_jpeg_quality: int | None = None) -> dict:
     """Minimal glTF 2.0 binary writer (y up, metres). Returns the JSON part for inspection.
 
     With uv + texture_bgr the PNG is embedded; else per-vertex COLOR_0. A custom
@@ -88,10 +89,15 @@ def write_glb(path: Path, V: np.ndarray, T: np.ndarray, normals: np.ndarray | No
     images, textures, samplers = [], [], []
     if uv is not None and texture_bgr is not None:
         attrs["TEXCOORD_0"] = add_acc(np.ascontiguousarray(uv, np.float32), 5126, "VEC2")
-        ok, png = cv2.imencode(".png", texture_bgr)
+        if texture_jpeg_quality:   # photographs compress ten times better as JPEG; glTF accepts both
+            ok, enc = cv2.imencode(".jpg", texture_bgr, [cv2.IMWRITE_JPEG_QUALITY, int(texture_jpeg_quality)])
+            mime = "image/jpeg"
+        else:
+            ok, enc = cv2.imencode(".png", texture_bgr)
+            mime = "image/png"
         assert ok
-        vi = add_view(png.tobytes(), None)
-        images.append({"bufferView": vi, "mimeType": "image/png"})
+        vi = add_view(enc.tobytes(), None)
+        images.append({"bufferView": vi, "mimeType": mime})
         samplers.append({"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071})
         textures.append({"sampler": 0, "source": 0})
         material["pbrMetallicRoughness"]["baseColorTexture"] = {"index": 0}

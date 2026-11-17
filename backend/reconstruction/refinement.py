@@ -14,14 +14,16 @@ import numpy as np
 import open3d as o3d
 
 from .closure import close_surface
+from .delivery import decimate_for_web, trim_ragged_border, weld_corners
 from .completion import NoCompletion
-from .coordinates import invert_rigid
+from .coordinates import invert_rigid, scale_intrinsics
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply
 from .fusion import FusionConfig
 from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, drop_small_pieces, edge_manifold_triangles,
                            supported_mesh, surface_area)
 from .preview_format import encode_geometry
+from .stereo_depth import View
 
 
 def footprint_width(V: np.ndarray, size_m) -> dict:
@@ -74,6 +76,22 @@ def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_
     return uv, tex, len(sel), filled
 
 
+def _texture_views(fin: SessionEngine, frame_ids: list[int], max_views: int = 36) -> list[View]:
+    """The views that paint the texture, at the resolution of the stored photographs (the depth was computed
+    on reduced images; the texture need not be)."""
+    step = max(1, len(frame_ids) // max_views)
+    out = []
+    for f in frame_ids[::step][:max_views]:
+        v = fin._view(f)
+        img = cv2.imread(str(fin.frames[f].image_path), cv2.IMREAD_COLOR)
+        if img is None or img.shape[1] <= v.image.shape[1]:
+            out.append(v)
+            continue
+        K = scale_intrinsics(v.K, (v.image.shape[1], v.image.shape[0]), (img.shape[1], img.shape[0]))
+        out.append(View(f, img, K, v.T_obj_from_cam))
+    return out
+
+
 def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) -> list[int]:
     """At most max_frames views, spread as evenly as possible around the dish.
 
@@ -96,7 +114,7 @@ def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) 
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
                    texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True,
                    remove_table: bool = True, max_frames: int = 140, mono=None, mono_reason: str = "",
-                   close: bool = True) -> dict:
+                   close: bool = True, clean: bool = True, web_triangles: int = 60000) -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -188,6 +206,15 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 dish_info = {"status": "ok", "triangles": int(len(T)), "removed_triangles": removed, "crumb_triangles": crumbs, "table_y_m": fp.table_y}
         except Exception as exc:
             dish_info = {"status": "failed", "error": repr(exc)}
+    # A finished look: teeth and thin tongues along the outline are trimmed, scraps of the surroundings dropped.
+    clean_info = {"status": "disabled"}
+    if clean and len(T):
+        n0 = len(T)
+        kt = trim_ragged_border(T)
+        if not kt.all():
+            V, C, N, cls, T = crop_mesh(V, C, N, cls, T, kt)
+        V, C, N, cls, T, scraps = drop_small_pieces(V, C, N, cls, T, min_area_share=0.02)
+        clean_info = {"status": "ok", "outline_triangles_trimmed": int((~kt).sum()), "scrap_triangles": scraps, "triangles_before": n0}
     # Close the surface: a smooth patch across each hole and, when the table was removed, a flat base under the
     # dish. What was reconstructed is kept as it is (also delivered alone, model_mesure.glb); what is added is
     # labelled ESTIMATED. See closure.py.
@@ -217,19 +244,22 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
             emit({"type": "finish_progress", "step": "texture", "done": 0, "total": 1})
             t2 = time.perf_counter()
             try:
-                views = [fin._view(f) for f in fusion.integrated_frames]
-                ok_t = edge_manifold_triangles(T)     # the atlas refuses an edge shared by three triangles
+                # The delivered file: fewer triangles, texture taken from the photographs at full resolution,
+                # vertices shared wherever the atlas has no seam, JPEG texture. The full mesh stays in mesh.ply.
+                Vw, Cw, Nw, cw, Tw = decimate_for_web(V, C, N, cls, T, web_triangles)
+                ok_t = edge_manifold_triangles(Tw)     # the atlas refuses an edge shared by three triangles
                 if not ok_t.all():
-                    T = T[ok_t]
-                tri_uv, tex, nv, filled = texture_mesh(V, T, views, colors_bgr=C[:, ::-1].astype(np.float64))
-                Vs = V[T.reshape(-1)]
-                Ns = N[T.reshape(-1)]
-                Ps = cls[T.reshape(-1)]
-                Ts = np.arange(len(Vs), dtype=np.uint32).reshape(-1, 3)
-                write_glb(out_dir / "model.glb", Vs, Ts, Ns, uv=tri_uv.reshape(-1, 2), texture_bgr=tex, provenance=Ps, extras=glb_extras)
+                    Tw = Tw[ok_t]
+                views = _texture_views(fin, list(fusion.integrated_frames))
+                tri_uv, tex, nv, filled = texture_mesh(Vw, Tw, views, colors_bgr=Cw[:, ::-1].astype(np.float64))
+                Vg, Ng, UVg, Pg, Tg = weld_corners(Vw, Nw, cw, Tw, tri_uv)
+                write_glb(out_dir / "model.glb", Vg, Tg, Ng, uv=UVg, texture_bgr=tex, provenance=Pg, extras=glb_extras,
+                          texture_jpeg_quality=88)
                 cv2.imwrite(str(out_dir / "texture.png"), tex)
                 tex_info = {"status": "ok", "views": nv, "size": int(tex.shape[0]), "seconds": time.perf_counter() - t2,
-                            "filled_from_vertex_colours": filled}
+                            "filled_from_vertex_colours": filled, "source_width": int(views[0].image.shape[1]) if views else None,
+                            "triangles": int(len(Tg)), "vertices": int(len(Vg)),
+                            "file_mb": round((out_dir / "model.glb").stat().st_size / 1e6, 2)}
             except Exception as exc:  # documented fallback: vertex colours
                 tex_info = {"status": "failed_fallback_vertex_colors", "error": repr(exc)}
         if tex_info["status"] != "ok":
@@ -273,7 +303,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     report = {
         "schema": "dishplay.report/1", "engine": ENGINE_VERSION, "finish_width": finish_width,
         "frames_available": available, "frames_used": len(usable), "frames_integrated_final": len(fusion.integrated_frames),
-        "closure": closure_info, "pairs": pair_stats, "pair_bias": fin.metrics()["pair_bias"], "mono_fill": {**fin.mono_report(), **({"reason": mono_reason} if mono is None and mono_reason else {})}, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
+        "closure": closure_info, "cleaning": clean_info, "pairs": pair_stats, "pair_bias": fin.metrics()["pair_bias"], "mono_fill": {**fin.mono_report(), **({"reason": mono_reason} if mono is None and mono_reason else {})}, "points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()),
         "mesh": {"vertices": int(len(V)), "triangles": int(len(T)), "surface": areas,
                  "provenance_vertices": {"measured": int((cls == MEASURED).sum()), "interpolated": int((cls == INTERPOLATED).sum()),
                                          "estimated": int((cls == ESTIMATED).sum())}},

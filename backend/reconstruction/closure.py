@@ -72,6 +72,13 @@ def close_surface(V, C, N, cls, T, box_size_m, floor_y: float | None = None, flo
     keep_t = ok_v[PT].all(1) & (d_mesh > off)
     if not keep_t.any():
         return V, C, N, cls, T, info
+    # A patch cut exactly at the rim of its hole leaves a crack all around (the background shows through).
+    # It is extended by two rings of triangles so that it overlaps the surface it mends.
+    usable = ok_v[PT].all(1)
+    for _ in range(2):
+        touched = np.zeros(len(PV), bool)
+        touched[PT[keep_t].reshape(-1)] = True
+        keep_t = usable & (keep_t | touched[PT].any(1))
     PT = PT[keep_t]
     # A patch must hang on the existing surface (or on the base): free-floating pieces are dropped.
     patch = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(PV), o3d.utility.Vector3iVector(PT))

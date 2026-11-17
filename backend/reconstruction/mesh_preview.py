@@ -226,14 +226,18 @@ def edge_manifold_triangles(T: np.ndarray) -> np.ndarray:
     return keep
 
 
-def drop_small_pieces(V, C, N, cls, T, min_triangles: int = 300):
-    """Remove the crumbs: connected pieces of fewer than min_triangles triangles (a few cm2), typically scraps
-    of table left around the dish. A separate item of food is far larger and stays."""
+def drop_small_pieces(V, C, N, cls, T, min_triangles: int = 300, min_area_share: float = 0.0):
+    """Remove the crumbs: connected pieces of fewer than min_triangles triangles (a few cm2), or smaller than
+    min_area_share of the whole surface — typically scraps of table or of the surroundings left around the
+    dish. The largest piece always stays."""
     if len(T) == 0:
         return V, C, N, cls, T, 0
     m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(V.astype(np.float64)), o3d.utility.Vector3iVector(T.astype(np.int32)))
-    lab, counts, _ = m.cluster_connected_triangles()
-    keep_t = np.asarray(counts)[np.asarray(lab)] >= min(min_triangles, int(np.max(counts)))
+    lab, counts, areas = m.cluster_connected_triangles()
+    lab, counts, areas = np.asarray(lab), np.asarray(counts), np.asarray(areas)
+    ok = (counts >= min_triangles) & (areas >= min_area_share * areas.sum())
+    ok[int(np.argmax(areas))] = True
+    keep_t = ok[lab]
     if keep_t.all():
         return V, C, N, cls, T, 0
     return (*crop_mesh(V, C, N, cls, T, keep_t), int((~keep_t).sum()))
