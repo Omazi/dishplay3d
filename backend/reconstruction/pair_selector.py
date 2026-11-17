@@ -27,16 +27,24 @@ class PairLimits:
     best_ratio: float = 0.11
     max_axis_angle_deg: float = 22.0
     max_forward_fraction: float = 0.55  # |t_z| / |t| in the reference camera
-    min_box_visible: float = 0.6
+    min_box_visible: float = 0.12   # the reference view must show at least this share of the box...
+    min_shared: float = 0.6         # ...and the partner must see this share of what the reference sees
+
+
+def _box_samples(size_m) -> np.ndarray:
+    w, h, d = size_m
+    return np.stack(np.meshgrid(np.linspace(-w / 2, w / 2, 7), np.linspace(0, h, 3), np.linspace(-d / 2, d / 2, 7)), -1).reshape(-1, 3)
+
+
+def box_seen(K, T_cam_from_obj, size_m, width, height) -> np.ndarray:
+    """Which sample points of the box (a 7x3x7 grid) project inside the image."""
+    uv, z = project(K, T_cam_from_obj, _box_samples(size_m))
+    return (z > 0.05) & (uv[:, 0] >= 0) & (uv[:, 0] < width) & (uv[:, 1] >= 0) & (uv[:, 1] < height)
 
 
 def box_visibility(K, T_cam_from_obj, size_m, width, height) -> float:
-    """Fraction of a 5x3x5 grid of sample points of the box that projects inside the image."""
-    w, h, d = size_m
-    g = np.stack(np.meshgrid(np.linspace(-w / 2, w / 2, 5), np.linspace(0, h, 3), np.linspace(-d / 2, d / 2, 5)), -1).reshape(-1, 3)
-    uv, z = project(K, T_cam_from_obj, g)
-    ok = (z > 0.05) & (uv[:, 0] >= 0) & (uv[:, 0] < width) & (uv[:, 1] >= 0) & (uv[:, 1] < height)
-    return float(ok.mean())
+    """Fraction of the sample points of the box that projects inside the image."""
+    return float(box_seen(K, T_cam_from_obj, size_m, width, height).mean())
 
 
 def pair_geometry(ref_id, T_obj_from_ref, other_id, T_obj_from_other, size_m, limits: PairLimits = PairLimits()) -> PairGeometry | None:
@@ -65,17 +73,22 @@ def select_partners(ref_id: int, views: dict, size_m, max_partners: int = 2, lim
                     exclude: set | None = None) -> list[PairGeometry]:
     """views: frame_id -> (T_obj_from_cam, K, (w, h)). Partners favour distinct baseline directions."""
     T_ref, K_ref, wh = views[ref_id]
-    if box_visibility(K_ref, np.linalg.inv(T_ref), size_m, *wh) < limits.min_box_visible:
+    # A box larger than the field of view at scanning distance (a large plate, a tray) is never seen whole:
+    # what counts is that the reference view shows some of it and that the partner sees the same part.
+    seen_ref = box_seen(K_ref, np.linalg.inv(T_ref), size_m, *wh)
+    if seen_ref.mean() < limits.min_box_visible:
         return []
     cands = []
     for oid, (T_o, K_o, wh_o) in views.items():
         if oid == ref_id or (exclude and oid in exclude):
             continue
-        if box_visibility(K_o, np.linalg.inv(T_o), size_m, *wh_o) < limits.min_box_visible:
-            continue
         g = pair_geometry(ref_id, T_ref, oid, T_o, size_m, limits)
-        if g is not None:
-            cands.append((g, T_o[:3, 3] - T_ref[:3, 3]))
+        if g is None:
+            continue
+        seen_o = box_seen(K_o, np.linalg.inv(T_o), size_m, *wh_o)
+        if (seen_ref & seen_o).sum() < limits.min_shared * seen_ref.sum():
+            continue
+        cands.append((g, T_o[:3, 3] - T_ref[:3, 3]))
     cands.sort(key=lambda c: (-c[0].score, c[0].other_id))
     chosen: list[tuple[PairGeometry, np.ndarray]] = []
     for g, d in cands:

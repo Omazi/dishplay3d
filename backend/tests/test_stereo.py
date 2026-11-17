@@ -114,3 +114,35 @@ def test_round_trip_check_does_not_lose_the_sides_of_the_picture():
     assert valid[seen_by_both].mean() > 0.95, valid[seen_by_both].mean()
     assert np.abs(disp[valid] - d).max() < 1.0
     assert valid[~seen_by_both].mean() < 0.02                       # what only one picture sees is not given a depth
+
+
+def _close_up_views(targets, eye_height=0.26):
+    """Cameras 26 cm above a 53 x 33 cm flat object (a book, a large plate): none of them sees the whole box."""
+    from reconstruction.coordinates import C_AR_FROM_CV, intrinsics_matrix, look_at_ar
+    K = intrinsics_matrix(900.0, 900.0, 575.5, 431.5)
+    views = {}
+    for i, (ex, tx) in enumerate(targets):
+        T_obj_from_cam = look_at_ar([ex, eye_height, 0.10], [tx, 0.0, 0.0]) @ C_AR_FROM_CV
+        views[i] = (T_obj_from_cam, K, (1152, 864))
+    return views
+
+
+def test_a_box_larger_than_the_field_of_view_is_still_scanned():
+    """Found on real captures (a book, a pair of shoes): at scanning distance no photograph showed 60 % of the
+    box, so every view was set aside without a word and nothing was reconstructed."""
+    from reconstruction.pair_selector import box_visibility
+    big = (0.53, 0.03, 0.33)
+    views = _close_up_views([(-0.10, -0.10), (-0.07, -0.08), (-0.04, -0.06), (0.14, 0.16)])
+    assert max(box_visibility(K, np.linalg.inv(T), big, *wh) for T, K, wh in views.values()) < 0.6
+    partners = select_partners(0, views, big)
+    assert {p.other_id for p in partners} & {1, 2}, "two close-ups of the same part of the box make a pair"
+    # a view that looks at another part of the box shares too little with view 0 to be its partner
+    assert 3 not in {p.other_id for p in partners}
+
+
+def test_a_view_that_does_not_see_the_box_gets_no_partner():
+    from reconstruction.coordinates import C_AR_FROM_CV, intrinsics_matrix, look_at_ar
+    K = intrinsics_matrix(900.0, 900.0, 575.5, 431.5)
+    away = look_at_ar([0.0, 0.26, 0.10], [3.0, 0.0, 0.0]) @ C_AR_FROM_CV      # looking far off to the side
+    near = look_at_ar([0.03, 0.26, 0.10], [3.0, 0.0, 0.0]) @ C_AR_FROM_CV
+    assert select_partners(0, {0: (away, K, (1152, 864)), 1: (near, K, (1152, 864))}, (0.2, 0.05, 0.2)) == []
