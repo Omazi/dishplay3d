@@ -641,10 +641,11 @@ capture de l'app.
 
 Vérifié ici, faute de compilateur Swift : chaque couleur nommée dans le code existe dans le catalogue
 (`tools/ios_colors.py --check` : 13 utilisées, 0 manquante) ; plus aucun blanc ou noir écrit en dur hors de
-l'écran de scan (ils seraient illisibles en clair) ; accolades et parenthèses équilibrées dans les fichiers
-réécrits ; le code suit les règles SwiftUI du projet (`swiftui-pro`, `liquid-glass`, `design-system`,
-`typography`). **Non vérifié** : la compilation, le rendu réel sur iPhone en clair et en sombre, les contrastes,
-les grandes tailles de texte, VoiceOver. Les revues `ui-review` et `accessibility-audit` restent à faire sur une
+l'écran de scan (ils seraient illisibles en clair) ; contrastes calculés sur la palette : au moins 4,75 pour 1
+entre chaque texte et son fond, en clair comme en sombre (une paire était à 4,41, corrigée) ; accolades et
+parenthèses équilibrées dans les fichiers réécrits ; le code suit les règles SwiftUI du projet (`swiftui-pro`,
+`liquid-glass`, `design-system`, `typography`). **Non vérifié** : la compilation, le rendu réel sur iPhone en
+clair et en sombre, les grandes tailles de texte, VoiceOver. Les revues `ui-review` et `accessibility-audit` restent à faire sur une
 version compilée, avant publication.
 
 MODEL_SECTION

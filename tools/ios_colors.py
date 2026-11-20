@@ -26,7 +26,7 @@ PALETTE = {
     "Stage":         (0x151613, 0x151613),   # the dark stage 3D content sits on, in both appearances
     "TextOnStage":   (0xF8F8F2, 0xF8F8F2),
     "TextPrimary":   (0x252824, 0xF4F4EE),
-    "TextSecondary": (0x6B6E66, 0xA5A89F),
+    "TextSecondary": (0x666961, 0xA5A89F),   # 4.75:1 on the sunken fill, its worst case
     "Hairline":      (0xE2E4DA, 0x2D2F2A),
     "AccentColor":   (0x2254E7, 0x7E99FF),   # the one action colour (also the app's global tint)
     "OnAccent":      (0xFFFFFF, 0x0B0C0A),   # text on a filled action or status colour
