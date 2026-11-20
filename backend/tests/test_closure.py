@@ -144,3 +144,38 @@ def test_no_crack_is_left_between_a_patch_and_the_surface_around_it():
     band = P[(d > hole_r - 0.004) & (d < hole_r + 0.004) & (P[:, 1] > 0.006)]
     assert len(band) > 200
     assert np.percentile(dist_to_mesh(V2, T2, band), 99) < 0.0008
+
+
+def _object_on(support_y, thin: bool = False):
+    """Vertices of an object standing on a support whose height at (x, z) is support_y(x, z): a low dome
+    (a dish, 3 cm high) or, with thin=True, a flat slab 1.2 cm thick (a book, a board, a pizza)."""
+    g = np.stack(np.meshgrid(np.arange(-0.14, 0.14, 0.003), np.arange(-0.14, 0.14, 0.003)), -1).reshape(-1, 2)
+    r = np.linalg.norm(g, axis=1)
+    if thin:
+        inside = (np.abs(g[:, 0]) < 0.09) & (np.abs(g[:, 1]) < 0.06)
+        obj_h = np.where(inside, 0.012, 0.0)
+    else:
+        inside = r < 0.07
+        obj_h = np.where(r < 0.08, 0.03 * np.sqrt(np.clip(1 - (r / 0.08) ** 2, 0, 1)) + 0.004, 0.0)
+    y = support_y(g[:, 0], g[:, 1]) + obj_h
+    return np.stack([g[:, 0], y, g[:, 1]], 1), inside
+
+
+def test_the_table_is_not_removed_when_the_support_is_not_a_flat_table():
+    """Found on a real capture: a book on a soft bed. The 'table' level was fitted halfway through the uneven
+    support and a quarter of the book was cut away with it. Better to leave the surroundings in the model."""
+    from reconstruction.mesh_preview import DishFootprint
+    flat, dish = _object_on(lambda x, z: np.zeros_like(x))
+    fp = DishFootprint.from_vertices(flat)
+    assert fp is not None and abs(fp.table_y) < 0.002
+    assert fp.keep(flat)[dish].mean() > 0.97 and fp.keep(flat)[np.linalg.norm(flat[:, [0, 2]], axis=1) > 0.10].mean() < 0.05
+    blanket = lambda x, z: 0.012 * np.sin(x * 22) + 0.010 * np.cos(z * 17)             # +-2 cm of relief
+    soft, slab = _object_on(blanket, thin=True)
+    before = DishFootprint.from_vertices(soft, max_below_share=1.0)                    # the rule switched off
+    left = before.keep(soft)[~slab].mean()
+    assert before is not None and 0.3 < left < 0.9, "without the rule the support is half removed: scraps all around"
+    assert DishFootprint.from_vertices(soft) is None                                   # with it: nothing is cut
+    # a table with a few millimetres of relief (a cloth lying flat) is still removed
+    cloth, dish2 = _object_on(lambda x, z: 0.25 * blanket(x, z))
+    fp2 = DishFootprint.from_vertices(cloth)
+    assert fp2 is not None and fp2.keep(cloth)[dish2].mean() > 0.97

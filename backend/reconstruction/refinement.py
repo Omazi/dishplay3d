@@ -39,7 +39,19 @@ def footprint_width(V: np.ndarray, size_m) -> dict:
     return {"x_m": ex, "z_m": ez}
 
 
-def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_bgr: np.ndarray | None = None):
+def _paint_plain(tex: np.ndarray, base: np.ndarray, pts: np.ndarray, plain: np.ndarray) -> int:
+    """Give the triangles marked `plain` their plain surface colour (taken from `base`) in the atlas, whatever
+    the photographs projected there. Returns the number of texels repainted."""
+    mask = np.zeros(tex.shape[:2], np.uint8)
+    for k in np.nonzero(plain)[0]:
+        cv2.fillConvexPoly(mask, pts[k], 255, lineType=cv2.LINE_8, shift=2)
+    sel = (cv2.dilate(mask, np.ones((3, 3), np.uint8)) > 0) & (base.sum(2) > 0)   # with the texel border of each triangle
+    tex[sel] = base[sel]
+    return int(sel.sum())
+
+
+def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_bgr: np.ndarray | None = None,
+                 plain: np.ndarray | None = None):
     """UV atlas + projection of calibrated images (Open3D).
 
     Returns (per-corner uv in glTF convention, texture BGR, views used, fraction filled from vertex colours)."""
@@ -70,6 +82,10 @@ def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_
         unprojected = tex.sum(2) < 15
         filled = float(unprojected[base.sum(2) > 0].mean()) if (base.sum(2) > 0).any() else 0.0
         tex[unprojected] = base[unprojected]
+        if plain is not None and plain.any():
+            # The base under the dish faces the table: no photograph shows it, and what the projection puts
+            # there comes from views that grazed it through a gap (grey streaks on a real capture).
+            _paint_plain(tex, base, pts, plain)
     # glTF texture coordinates have their origin at the TOP-left of the image: flip v.
     uv = tri_uv.copy()
     uv[:, :, 1] = 1.0 - uv[:, :, 1]
@@ -251,7 +267,8 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 if not ok_t.all():
                     Tw = Tw[ok_t]
                 views = _texture_views(fin, list(fusion.integrated_frames))
-                tri_uv, tex, nv, filled = texture_mesh(Vw, Tw, views, colors_bgr=Cw[:, ::-1].astype(np.float64))
+                under = (cw[Tw] == ESTIMATED).all(1) & (Nw[Tw].mean(1)[:, 1] < -0.5)   # the added base, facing down
+                tri_uv, tex, nv, filled = texture_mesh(Vw, Tw, views, colors_bgr=Cw[:, ::-1].astype(np.float64), plain=under)
                 Vg, Ng, UVg, Pg, Tg = weld_corners(Vw, Nw, cw, Tw, tri_uv)
                 write_glb(out_dir / "model.glb", Vg, Tg, Ng, uv=UVg, texture_bgr=tex, provenance=Pg, extras=glb_extras,
                           texture_jpeg_quality=88)

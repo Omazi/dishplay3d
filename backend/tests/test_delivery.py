@@ -82,3 +82,19 @@ def test_texture_can_be_stored_as_jpeg_and_the_file_is_much_lighter(tmp_path):
     v = j["bufferViews"][j["images"][0]["bufferView"]]
     img = cv2.imdecode(np.frombuffer(b[v["byteOffset"]: v["byteOffset"] + v["byteLength"]], np.uint8), 1)
     assert img.shape == tex.shape and np.abs(img.astype(int) - tex).mean() < 6
+
+
+def test_the_base_under_the_dish_is_painted_plain():
+    """No photograph shows the underside: streaks projected there by grazing views are replaced by its colour."""
+    from reconstruction.refinement import _paint_plain
+    rng = np.random.default_rng(0)
+    tex = rng.integers(0, 255, (64, 64, 3), dtype=np.uint8)
+    before = tex.copy()
+    pts = (np.array([[[4, 4], [28, 4], [4, 28]], [[36, 36], [60, 36], [36, 60]]]) * 4).astype(np.int32)   # two triangles, fixed point x4
+    base = np.zeros_like(tex)
+    cv2.fillConvexPoly(base, pts[0], (90, 80, 70), shift=2)
+    cv2.fillConvexPoly(base, pts[1], (10, 200, 10), shift=2)
+    n = _paint_plain(tex, base, pts, np.array([True, False]))
+    assert n > 200
+    assert (tex[8:14, 8:14] == (90, 80, 70)).all()                 # inside the plain triangle
+    assert np.array_equal(tex[40:50, 40:46], before[40:50, 40:46])  # the other triangle keeps its photograph

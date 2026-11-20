@@ -155,12 +155,18 @@ class DishFootprint:
 
     @staticmethod
     def from_vertices(V: np.ndarray, table_band_m: float = 0.004, body_min_m: float = 0.006, cell_m: float = 0.002,
-                      min_blob_share: float = 0.15, rim_ring_m: float = 0.010) -> "DishFootprint | None":
+                      min_blob_share: float = 0.15, rim_ring_m: float = 0.010, max_below_share: float = 0.10) -> "DishFootprint | None":
         from scipy import ndimage
         if len(V) < 30:
             return None
         a, b, c = fit_table_plane(V)
         height = V[:, 1] - (a * V[:, 0] + b * V[:, 2] + c)
+        # A table is flat and opaque: nothing of the scan lies below it (measured on real captures: 1 to 3 % of
+        # the vertices, noise). When a good share does — 30 % for a book lying on a soft bed — what was fitted
+        # is not a table but a level cutting through an uneven support or through the dish, and removing
+        # everything 4 mm above it would slice the dish itself. Then there is no footprint: nothing is removed.
+        if float((height < -0.003).mean()) > max_below_share:
+            return None
         body = height > body_min_m
         if body.sum() < 30:
             return None
