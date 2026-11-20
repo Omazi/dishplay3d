@@ -27,6 +27,10 @@ final class PreviewRenderer: NSObject, MTKViewDelegate, ObservableObject {
     var mode: PreviewMode = .both
     var showTracking = true
     var boxSize = SIMD3<Float>(0.3, 0.1, 0.3)
+    private var contentCentre: SIMD3<Float>?
+    private var contentRadius: Float = 0
+    private var viewCentre = SIMD3<Float>(0, 0.03, 0)
+    private var viewRadius: Float = 0   // 0 until the first frame is drawn
     // orbit camera
     var yaw: Float = 0.6
     var pitch: Float = 0.6
@@ -56,6 +60,36 @@ final class PreviewRenderer: NSObject, MTKViewDelegate, ObservableObject {
         points?.update(g)
         mesh?.update(g)
         if let s = g.header.box_size_m, s.count == 3 { boxSize = SIMD3(Float(s[0]), Float(s[1]), Float(s[2])) }
+        if let b = Self.bounds(of: g.vertexPositions, count: g.vertexCount) ?? Self.bounds(of: g.pointPositions, count: g.pointCount) {
+            contentCentre = b.centre
+            contentRadius = b.radius
+        }
+    }
+
+    /// Centre and half-diagonal of the reconstructed content (2nd to 98th percentile on each axis, so a few stray
+    /// points do not count). The scan box is often much larger than the dish: framed on the box, the finished
+    /// dish looked tiny.
+    private static func bounds(of data: Data, count: Int) -> (centre: SIMD3<Float>, radius: Float)? {
+        guard count >= 10, data.count >= count * 12 else { return nil }
+        let step = max(1, count / 3000)
+        var xs: [Float] = [], ys: [Float] = [], zs: [Float] = []
+        data.withUnsafeBytes { raw in
+            var i = 0
+            while i < count {
+                let o = i * 12
+                xs.append(raw.loadUnaligned(fromByteOffset: o, as: Float.self))
+                ys.append(raw.loadUnaligned(fromByteOffset: o + 4, as: Float.self))
+                zs.append(raw.loadUnaligned(fromByteOffset: o + 8, as: Float.self))
+                i += step
+            }
+        }
+        guard xs.count >= 4 else { return nil }
+        xs.sort()
+        ys.sort()
+        zs.sort()
+        let lo = Int(Float(xs.count - 1) * 0.02), hi = Int(Float(xs.count - 1) * 0.98)
+        let low = SIMD3<Float>(xs[lo], ys[lo], zs[lo]), high = SIMD3<Float>(xs[hi], ys[hi], zs[hi])
+        return ((low + high) / 2, simd_length(high - low) / 2)
     }
 
     func showTracking(_ pts: [SIMD3<Float>]) { points?.updateTracking(pts) }
@@ -86,8 +120,25 @@ final class PreviewRenderer: NSObject, MTKViewDelegate, ObservableObject {
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let cmd = queue.makeCommandBuffer(), let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
         let aspect = Float(view.drawableSize.width / max(view.drawableSize.height, 1))
-        let radius = max(boxSize.x, boxSize.z) * 1.15 * distanceScale + boxSize.y
-        let target = SIMD3<Float>(0, boxSize.y * 0.3, 0)
+        // During capture the view shows the whole scan box, as the camera does. Afterwards it frames what was
+        // reconstructed, so the dish fills the view whatever the size of the box.
+        let boxRadius = max(boxSize.x, boxSize.z) * 1.15 + boxSize.y
+        var goalCentre = SIMD3<Float>(0, boxSize.y * 0.3, 0)
+        var goalRadius = boxRadius
+        if !followPhone, let c = contentCentre {
+            goalCentre = c
+            goalRadius = min(boxRadius, max(0.06, contentRadius * 2.4))
+        }
+        if viewRadius <= 0 {
+            viewCentre = goalCentre
+            viewRadius = goalRadius
+        } else {
+            let ease = min(1, dt * 3)
+            viewCentre += (goalCentre - viewCentre) * ease
+            viewRadius += (goalRadius - viewRadius) * ease
+        }
+        let radius = viewRadius * distanceScale
+        let target = viewCentre
         let eye = target + radius * SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw))
         let vp = perspective(fovy: 0.75, aspect: aspect, near: 0.01, far: 10) * lookAt(eye: eye, target: target, up: [0, 1, 0])
         var u = PreviewUniforms(viewProj: vp, lightDir: simd_normalize(SIMD3(0.3, 1.0, 0.4)),

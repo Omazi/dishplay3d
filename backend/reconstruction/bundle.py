@@ -41,6 +41,15 @@ class BundleConfig:
     prior_trans_m: float = 0.0003      # 1 px of residual per 0.3 mm change of a consecutive relative translation
     prior_rot_rad: float = 0.0004      # 1 px per ~0.023 degree change of a consecutive relative rotation
     max_iterations: int = 40
+    # Second stage, only when the first leaves a high error: measured on a real capture (5.5 px of error to
+    # start with), 40 steps under the firm ties stopped at 1.15 px and 300 steps reached 0.72 px, while ties
+    # three times looser converged to 0.35 px within 120 steps.
+    relax_above_px: float = 0.5        # median reprojection error after the first stage that triggers it
+    relax_factor: float = 10.0         # how much looser the ties to the tracker are (1 = no second stage)
+    relax_iterations: int = 120
+    # Looser ties are safe only when the picture itself holds the cameras: with few tracked points they let the
+    # cameras slide along their viewing axis (seen on the weakly textured synthetic bowl).
+    relax_min_obs_per_view: int = 300
     accept_max_shift_m: float = 0.05
     accept_max_rot_deg: float = 6.0
 
@@ -208,7 +217,7 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
     def unpack(x):
         return x[: nc * 3].reshape(nc, 3), x[nc * 3: nc * 6].reshape(nc, 3), x[nc * 6:].reshape(npt, 3)
 
-    def residuals(x):
+    def residuals(x, tie=1.0):
         rv, t, X = unpack(x)
         xc = _rotate(rv[obs_cam], X[obs_pt]) + t[obs_cam]
         z = np.maximum(xc[:, 2], 1e-6)
@@ -217,8 +226,8 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
         R = Rotation.from_rotvec(rv).as_matrix()
         Rrel = np.einsum("nij,nkj->nik", R[1:], R[:-1])
         trel = t[1:] - np.einsum("nij,nj->ni", Rrel, t[:-1])
-        dr = Rotation.from_matrix(np.einsum("nij,nkj->nik", Rrel, Rrel0)).as_rotvec() / cfg.prior_rot_rad
-        dt = (trel - trel0) / cfg.prior_trans_m
+        dr = Rotation.from_matrix(np.einsum("nij,nkj->nik", Rrel, Rrel0)).as_rotvec() / (cfg.prior_rot_rad * tie)
+        dt = (trel - trel0) / (cfg.prior_trans_m * tie)
         gauge = np.concatenate([(rv[0] - rv0[0]) / 1e-5, (t[0] - t0v[0]) / 1e-6])
         return np.concatenate([ru, rvv, dr.ravel(), dt.ravel(), gauge])
 
@@ -247,7 +256,18 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
                         max_nfev=cfg.max_iterations, verbose=0)
     r1 = residuals(sol.x)
     reproj1 = float(np.median(np.hypot(r1[:nobs], r1[nobs:2 * nobs])))
-    rv, t, _ = unpack(sol.x)
+    x, steps, relaxed, reproj_first = sol.x, int(sol.nfev), False, reproj1
+    if cfg.relax_factor > 1.0 and reproj1 > cfg.relax_above_px and nobs >= cfg.relax_min_obs_per_view * nc:
+        # The tracker's frame-to-frame motion is less exact on this capture than the firm ties assume (fast
+        # movement, rolling shutter): continue from where the first stage stopped, with looser ties.
+        sol2 = least_squares(residuals, x, jac_sparsity=S, method="trf", loss="soft_l1", f_scale=1.5, x_scale="jac",
+                             max_nfev=cfg.relax_iterations, verbose=0, args=(cfg.relax_factor,))
+        r2 = residuals(sol2.x, cfg.relax_factor)
+        reproj2 = float(np.median(np.hypot(r2[:nobs], r2[nobs:2 * nobs])))
+        steps += int(sol2.nfev)
+        if reproj2 < 0.8 * reproj1:
+            x, reproj1, relaxed = sol2.x, reproj2, True
+    rv, t, _ = unpack(x)
     R = Rotation.from_rotvec(rv).as_matrix()
     poses, shift, rot = {}, [], []
     for k, f in enumerate(ids):
@@ -259,7 +279,8 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
         dR = Toc[:3, :3] @ views[f].T_obj_from_cam[:3, :3].T
         rot.append(float(np.degrees(np.arccos(np.clip((np.trace(dR) - 1) / 2, -1, 1)))))
     info.update(reproj_before_px=reproj0, reproj_after_px=reproj1, max_shift_mm=max(shift) * 1000, median_shift_mm=float(np.median(shift)) * 1000,
-                max_rot_deg=max(rot), seconds=time.perf_counter() - t0, iterations=int(sol.nfev))
+                max_rot_deg=max(rot), seconds=time.perf_counter() - t0, iterations=steps, relaxed=relaxed,
+                reproj_first_stage_px=reproj_first, obs_per_view=round(nobs / nc))
     ok = (reproj1 < 0.9 * reproj0 or reproj1 < 0.6) and max(shift) <= cfg.accept_max_shift_m and max(rot) <= cfg.accept_max_rot_deg
     if not ok:
         info["reason"] = "not_better_or_too_far_from_arkit"
