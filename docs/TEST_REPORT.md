@@ -542,27 +542,28 @@ nouvelle vue est donc attachée à celles déjà traitées, avant le calcul de s
   impossible à attacher est placée d'après la correction commune de ses voisines plutôt que laissée à sa position
   brute ; une vue qui concorde déjà (0,8 px) n'est pas touchée.
 
-Aperçu en direct, vraies captures, mêmes données, avant → après :
+Aperçu en direct, vraies captures, même code livré, attache désactivée → activée :
 
 | Capture | Mesures confirmées | Contredites | Vues attachées | Temps de calcul par vue (4 cœurs) |
 |---|---|---|---|---|
-| Chaussures, 85 vues | 51,0 → 84,8 % | 41,4 → 10,4 % | 74 (+ 8 déjà justes) | 509 → 679 ms |
-| Livre, 94 vues | 29,9 → 54,7 % | 45,1 → 23,3 % | 87 | 493 → 641 ms |
-| Boîtes imprimées A, 75 vues | 49,9 → 66,0 % | 41,2 → 25,4 % | 58, 6 refusées | 378 → 501 ms |
-| Boîtes imprimées B, 83 vues | 72,1 → 82,5 % | 20,4 → 11,5 % | 70 | 473 → 581 ms |
-| Tasse sombre, 82 vues | 77,8 → 80,9 % | 15,0 → 12,7 % | 37 | 386 → 412 ms |
-| Tasse unie, 89 vues | 59,3 % | 29,0 % | 0 : pas assez de points connus, rien ne change | 317 → 353 ms |
+| Chaussures, 85 vues | 51,1 → 84,9 % | 41,4 → 10,4 % | 74, 2 placées d'après les voisines, 8 déjà justes | 526 → 700 ms |
+| Livre, 94 vues | 31,3 → 56,3 % | 43,6 → 22,5 % | 86, 4 d'après les voisines, 3 déjà justes | 555 → 674 ms |
+| Boîtes imprimées A, 75 vues | 52,9 → 67,7 % | 36,9 → 23,4 % | 60, 5 d'après les voisines, 6 refusées | 394 → 528 ms |
+| Boîtes imprimées B, 83 vues | 72,5 → 82,6 % | 20,1 → 11,4 % | 70, 9 déjà justes, 2 refusées | 532 → 640 ms |
+| Tasse sombre, 82 vues | 78,0 → 81,1 % | 15,0 → 12,7 % | 38, 10 refusées (trop peu de points connus) | 427 → 452 ms |
+| Tasse unie, 89 vues | 60,1 % | 28,7 % | 0 : pas assez de points connus, rien ne change | 348 → 381 ms |
 
 Positions comparées à celles de la finition (écart entre vues voisines, médiane) : chaussures 1,00 → 0,57 mm, livre
-1,12 → 0,53 mm. Scène de synthèse à suivi bruité (1,5 mm / 0,15° par vue) : confirmées 35,2 → 92,8 %, contredites
+1,12 → 0,51 mm. Scène de synthèse à suivi bruité (1,5 mm / 0,15° par vue) : confirmées 35,2 → 92,8 %, contredites
 55,0 → 5,2 %, erreur du modèle au 80ᵉ centile 9,2 → 5,7 mm ; suivi exact : 0 à 3 vues touchées sur 60. Image :
 `docs/evidence/apercu_direct_avant_apres.jpg`.
 
-Variantes mesurées sur trois captures (chaussures / livre / boîtes A, mesures contredites) et écartées :
+Variantes mesurées sur trois captures (chaussures / livre / boîtes A, mesures contredites) et écartées — chiffres
+pris juste avant le rejet des taches flottantes du point 1, qui les déplace d'un ou deux points :
 
 | Réglage | Chaussures | Livre | Boîtes A | Ce qui se passe |
 |---|---|---|---|---|
-| Retenu : 80 %, refus au-delà de 15 mm du suivi | 10,4 % | 23,3 % | 25,4 % | — |
+| Retenu : 80 %, refus au-delà de 15 mm du suivi | 10,4 % | 22,5 % | 23,4 % | — |
 | 100 % de la correction | 16,5 % | 29,5 % | 11,9 % | surfaces plus lisses, mais le modèle s'écarte du suivi (taille +2 à +3 %) puis les vues sont refusées en série |
 | 100 % + retour lent de l'écart commun aux voisines | 9,4 % | 31,8 % | 13,2 % | le livre décroche au second passage |
 | Profondeur calculée avec la position exacte, posée avec la position ramenée | 29,9 % | 32,1 % | 18,4 % | le modèle devient incohérent avec lui-même |
@@ -571,14 +572,15 @@ Variantes mesurées sur trois captures (chaussures / livre / boîtes A, mesures 
 **Limites constatées.** Le modèle en direct peut être plus grand que le vrai de 0,6 à 1,7 % et décalé de quelques
 millimètres (il hérite de l'échelle des premières vues) : sans conséquence sur le résultat final, que la finition
 recalcule entièrement à partir du suivi. Sans repères visuels sur l'objet (tasse unie), rien n'est attaché. Le
-livre garde 23 % de mesures contredites. Le bon réglage dépend encore de la capture (boîtes A : 12 % atteignables,
-25 % obtenus) ; corriger proprement demanderait de fixer l'échelle du modèle dès le départ.
+livre garde 22 % de mesures contredites. Le bon réglage dépend encore de la capture (boîtes A : 12 % atteignables,
+23 % obtenus) ; corriger proprement demanderait de fixer l'échelle du modèle dès le départ.
 
 **Trouvé en chemin.** `cv2.recoverPose` (choix entre les quatre décompositions de la matrice essentielle) prenait
 170 à 280 ms par paire, plus que l'appariement stéréo. Remplacé par un calcul direct (`stereo_depth.recover_pose`) :
 même rotation et même direction sur 40 tirages, masques différents d'au plus 15 points sur environ 1 500, moins
-d'1 ms. Temps par vue sans attache : 659 → 509 ms sur les chaussures (les temps « avant » du tableau ci-dessus sont
-pris après ce gain) ; au total une vue des chaussures coûte 679 ms au lieu de 659. La finition en profite aussi.
+d'1 ms. Temps par vue sans attache : 659 → 509 ms sur les chaussures, à machine au repos (les temps du tableau
+ci-dessus sont pris après ce gain, dans une même série) ; au total une vue coûte à peu près ce qu'elle coûtait avant
+cette mise à jour. La finition en profite aussi.
 
 **3. Modèle texturé pour la réalité augmentée (`exports.write_usdz`).** La finition écrit `model.usdz` à côté de
 `model.glb` : même maillage, même texture, pour l'ouverture par iOS (vue 3D et pose sur la table), sans dépendance

@@ -298,7 +298,7 @@ struct ScannerView: View {
         let advice: String
         if issues.contains("box_too_low") {
             // The calculator keeps what rises a little above the box; beyond that the top of the dish is cut.
-            advice = "le haut du plat dépasse la boîte : mettez en pause, puis Boîte, et montez-la"
+            advice = "le plat dépasse la boîte, montez-la (pause, puis Boîte)"
         } else if issues.contains("sides_missing") {
             advice = "il manque des côtés, continuez le tour"
         } else if issues.contains("holes") || issues.contains("fragmented") {
