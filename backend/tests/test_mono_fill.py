@@ -157,3 +157,15 @@ def test_a_plain_bowl_gets_its_walls_and_they_are_not_called_measured(tmp_path):
     assert interp.mean() > 0.2                    # filled from a prediction: interpolated, never "measured"
     assert np.percentile(d[interp], 90) < 0.005, np.percentile(d[interp], 90)
     assert np.percentile(d[cls == 0], 90) < 0.005
+    # The same model on a thread of its own, working ahead of the engine: the walls are filled just as well.
+    from reconstruction.mono_depth import AsyncMono
+    ahead = AsyncMono(OracleMono(truth, seed=7))
+    try:
+        eng2, V2, cls2, c2 = scan(ahead)
+        st2 = eng2.mono_report()
+    finally:
+        ahead.close()
+    assert st2["errors"] == 0 and st2["views_filled"] >= 0.9 * st["views_filled"], (st2, st)
+    assert c2 > c1 - 0.03, (c1, c2)
+    assert st2["parallel"]["computed"] >= st2["views_filled"] and not st2["parallel"]["stepped_back"]
+    assert "not_ready" not in st2["skipped"], "finishing never goes without a prediction"

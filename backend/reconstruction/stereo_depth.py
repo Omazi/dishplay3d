@@ -95,7 +95,7 @@ def _skew(t):
 
 def _box_mask(view: View, size_m, margin: float) -> np.ndarray:
     h, w = view.image.shape[:2]
-    corners = volume_corners(size_m, margin=margin, below=margin / 2, above=margin / 2 + headroom(size_m))
+    corners = volume_corners(size_m, margin=margin, below=margin / 2, above=margin / 2)
     pc = transform_points(invert_rigid(view.T_obj_from_cam), corners)
     mask = np.zeros((h, w), np.uint8)
     if (pc[:, 2] <= 0.02).any():
@@ -473,6 +473,9 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
         jump = (dz > params.edge_rel_jump * depth) & nb_ok
         jump = cv2.dilate(jump.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
         depth[jump] = 0
+    # Above the box only what continues the dish is kept; a patch floating there on its own is a wrong match.
+    depth, floating = drop_floating_above(depth, ref.K, ref.T_obj_from_cam, size_m, params.box_margin_m)
+    report.stages["floating_above_box"] = floating
     # Validate dense depth against independently triangulated verified matches.
     P_ref = ref.K @ np.hstack([np.eye(3), np.zeros((3, 1))])
     P_oth = other.K @ np.hstack([R, t.reshape(3, 1)])
@@ -502,6 +505,39 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
         report.status, report.reason = "rejected", "too_few_valid_pixels"
         return StereoResult(report)
     return StereoResult(report, depth)
+
+
+def drop_floating_above(depth: np.ndarray, K: np.ndarray, T_obj_from_cam: np.ndarray, size_m, margin: float,
+                        min_inside_px: int = 50, min_inside_share: float = 0.05) -> tuple[np.ndarray, int]:
+    """Remove what floats above the top of the box without continuing a surface that starts inside it.
+
+    The engine keeps what rises above the box (coordinates.headroom): a dish taller than its box. But a far
+    surface matched at a near depth also lands there, as a patch on its own; before the headroom the top of the
+    box rejected those. In this depth map the pixels on a depth step have already been removed, so a connected
+    patch of valid pixels is one continuous surface: the part of a patch lying above the box is kept only if
+    the patch has a real footing inside it. Pixels inside the box are never touched.
+    Returns (depth, number of pixels removed).
+    """
+    vs, us = np.nonzero(depth > 0)
+    if len(vs) == 0:
+        return depth, 0
+    z = depth[vs, us].astype(np.float64)
+    pc = np.stack([(us - K[0, 2]) / K[0, 0] * z, (vs - K[1, 2]) / K[1, 1] * z, z], 1)
+    y = pc @ T_obj_from_cam[1, :3] + T_obj_from_cam[1, 3]
+    above = y > float(size_m[1]) + margin
+    if not above.any():
+        return depth, 0
+    n, labels = cv2.connectedComponents((depth > 0).astype(np.uint8), connectivity=4)
+    lab = labels[vs, us]
+    total = np.bincount(lab, minlength=n)
+    inside = np.bincount(lab[~above], minlength=n)
+    floating = inside < np.maximum(min_inside_px, min_inside_share * total)
+    bad = above & floating[lab]
+    if not bad.any():
+        return depth, 0
+    out = depth.copy()
+    out[vs[bad], us[bad]] = 0
+    return out, int(bad.sum())
 
 
 def combine_depths(depths: list[np.ndarray], rel_tol: float = 0.01, abs_tol: float = 0.002,

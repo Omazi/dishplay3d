@@ -148,3 +148,20 @@ def test_predictions_nobody_collects_do_not_pile_up():
         assert m.stats()["ready"] <= 4
     finally:
         m.close()
+
+
+def test_a_prediction_made_for_the_small_picture_of_the_scan_is_not_served_for_the_large_one_of_the_finish():
+    """The scan and the finishing step share the model and the frame numbers, not the picture size."""
+    fake = Fake(0.0)
+    m = AsyncMono(fake)
+    try:
+        small, large = np.full((6, 8, 3), 5, np.uint8), np.full((12, 16, 3), 5, np.uint8)
+        m.request(4, small, live=True)
+        deadline = time.time() + 2
+        while fake.calls < 1 and time.time() < deadline:
+            time.sleep(0.01)
+        out = m.predict(large, 4)                     # the finishing step asks for the same frame, larger
+        assert out.shape == (12, 16)
+        assert m.predict(small, 4, live=True).shape == (6, 8)
+    finally:
+        m.close()

@@ -105,9 +105,9 @@ class AsyncMono:
         self.ahead, self.live_patience_s = int(ahead), float(live_patience_s)
         self.give_up_after, self.min_on_time, self.keep = int(give_up_after), float(min_on_time), int(keep)
         self._cv = threading.Condition()
-        self._queue: deque = deque()            # (frame id, image, live)
-        self._busy: int | None = None           # frame id being computed
-        self._ready: OrderedDict = OrderedDict()   # frame id -> prediction, or the exception the model raised
+        self._queue: deque = deque()            # (key, image, live); key = (frame id, height, width)
+        self._busy: tuple | None = None         # key being computed
+        self._ready: OrderedDict = OrderedDict()   # key -> prediction, or the exception the model raised
         self._closed = False
         self._st = {"requested": 0, "computed": 0, "on_time": 0, "late": 0, "dropped": 0, "errors": 0}
         self._recent: deque = deque(maxlen=self.give_up_after)   # live answers: True = in time
@@ -124,20 +124,27 @@ class AsyncMono:
     def calls(self) -> int:
         return int(getattr(self.model, "calls", 0))
 
-    def _known(self, frame_id) -> bool:
-        return frame_id in self._ready or frame_id == self._busy or any(q[0] == frame_id for q in self._queue)
+    @staticmethod
+    def _key(frame_id: int, image_bgr: np.ndarray) -> tuple:
+        """A picture is known by its frame and its size: the scan works on small pictures and the finishing step
+        on large ones of the same frames, and a prediction made for one must never be served for the other."""
+        return (int(frame_id), int(image_bgr.shape[0]), int(image_bgr.shape[1]))
+
+    def _known(self, key) -> bool:
+        return key in self._ready or key == self._busy or any(q[0] == key for q in self._queue)
 
     def request(self, frame_id: int, image_bgr: np.ndarray, live: bool = False) -> None:
         """Start computing the prediction of this picture in the background (no effect if already asked)."""
+        key = self._key(frame_id, image_bgr)
         with self._cv:
-            if self._closed or self._known(frame_id) or (live and self.stepped_back):
+            if self._closed or self._known(key) or (live and self.stepped_back):
                 return
             if live:
                 waiting = [q for q in self._queue if q[2]]
                 while len(waiting) >= self.ahead:       # the model is behind: the oldest picture is given up
                     self._queue.remove(waiting.pop(0))
                     self._st["dropped"] += 1
-            self._queue.append((frame_id, image_bgr, live))
+            self._queue.append((key, image_bgr, live))
             self._st["requested"] += 1
             self._cv.notify_all()
 
@@ -146,27 +153,28 @@ class AsyncMono:
         live=True: the answer if it is ready within `live_patience_s`, else None."""
         if frame_id is None:
             return self.model.predict(image_bgr, None)
+        key = self._key(frame_id, image_bgr)
         deadline = time.monotonic() + self.live_patience_s
         with self._cv:
-            if not live and not self._known(frame_id) and not self._closed:
-                self._queue.appendleft((frame_id, image_bgr, False))      # never asked: next in line
+            if not live and not self._known(key) and not self._closed:
+                self._queue.appendleft((key, image_bgr, False))      # never asked: next in line
                 self._st["requested"] += 1
                 self._cv.notify_all()
-            while frame_id not in self._ready:
+            while key not in self._ready:
                 if self._closed:
                     return None if live else self.model.predict(image_bgr, frame_id)
                 if live:
                     left = deadline - time.monotonic()
-                    if left <= 0 or not self._known(frame_id):
+                    if left <= 0 or not self._known(key):
                         self._answered(False)
                         return None
                     self._cv.wait(left)
                 else:
-                    if not self._known(frame_id):             # dropped while scanning, wanted now
-                        self._queue.appendleft((frame_id, image_bgr, False))
+                    if not self._known(key):             # dropped while scanning, wanted now
+                        self._queue.appendleft((key, image_bgr, False))
                         self._cv.notify_all()
                     self._cv.wait(0.5)
-            out = self._ready.pop(frame_id)
+            out = self._ready.pop(key)
             if live:
                 self._answered(True)
         if isinstance(out, BaseException):
@@ -189,10 +197,10 @@ class AsyncMono:
                     self._cv.wait()
                 if self._closed:
                     return
-                frame_id, image, _ = self._queue.popleft()
-                self._busy = frame_id
+                key, image, _ = self._queue.popleft()
+                self._busy = key
             try:
-                out = self.model.predict(image, frame_id)
+                out = self.model.predict(image, key[0])
             except BaseException as exc:      # handed to whoever collects it; the thread goes on
                 out = exc
             with self._cv:
@@ -200,7 +208,7 @@ class AsyncMono:
                 self._st["computed"] += 1
                 if isinstance(out, BaseException):
                     self._st["errors"] += 1
-                self._ready[frame_id] = out
+                self._ready[key] = out
                 while len(self._ready) > self.keep:      # nobody came for the oldest ones
                     self._ready.popitem(last=False)
                 self._cv.notify_all()

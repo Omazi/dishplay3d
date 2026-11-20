@@ -172,3 +172,45 @@ def test_a_box_set_too_low_does_not_cut_the_top_of_the_dish(scene):
     far = np.zeros(gt.shape, bool)
     far[vs, us] = (np.abs(pts[:, 0]) > 0.17) | (np.abs(pts[:, 2]) > 0.17)
     assert far.sum() > 1000 and (res.depth[far] > 0).mean() < 0.01
+
+
+def _top_down(height_map, cam_height=0.40, f=200.0):
+    """Depth image of a relief seen from straight above (object y = cam_height - depth)."""
+    h, w = height_map.shape
+    K = np.array([[f, 0, w / 2 - 0.5], [0, f, h / 2 - 0.5], [0, 0, 1.0]])
+    T = np.eye(4)
+    T[:3, :3] = [[1, 0, 0], [0, 0, -1], [0, 1, 0]]
+    T[:3, 3] = [0, cam_height, 0]
+    depth = np.where(np.isnan(height_map), 0.0, cam_height - height_map).astype(np.float32)
+    return depth, K, T
+
+
+def test_only_what_continues_the_dish_is_kept_above_the_box():
+    """What rises above the box is kept when it continues a surface that starts inside it (a dish taller than
+    its box). A patch that floats above the box on its own is a stereo error - a far surface matched at a
+    near depth, measured as such on a plain bowl: thousands of pixels per view, all of them wrong - and the top
+    of the box keeps rejecting those as it always did."""
+    from reconstruction.stereo_depth import drop_floating_above
+    box, margin = (0.3, 0.05, 0.3), 0.01
+    vv, uu = np.mgrid[0:120, 0:160]
+    r = np.hypot(uu - 80, vv - 60)
+    # a mound 9 cm high standing on the table: continuous from inside the box to 3 cm above its top
+    mound = 0.09 * np.clip(1 - r / 50.0, 0, 1)
+    d, K, T = _top_down(mound)
+    out, dropped = drop_floating_above(d, K, T, box, margin)
+    assert dropped == 0 and np.array_equal(out, d)
+    # the table, and a patch floating 10 cm above it with nothing around it
+    flat = np.zeros((120, 160))
+    flat[38:62, 58:82] = np.nan                    # the gap left around a depth step
+    flat[40:60, 60:80] = 0.10
+    d, K, T = _top_down(flat)
+    out, dropped = drop_floating_above(d, K, T, box, margin)
+    assert dropped == 400 and (out[40:60, 60:80] == 0).all()
+    assert np.array_equal(out[flat == 0], d[flat == 0]), "what is inside the box is never touched"
+    # a floating patch that only grazes the top of the box: its part above goes, its sliver inside stays as before
+    graze = np.zeros((120, 160))
+    graze[28:62, 58:92] = np.nan
+    graze[30:60, 60:90] = np.linspace(0.059, 0.10, 30)[:, None]      # first row just under the limit (6 cm)
+    d, K, T = _top_down(graze)
+    out, dropped = drop_floating_above(d, K, T, box, margin)
+    assert dropped == 29 * 30 and (out[30, 60:90] > 0).all() and (out[31:60, 60:90] == 0).all()

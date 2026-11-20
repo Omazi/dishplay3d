@@ -122,11 +122,16 @@ def test_a_view_that_cannot_be_tied_is_placed_where_its_neighbours_are(world):
     T2, info2 = anchor_pose(reported, sc.K, ties_for(sc, c, [a, b], wrong_share=0.9), AnchorConfig(max_residual_px=0.01),
                             fallback=neighbours)
     assert info2["status"] in ("predicted", "no_improvement")
-    # and it is the place the solution is expected near: a tracker 2 cm off is no reason to refuse a good tie
+    # A solution 2 cm away from the tracker is refused even when it is right: measured on real captures, letting
+    # the model follow its neighbours instead of the tracker lets it drift centimetres away. The view is then
+    # placed where its neighbours are, not left at the tracker's raw pose.
     far = off(T_true, shift_mm=(14.0, -8.0, 12.0))
     assert anchor_pose(far, sc.K, ties_for(sc, c, [a, b]), AnchorConfig(gain=1.0))[1]["status"] in ("too_far_from_tracker", "no_improvement")
     T3, info3 = anchor_pose(far, sc.K, ties_for(sc, c, [a, b]), AnchorConfig(gain=1.0), fallback=neighbours)
-    assert info3["status"] == "anchored" and pose_error(T3, T_true)[0] < 0.5, (info3, pose_error(T3, T_true))
+    assert info3["status"] == "predicted" and info3["reason"] == "too_far" and np.array_equal(T3, neighbours), info3
+    # (the other rule, kept for experiments: "too far" measured from the neighbours' answer)
+    T4, info4 = anchor_pose(far, sc.K, ties_for(sc, c, [a, b]), AnchorConfig(gain=1.0, guard_from_tracker=False), fallback=neighbours)
+    assert info4["status"] == "anchored" and pose_error(T4, T_true)[0] < 0.5, (info4, pose_error(T4, T_true))
 
 
 def test_the_distance_between_two_cameras_comes_from_the_points_already_known(world):

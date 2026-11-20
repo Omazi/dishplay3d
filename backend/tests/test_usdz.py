@@ -80,6 +80,15 @@ def test_texture_coordinates_are_turned_the_usd_way_up(tmp_path):
     assert img[5, 5, 2] > 200 and img[60, 5, 0] > 200                     # still red on top, blue below: not flipped
 
 
+def test_the_texture_can_be_lossless(tmp_path):
+    V, T, N, uv, tex = quad()
+    p = tmp_path / "model.usdz"
+    info = write_usdz(p, V, T, N, uv, tex, texture_jpeg_quality=None)
+    usda, files = read_usdz(p)
+    assert info["files"] == ["model.usda", "textures/dish.png"] and "asset inputs:file = @textures/dish.png@" in usda
+    assert np.array_equal(cv2.imdecode(np.frombuffer(files["textures/dish.png"], np.uint8), cv2.IMREAD_COLOR), tex)
+
+
 def test_the_material_reads_the_texture_through_the_mesh_coordinates(tmp_path):
     V, T, N, uv, tex = quad()
     p = tmp_path / "model.usdz"

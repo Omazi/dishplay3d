@@ -24,6 +24,10 @@ Dépendances d'Open3D (dash, plotly, flask, matplotlib, pandas, scikit-learn, ip
 (MIT/BSD/PSF/MPL-2.0 pour certifi et tqdm) ; requises à l'import d'Open3D, non utilisées par DishPlay.
 
 Outils de build (non distribués) : XcodeGen 2.46.0 (MIT), Xcode (Apple).
+Outils de vérification (ni dans le dépôt ni distribués) : `@google/model-viewer` 4.1.0 (Apache-2.0) et three.js
+0.170.0 (MIT), pour afficher les fichiers GLB et USDZ produits dans un navigateur de test.
+Format USDZ : écrit par le code du projet (`backend/reconstruction/exports.py`) d'après la spécification publique
+du format ; aucune bibliothèque USD n'est embarquée.
 
 ## Décisions
 - **Règle du propriétaire (17 novembre) : licences permissives uniquement** (MIT, BSD, Apache-2.0 ou équivalent). Rien

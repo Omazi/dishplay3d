@@ -185,20 +185,26 @@ def _usd_tuples(a: np.ndarray, fmt: str) -> str:
 
 
 def write_usdz(path: Path, V: np.ndarray, T: np.ndarray, normals: np.ndarray, uv: np.ndarray, texture_bgr: np.ndarray,
-               texture_jpeg_quality: int = 88, name: str = "Dish") -> dict:
+               texture_jpeg_quality: int | None = 88, name: str = "Dish") -> dict:
     """Textured model as a .usdz (y up, metres, real size): what an iPhone or iPad opens in AR Quick Look and
     places on the table, with no app to install. Same mesh and texture as the GLB.
 
     uv follows the glTF convention used everywhere else in the engine (v counted from the top of the picture);
     USD counts it from the bottom, so it is turned over here. The scene is one text layer (USDA) with the mesh
-    and a UsdPreviewSurface material reading the JPEG texture. Returns {"bytes", "files"}.
+    and a UsdPreviewSurface material reading the texture (JPEG, or PNG when texture_jpeg_quality is None: both
+    are allowed in a .usdz). Returns {"bytes", "files"}.
     """
     V = np.asarray(V, np.float64)
     T = np.asarray(T, np.int64).reshape(-1, 3)
     n = np.asarray(normals, np.float64)
     n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
     st = np.stack([np.asarray(uv, np.float64)[:, 0], 1.0 - np.asarray(uv, np.float64)[:, 1]], 1)
-    ok, jpg = cv2.imencode(".jpg", texture_bgr, [cv2.IMWRITE_JPEG_QUALITY, int(texture_jpeg_quality)])
+    if texture_jpeg_quality:
+        ok, picture = cv2.imencode(".jpg", texture_bgr, [cv2.IMWRITE_JPEG_QUALITY, int(texture_jpeg_quality)])
+        tex_name = "textures/dish.jpg"
+    else:
+        ok, picture = cv2.imencode(".png", texture_bgr)
+        tex_name = "textures/dish.png"
     assert ok
     mat = f"/{name}/Materials/Surface"
     usda = f"""#usda 1.0
@@ -259,7 +265,7 @@ def Xform "{name}" (
             def Shader "Texture"
             {{
                 uniform token info:id = "UsdUVTexture"
-                asset inputs:file = @textures/dish.jpg@
+                asset inputs:file = @{tex_name}@
                 token inputs:sourceColorSpace = "sRGB"
                 float2 inputs:st.connect = <{mat}/TexCoord.outputs:result>
                 token inputs:wrapS = "clamp"
@@ -270,7 +276,7 @@ def Xform "{name}" (
     }}
 }}
 """
-    files = [("model.usda", usda.encode("utf-8")), ("textures/dish.jpg", jpg.tobytes())]
+    files = [("model.usda", usda.encode("utf-8")), (tex_name, picture.tobytes())]
     data = _zip_stored_aligned(files)
     Path(path).write_bytes(data)
     return {"bytes": len(data), "files": [f[0] for f in files]}

@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 
-from .coordinates import (headroom, inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
+from .coordinates import (inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
                           scale_intrinsics, transform_points, volume_corners)
 from .consistency import (DepthView, confirmed_depth, depth_bias_between, depth_bias_from_views, depth_scale_from_views,
                           pick_neighbours)
@@ -345,6 +345,7 @@ class SessionEngine:
             self.pair_reports.append(rep)
             if res.depth is not None:
                 depths.append(res.depth)
+        ref.matches.clear()      # only needed while this view is the reference: a megabyte per view otherwise
         if not depths:
             if rec.attempts >= self.cfg.retry_limit:
                 rec.status, rec.reason = "rejected", "no_valid_pair"
@@ -502,8 +503,8 @@ class SessionEngine:
             else:
                 pred = self.mono.predict(ref.image, fid)
             roi = _box_mask(ref, self.box.size_m, 0.0) > 0
-            zc = transform_points(invert_rigid(ref.T_obj_from_cam),
-                                  volume_corners(self.box.size_m, above=headroom(self.box.size_m)))[:, 2]
+            # (the box itself, without the height kept above it: a prediction is not asked to invent what rises there)
+            zc = transform_points(invert_rigid(ref.T_obj_from_cam), volume_corners(self.box.size_m))[:, 2]
             out, fill, info = align_and_fill(depth, pred, roi, (max(0.03, float(zc.min()) - 0.01), float(zc.max()) + 0.01))
         except Exception as exc:
             st["errors"] += 1

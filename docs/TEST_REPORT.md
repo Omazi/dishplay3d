@@ -499,6 +499,119 @@ sans LiDAR ; vue 3D cadrée sur la boîte au lieu du plat. Relevé, non traité 
 80 tests passés, 1 sauté. Deux redémarrages du serveur par manque de mémoire pendant ces essais (calculs lourds
 lancés en parallèle) ; les mesures ci-dessus viennent d'exécutions refaites une par une.
 
+## Mise à jour du 20 novembre (suite) — boîte trop basse, aperçu en direct, réalité augmentée, modèle de profondeur en parallèle (moteur `p1-0.9.0`)
+
+Les points laissés « constatés, non corrigés » ou « relevés, non traités » à la mise à jour précédente.
+
+**1. Boîte de scan trop basse (`coordinates.headroom`).** La boîte est réglée à la main ; trop basse, elle rasait le
+dessus du plat. Ce qui dépasse de la boîte, dans son contour, est maintenant gardé jusqu'à la moitié de sa hauteur,
+au moins 2 cm, au plus 6 cm (recherche stéréo, découpe des mesures, fusion, maillage, fermeture), **à condition de
+prolonger une surface qui part de l'intérieur de la boîte**. Les côtés et la base ne bougent pas : la table et les
+voisins du plat y sont.
+
+La condition vient d'une mesure, pas d'un principe. Première version : tout garder au-dessus de la boîte, « puisqu'il
+n'y a que de l'air ». Sur le bol uni de synthèse (rien de réel au-dessus de la boîte), la stéréo y plaçait alors
+jusqu'à 22 000 pixels par vue, **tous faux** (erreur de 50 à 60 % : la table du fond appariée trop près), que le
+haut de la boîte éliminait jusque-là ; le comblement des surfaces unies tombait de 33 vues sur 34 à 14. Une tache
+isolée au-dessus de la boîte est donc de nouveau rejetée (`stereo_depth.drop_floating_above`) ; avec la condition,
+32 vues sur 34. Conséquence : ce qui dépasse sans tenir au reste du plat dans l'image (un décor au bout d'une pique)
+n'est pas gardé, comme avant.
+
+| Vérification | Avant | Après |
+|---|---|---|
+| Synthèse, boîte de 12 mm pour un plat de 34 mm : pixels du dessus de l'aliment mesurés (sur 1 309) | 75 | 1 030 |
+| Vraie capture (tasse de 10,9 cm, boîte volontairement baissée à 7,5 cm), aperçu en direct : surface | 122 cm² | 191 cm², bord supérieur présent, modèle 34 mm au-dessus de la boîte |
+| Vraie capture du livre avec sa boîte d'annotation de 2,3 cm, finition complète | livre entier | livre entier, identique |
+
+La dernière ligne corrige ce qui était écrit plus haut : avec le moteur `p1-0.8.0` final le livre n'était déjà plus
+coupé (la coupe venait d'un état intermédiaire du recalage). Le gain est donc montré sur la tasse, pas sur le
+livre. Image : `docs/evidence/boite_trop_basse_avant_apres.jpg`. Au-delà de la marge le modèle est coupé net : le
+verdict porte alors `box_too_low`, ne peut plus être « bon », et l'app demande de monter la boîte (texte ajouté,
+non compilé). L'en-tête de chaque aperçu donne `above_box_mm`.
+
+**2. Aperçu pendant le scan (`live_pose.py`).** Diagnostic d'abord : sur les chaussures, en direct, 41,4 % des
+mesures contredites avec les positions du suivi, 11,1 % avec les positions recalées de la finition ; le contrôle de
+couleur n'en explique que 4 points. La cause est la position des vues : à 4 cm d'écart entre deux photos, 1 mm
+d'erreur du suivi fait 3 % de profondeur. Le recalage global a besoin de toutes les vues ; pendant le scan, chaque
+nouvelle vue est donc attachée à celles déjà traitées, avant le calcul de sa profondeur :
+- les points du plat retrouvés dans une vue déjà fusionnée ont une profondeur confirmée (gardée pour tout le scan,
+  quelques kilo-octets par vue) : ils doivent se projeter là où la nouvelle vue les voit — c'est ce qui fixe la
+  distance entre caméras, que les images seules ne voient pas ;
+- les autres correspondances (table, décor) doivent rester sur leur droite épipolaire : orientation et direction ;
+- 80 % de la correction est appliquée ; une solution à plus de 15 mm ou 1,5° du suivi est refusée ; une vue
+  impossible à attacher est placée d'après la correction commune de ses voisines plutôt que laissée à sa position
+  brute ; une vue qui concorde déjà (0,8 px) n'est pas touchée.
+
+Aperçu en direct, vraies captures, mêmes données, avant → après :
+
+| Capture | Mesures confirmées | Contredites | Vues attachées | Temps de calcul par vue (4 cœurs) |
+|---|---|---|---|---|
+| Chaussures, 85 vues | 51,0 → 84,8 % | 41,4 → 10,4 % | 74 (+ 8 déjà justes) | 509 → 679 ms |
+| Livre, 94 vues | 29,9 → 54,7 % | 45,1 → 23,3 % | 87 | 493 → 641 ms |
+| Boîtes imprimées A, 75 vues | 49,9 → 66,0 % | 41,2 → 25,4 % | 58, 6 refusées | 378 → 501 ms |
+| Boîtes imprimées B, 83 vues | 72,1 → 82,5 % | 20,4 → 11,5 % | 70 | 473 → 581 ms |
+| Tasse sombre, 82 vues | 77,8 → 80,9 % | 15,0 → 12,7 % | 37 | 386 → 412 ms |
+| Tasse unie, 89 vues | 59,3 % | 29,0 % | 0 : pas assez de points connus, rien ne change | 317 → 353 ms |
+
+Positions comparées à celles de la finition (écart entre vues voisines, médiane) : chaussures 1,00 → 0,57 mm, livre
+1,12 → 0,53 mm. Scène de synthèse à suivi bruité (1,5 mm / 0,15° par vue) : confirmées 35,2 → 92,8 %, contredites
+55,0 → 5,2 %, erreur du modèle au 80ᵉ centile 9,2 → 5,7 mm ; suivi exact : 0 à 3 vues touchées sur 60. Image :
+`docs/evidence/apercu_direct_avant_apres.jpg`.
+
+Variantes mesurées sur trois captures (chaussures / livre / boîtes A, mesures contredites) et écartées :
+
+| Réglage | Chaussures | Livre | Boîtes A | Ce qui se passe |
+|---|---|---|---|---|
+| Retenu : 80 %, refus au-delà de 15 mm du suivi | 10,4 % | 23,3 % | 25,4 % | — |
+| 100 % de la correction | 16,5 % | 29,5 % | 11,9 % | surfaces plus lisses, mais le modèle s'écarte du suivi (taille +2 à +3 %) puis les vues sont refusées en série |
+| 100 % + retour lent de l'écart commun aux voisines | 9,4 % | 31,8 % | 13,2 % | le livre décroche au second passage |
+| Profondeur calculée avec la position exacte, posée avec la position ramenée | 29,9 % | 32,1 % | 18,4 % | le modèle devient incohérent avec lui-même |
+| 90 ou 100 %, écart jugé par rapport aux voisines et non au suivi | 6,6 / 19,6 % | 26,3 / 17,3 % | 27,1 / 30,9 % | dérive jusqu'à 25 à 58 mm du suivi |
+
+**Limites constatées.** Le modèle en direct peut être plus grand que le vrai de 0,6 à 1,7 % et décalé de quelques
+millimètres (il hérite de l'échelle des premières vues) : sans conséquence sur le résultat final, que la finition
+recalcule entièrement à partir du suivi. Sans repères visuels sur l'objet (tasse unie), rien n'est attaché. Le
+livre garde 23 % de mesures contredites. Le bon réglage dépend encore de la capture (boîtes A : 12 % atteignables,
+25 % obtenus) ; corriger proprement demanderait de fixer l'échelle du modèle dès le départ.
+
+**Trouvé en chemin.** `cv2.recoverPose` (choix entre les quatre décompositions de la matrice essentielle) prenait
+170 à 280 ms par paire, plus que l'appariement stéréo. Remplacé par un calcul direct (`stereo_depth.recover_pose`) :
+même rotation et même direction sur 40 tirages, masques différents d'au plus 15 points sur environ 1 500, moins
+d'1 ms. Temps par vue sans attache : 659 → 509 ms sur les chaussures (les temps « avant » du tableau ci-dessus sont
+pris après ce gain) ; au total une vue des chaussures coûte 679 ms au lieu de 659. La finition en profite aussi.
+
+**3. Modèle texturé pour la réalité augmentée (`exports.write_usdz`).** La finition écrit `model.usdz` à côté de
+`model.glb` : même maillage, même texture, pour l'ouverture par iOS (vue 3D et pose sur la table), sans dépendance
+ajoutée. C'est une archive zip non compressée, fichiers alignés sur 64 octets, dont le premier est la scène en
+texte (USDA), comme le fait three.js pour `<model-viewer>`.
+- Vérifié ici : structure de l'archive (non compressée, alignée, sommes de contrôle), unités et axe, relecture des
+  points, triangles, normales ; coordonnées de texture retournées (glTF compte du haut, USD du bas) ; image
+  identique à celle du GLB ; test de bout en bout sur la finition d'une scène de synthèse.
+- Vérifié aussi dans un navigateur de test avec le lecteur USDZ de three.js (un lecteur indépendant, pas celui
+  d'Apple), sur deux vraies captures (chaussures et livre, 60 000 triangles, 4,7 et 4,9 Mo) : un maillage, la bonne
+  taille en mètres, la texture à l'endroit (le titre du livre se lit). Ce lecteur n'accepte que les textures PNG :
+  l'essai porte sur la variante PNG du même fichier ; la variante JPEG livrée n'est contrôlée que par les tests de
+  structure. Image : `docs/evidence/usdz_lu_par_threejs.jpg`.
+- **Non vérifié** : l'ouverture dans AR Quick Look sur un iPhone ; le contrôle par la bibliothèque de Pixar (son
+  installation a été refusée dans cet environnement ; le test existe et s'exécute dès qu'elle est présente).
+- App (écrit, **non compilé**) : `model.usdz` est téléchargé avec les autres résultats ; l'écran du plat a un bouton
+  « Voir sur votre table » qui l'ouvre avec l'aperçu d'iOS.
+
+**4. Modèle de profondeur en parallèle (`mono_depth.AsyncMono`).** Le modèle tourne sur son propre fil, en avance
+sur le moteur et en même temps que la stéréo ; il reçoit la moitié des cœurs. À la finition, le moteur attend
+chaque prédiction. Pendant le scan, rien n'attend : une prédiction pas prête à 0,12 s près n'est pas utilisée (la
+vue garde ce que la stéréo a mesuré), au plus trois demandes patientent (les plus anciennes sont abandonnées), et
+si moins de 30 % des réponses arrivent à temps sur 12 vues le modèle se retire jusqu'à la finition. Il est
+désormais actif pendant le scan par défaut (`DISHPLAY_MONO_LIVE=0` pour le réserver à la finition).
+- Vérifié ici avec des modèles factices lents ou rapides (7 tests) et avec la prédiction simulée dans le moteur
+  (les parois du bol sont comblées aussi bien qu'en appel direct).
+- **Toujours non vérifié** : le vrai réseau n'a jamais été exécuté dans cet environnement ; sa vitesse et sa qualité
+  sur votre PC restent à mesurer (`report.json` → `mono_fill.parallel` : demandées, à temps, en retard, abandonnées).
+
+112 tests passés, 2 sautés (le vrai réseau de profondeur et la bibliothèque de Pixar, absents de cet environnement),
+suite complète exécutée seule sur le code livré (12 min 52 s). App iOS : modifications **non compilées** (dépôt
+privé, minutes Actions épuisées).
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

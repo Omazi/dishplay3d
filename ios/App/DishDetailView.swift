@@ -170,7 +170,7 @@ struct DishDetailView: View {
                         .font(dish.arModel == nil ? .headline : .subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity).frame(height: dish.arModel == nil ? 56 : 50)
                         .background(dish.arModel == nil ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.white.opacity(0.10)), in: Capsule())
-                        .foregroundStyle(dish.arModel == nil ? .black : .white)
+                        .foregroundStyle(dish.arModel == nil ? Color.black : Color.white)
                 }
             }
             Button(action: exportAll) {
