@@ -34,10 +34,16 @@ struct HomeView: View {
             ScreenBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Wordmark()
-                        Spacer()
-                        statusChip
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            Wordmark()
+                            Spacer()
+                            statusChip
+                        }
+                        VStack(alignment: .leading, spacing: Spacing.xs) {
+                            Wordmark()
+                            statusChip
+                        }
                     }
                     .padding(.horizontal, Spacing.l).padding(.top, Spacing.xs)
 
@@ -85,6 +91,7 @@ struct HomeView: View {
                 Text(model.paired ? "Calculateur relié" : "Calculateur à relier")
                     .font(.footnote.weight(.semibold))
                 Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(Theme.textSecondary)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 14).frame(minHeight: 44)
             .foregroundStyle(Theme.textPrimary)

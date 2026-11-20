@@ -15,7 +15,7 @@ struct GlassIconButton: View {
                 if let label { Text(label).font(.subheadline.weight(.semibold)) }
             }
             .padding(.horizontal, label == nil ? 0 : Spacing.m)
-            .frame(minWidth: 56).frame(height: 56)
+            .frame(minWidth: 56, minHeight: 56)
             .foregroundStyle(Theme.textPrimary)
             .glass(Capsule(), interactive: true)
         }

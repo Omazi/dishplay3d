@@ -100,7 +100,7 @@ struct DishDetailView: View {
         } else {
             Stage {
                 VStack(spacing: 10) {
-                    Image(systemName: dish.state == .ready ? "cube" : "hourglass").font(.system(size: 44))
+                    Image(systemName: dish.state == .ready ? "cube" : "hourglass").font(.largeTitle)
                         .foregroundStyle(Theme.textOnStage.opacity(0.4))
                         .accessibilityHidden(true)
                     Text(dish.state == .ready ? "Chargement…" : "Le modèle n’est pas encore sur l’iPhone.")

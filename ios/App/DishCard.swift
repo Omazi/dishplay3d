@@ -21,7 +21,8 @@ struct DishCard: View {
             }
             .frame(height: 148).frame(maxWidth: .infinity).clipped()
             VStack(alignment: .leading, spacing: Spacing.xxs) {
-                Text(dish.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                Text(dish.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary).lineLimit(2)
+                    .multilineTextAlignment(.leading)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Circle().fill(stateColour).frame(width: 7, height: 7)
                     Text(progress?.text ?? stateText).font(.caption).foregroundStyle(Theme.textSecondary)
