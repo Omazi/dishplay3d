@@ -77,6 +77,9 @@ def test_a_second_looser_stage_runs_when_the_first_leaves_a_high_error(noisy):
     assert e_both < e_firm and e_both < 0.5 * e_reported, (e_reported, e_firm, e_both)
     # the looser stage may reshape the trajectory, not resize it: the size of the scene comes from the tracker
     assert abs(_size_ratio(both.poses, reported) - 1.0) < 0.004, _size_ratio(both.poses, reported)
+    # ...nor move it: it lies over the tracker's trajectory as a whole, not hung on the first camera alone
+    centre = lambda P: np.mean([P[k][:3, 3] for k in sorted(P)], 0)
+    assert np.linalg.norm(centre(both.poses) - centre(reported)) < 0.0005
 
 
 def test_the_looser_stage_needs_enough_points_to_hold_the_cameras(noisy):

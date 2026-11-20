@@ -437,6 +437,68 @@ pas le cas ce matin ; il n'a pas la propreté d'un produit du commerce (bords, f
 Limites inchangées : surfaces unies non mesurées ; aucun plat réel ; remplissage par profondeur apprise non exécuté.
 73 tests passés, 1 sauté.
 
+## Mise à jour du 20 novembre — positions des photos, objets plats, vignettes, relecture de l'app (moteur `p1-0.8.0`)
+
+Point de départ : rejouer de vraies captures « en direct », finir une capture de livre (plat, couverture unie : le
+plus proche d'une assiette) et faire relire l'app. Le livre sortait bosselé et à moitié découpé.
+
+**Recalage des positions des photos (`bundle.py`).** Sur le livre (erreur de départ 5,2 px), le recalage s'arrêtait
+après ses 40 étapes à 1,09 px, loin d'avoir convergé, et les liens très fermes avec le suivi de l'iPhone l'en
+empêchaient (0,72 px après 300 étapes ; 0,35 px en 120 étapes avec des liens plus souples). Ajout d'une seconde
+étape à liens plus souples, seulement quand la première laisse plus de 0,5 px et qu'assez de points tiennent les
+caméras (300 observations par vue). Garde-fous, chacun né d'un défaut constaté :
+- le réglage le plus souple n'est gardé que s'il reste près du suivi ; sinon un réglage intermédiaire, sinon la
+  première étape (sur des boîtes en rayon, scène plane, il s'éloignait de 84 mm et tout le recalage était alors
+  jeté : mesures confirmées 58 % → 42 %) ;
+- la trajectoire affinée est superposée à celle du suivi dans son ensemble (position, orientation, taille), au
+  lieu d'être accrochée à la première photo : sinon le modèle héritait de l'erreur de cette photo (2° sur le
+  livre) et sa taille flottait de 1 à 2,5 %.
+
+Juge indépendant des points suivis par le recalage : l'accord entre les cartes de profondeur denses.
+
+| Capture réelle | Erreur de recalage | Mesures confirmées | Contredites | Correction lisse par paire |
+|---|---|---|---|---|
+| Chaussures, 85 vues | 0,90 → 0,16 px | 76,8 → 90,0 % | 12,4 → 3,4 % | 2,78 → 0,08 % |
+| Livre, 94 vues, même boîte | 1,09 → 0,34 px | 51,7 → 57,3 % | 22,6 → 18,7 % | — → 0,19 % |
+| Boîtes imprimées, 38 vues (avant le dernier garde-fou) | 1,23 → 0,20 px | 58,2 → 77,4 % | 27,5 → 11,6 % | 2,17 → 0,71 % |
+
+Sur des vues de synthèse aux positions connues (bruit de suivi 1,5 mm / 0,15°) : erreur de position 2,44 mm
+(suivi brut), 0,86 mm (première étape), **1,79 mm si on pousse la première étape à 160 pas** (une erreur de
+recalage plus faible n'est donc pas une preuve), 0,69 mm avec la seconde étape. Coût : +24 s sur les chaussures,
++3 min sur le livre. Images : `docs/evidence/chaussures_avant_apres_recalage.jpg`,
+`docs/evidence/livre_avant_apres_meme_boite.jpg`.
+
+**Retrait de la table.** Sur le livre posé sur un lit, le niveau « table » était ajusté au milieu du support :
+30 % des sommets en dessous (1 à 3 % sur de vraies tables). À boîte égale, l'ancien moteur plaçait la table à
+15,9 mm et supprimait 54 885 triangles sur environ 58 000 : il restait deux lambeaux. Règle ajoutée : si plus de
+10 % de la surface est sous le niveau trouvé, rien n'est retiré. Conséquence corrigée dans la foulée : sans table
+reconnue, le verdict de qualité restait « trop tôt » pendant tout le scan ; il se calcule alors sur le contour du
+modèle lui-même.
+
+**Aussi dans cette version.** `apercu.png` (dont l'app tire la vignette du plat) : plat en grand, vraies couleurs,
+sans texte technique (`docs/evidence/vignettes_avant_apres.jpg`) ; la vue d'ingénieur reste disponible
+(`--diagnostic`). La base ajoutée sous le plat prend sa couleur unie au lieu des stries projetées par des vues
+rasantes.
+
+**Hypothèses écartées par la mesure.** Déformation de l'objectif : le coefficient estimé change de signe d'une
+capture à l'autre (−0,007, +0,009, +0,002, +0,06). Lisser les cartes de profondeur ou le maillage : sans effet
+sur l'ondulation du livre, qui venait des positions et non d'un bruit fin. Ma règle « la couverture est plane »
+était elle-même fausse à 3 mm près (livre souple), d'où le recours à l'accord entre vues comme juge.
+
+**Constaté, non corrigé.** En direct (sans recalage global), 39 à 41 % des mesures sont contredites sur les
+captures texturées. Les aplats unis de la couverture restent des trous. Une boîte de scan trop juste en hauteur
+coupe le dessus de l'objet (constaté avec la boîte d'annotation du livre, 2,3 cm).
+
+**App, relecture.** Corrigé dans le code, **non compilé** (dépôt privé, Actions bloqué) : rien ne maintenait
+l'iPhone éveillé pendant un scan ; « Finition du modèle » pouvait rester affiché pour toujours si l'événement de
+fin était manqué ; le X en pause supprimait le scan sans prévenir ; un résultat vide était annoncé « Modèle prêt » ;
+un scan pouvait démarrer calculateur éteint ; tutoiements et messages techniques ; réglage de la teinte invisible
+sans LiDAR ; vue 3D cadrée sur la boîte au lieu du plat. Relevé, non traité : l'écran du plat affiche la géométrie
+à couleurs par sommet et non le fichier texturé ; pas de vue en réalité augmentée (USDZ).
+
+80 tests passés, 1 sauté. Deux redémarrages du serveur par manque de mémoire pendant ces essais (calculs lourds
+lancés en parallèle) ; les mesures ci-dessus viennent d'exécutions refaites une par une.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

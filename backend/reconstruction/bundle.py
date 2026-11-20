@@ -280,7 +280,7 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
         # refinement was then thrown out). Otherwise the next setting, otherwise the first stage stands.
         for tie in cfg.relax_factors:
             sol2 = least_squares(residuals, x, jac_sparsity=S, method="trf", loss="soft_l1", f_scale=1.5, x_scale="jac",
-                                 max_nfev=cfg.relax_iterations, verbose=0, args=(tie,))
+                                 max_nfev=cfg.relax_iterations, ftol=1e-5, verbose=0, args=(tie,))
             r2 = residuals(sol2.x, tie)
             reproj2 = float(np.median(np.hypot(r2[:nobs], r2[nobs:2 * nobs])))
             steps += int(sol2.nfev)
@@ -293,22 +293,32 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
     poses, max_shift, median_shift, max_rot = cameras(x)
     scale = 1.0
     if relaxed:
-        # The pictures alone do not know the size of the scene: only the tracker (through its motion sensors)
-        # does, and looser ties let the size float (measured: 1 to 2.5 % on three real captures). The refined
-        # trajectory keeps its new shape but is brought back to the tracker's size, about the first camera.
+        # The pictures alone know neither the size of the scene nor where it stands: only the tracker does.
+        # Under the firm ties every camera stays near the tracker; under the looser ones only the first camera
+        # holds the solution, so the whole model inherits that one camera's error (measured on a real capture:
+        # the scene tilted by 2 degrees and one side of a flat object left the scan box) and its size floats
+        # (1 to 2.5 %). The refined trajectory keeps its new SHAPE and is laid over the tracker's trajectory as
+        # a whole: best fit in position, orientation and size.
         A = np.array([views[f].T_obj_from_cam[:3, 3] for f in ids])
         B = np.array([poses[f][:3, 3] for f in ids])
-        a0, b0 = A - A.mean(0), B - B.mean(0)
-        U, D, Vt = np.linalg.svd(b0.T @ a0 / len(A))
-        sign = np.diag([1.0, 1.0, float(np.sign(np.linalg.det(U @ Vt)))])
-        scale = float(np.trace(np.diag(D) @ sign) / max(a0.var(0).sum(), 1e-18))    # refined size / tracker size
-        if 0.8 < scale < 1.25:
-            c0 = poses[ids[0]][:3, 3].copy()
-            shift = []
+        mu_a, mu_b = A.mean(0), B.mean(0)
+        a0, b0 = A - mu_a, B - mu_b
+        U, D, Vt = np.linalg.svd(a0.T @ b0 / len(A))
+        sign = np.diag([1.0, 1.0, float(np.sign(np.linalg.det(U) * np.linalg.det(Vt)))])
+        Rg = U @ sign @ Vt
+        sg = float(np.trace(np.diag(D) @ sign) / max(b0.var(0).sum(), 1e-18))      # tracker size / refined size
+        if 0.8 < sg < 1.25:
+            scale = 1.0 / sg
+            tg = mu_a - sg * Rg @ mu_b
+            shift, rot = [], []
             for f in ids:
-                poses[f][:3, 3] = c0 + (poses[f][:3, 3] - c0) / scale
-                shift.append(float(np.linalg.norm(poses[f][:3, 3] - views[f].T_obj_from_cam[:3, 3])))
-            max_shift, median_shift = max(shift), float(np.median(shift))
+                T = poses[f]
+                T[:3, 3] = sg * Rg @ T[:3, 3] + tg
+                T[:3, :3] = Rg @ T[:3, :3]
+                shift.append(float(np.linalg.norm(T[:3, 3] - views[f].T_obj_from_cam[:3, 3])))
+                dR = T[:3, :3] @ views[f].T_obj_from_cam[:3, :3].T
+                rot.append(float(np.degrees(np.arccos(np.clip((np.trace(dR) - 1) / 2, -1, 1)))))
+            max_shift, median_shift, max_rot = max(shift), float(np.median(shift)), max(rot)
     info.update(reproj_before_px=reproj0, reproj_after_px=reproj1, max_shift_mm=max_shift * 1000, median_shift_mm=median_shift * 1000,
                 max_rot_deg=max_rot, seconds=time.perf_counter() - t0, iterations=steps, relaxed=relaxed,
                 reproj_first_stage_px=reproj_first, obs_per_view=round(nobs / nc), second_stage=tried, size_before_restoring=scale)
