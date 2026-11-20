@@ -50,6 +50,7 @@ final class ScanController: ObservableObject {
     private let referenceWidth: Double?
     private var boxRevision = 0
     private var uploadTask: Task<Void, Never>?
+    private var finishWatch: Task<Void, Never>?
     private var newestRequestedVersion = 0
     private var lastTrackingUpdate = 0.0
     private var lastPoseUpdate = 0.0
@@ -213,6 +214,7 @@ final class ScanController: ObservableObject {
                 store?.markFinishRequested()
                 phase = .finishing
                 finishText = "Finition lancée sur le calculateur…"
+                watchFinishing(sessionID: sid)
             } catch {
                 errorText = AppModel.explain(error)
                 phase = .paused
@@ -371,7 +373,7 @@ final class ScanController: ObservableObject {
             let names = ["poses": "recalage des vues", "depth": "calcul fin des profondeurs", "mesh": "surface", "texture": "texture",
                          "neural": "rendu neuronal"]
             let key = ev.step ?? ""
-            let step = names[key] ?? key
+            let step = names[key] ?? "calcul"
             let label = step.prefix(1).uppercased() + step.dropFirst()
             finishFraction = (ev.total ?? 0) > 1 ? min(1, Double(ev.done ?? 0) / Double(ev.total ?? 1)) : nil
             if let total = ev.total, total > 1 {
@@ -383,23 +385,64 @@ final class ScanController: ObservableObject {
                 finishText = "\(label)…"
             }
         case "artifacts":
-            phase = .done
-            finishFraction = nil
-            Haptics.success()
-            preview.followPhone = false
-            finishText = "Modèle final prêt."
-            Task { await downloadResults(ev.files ?? []) }
+            finished(files: ev.files ?? [])
         case "error":
-            errorText = "Calculateur : \(ev.message ?? ev.code ?? "erreur")"
+            let detail = String((ev.message ?? ev.code ?? "erreur").prefix(140))
+            errorText = phase == .finishing
+                ? "Le calcul a rencontré un problème sur le calculateur. Vous pourrez le relancer depuis Mes plats. (Détail : \(detail))"
+                : "Le calculateur signale un problème. (Détail : \(detail))"
         default: break
+        }
+    }
+
+    /// The model is ready: show it and fetch its files. Called once, by the event or by the watch below.
+    private func finished(files: [String]) {
+        guard phase != .done else { return }
+        finishWatch?.cancel()
+        phase = .done
+        finishFraction = nil
+        Haptics.success()
+        preview.followPhone = false
+        finishText = "Modèle final prêt."
+        Task { await downloadResults(files) }
+    }
+
+    /// The end of the calculation normally arrives as an event. If the iPhone was locked or the app left at
+    /// that moment the event is lost and the screen would say "Finition du modèle" for ever: so the
+    /// calculator is also asked directly, every few seconds, where the session stands.
+    private func watchFinishing(sessionID sid: String) {
+        finishWatch?.cancel()
+        finishWatch = Task { [weak self] in
+            var idle = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard let self, self.phase == .finishing else { return }
+                guard let info = try? await self.transport.sessionInfo(sessionID: sid) else { continue }
+                if info.ready {
+                    let files = (try? await self.transport.artifacts(sessionID: sid)) ?? []
+                    if self.phase == .finishing { self.finished(files: files) }
+                    return
+                }
+                idle = (info.active || info.busyWithOther) ? 0 : idle + 1
+                if idle >= 3 {
+                    self.errorText = "Le calcul s’est arrêté sur le calculateur. Vous pourrez le relancer depuis Mes plats."
+                    return
+                }
+            }
         }
     }
 
     private func downloadResults(_ files: [String]) async {
         guard let sid = serverSessionID, let store else { return }
-        for name in files where ["model.glb", "plat_seul.glb", "apercu.png", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
-            if let d = try? await transport.download("sessions/\(sid)/artifacts/\(name)"), let u = try? store.saveArtifact(name: name, data: d) {
-                resultFiles.append(u)
+        for name in files where ["final_preview.dpg", "model.glb", "plat_seul.glb", "apercu.png", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
+            if name == "final_preview.dpg" && lastGeometry?.kind == "final" { continue }   // already received as an event
+            guard let d = try? await transport.download("sessions/\(sid)/artifacts/\(name)"), let u = try? store.saveArtifact(name: name, data: d) else { continue }
+            if !resultFiles.contains(u) { resultFiles.append(u) }
+            // The final model normally arrives as an event; when that event was missed, show it now.
+            if name == "final_preview.dpg", let g = try? PreviewGeometry.decode(d) {
+                preview.show(g)
+                lastGeometry = g.header
+                lastGeometryReceivedAt = Date()
             }
         }
     }

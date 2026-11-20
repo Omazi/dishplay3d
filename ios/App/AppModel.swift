@@ -65,7 +65,7 @@ final class AppModel: ObservableObject {
             }
             try await t.post("sessions/\(p.serverSessionID)/finish")
             store.markFinishRequested()
-            pendingText = "Finition lancée sur le PC. Le modèle sera dans le dossier de la session (final/, avec apercu.png)."
+            pendingText = "Finition lancée sur le calculateur. Le plat apparaîtra dans Mes plats quand son modèle sera prêt."
             pendingScan = nil
         } catch {
             if let te = error as? TransportError, case .http(404, _) = te {
@@ -236,7 +236,7 @@ final class AppModel: ObservableObject {
 
     static func explain(_ error: Error) -> String {
         let ns = error as NSError
-        let code = " [\(ns.domain) \(ns.code)]"
+        let code = " (code \(ns.code))"
         if ns.domain == NSURLErrorDomain {
             switch ns.code {
             case NSURLErrorCancelled, NSURLErrorServerCertificateUntrusted, NSURLErrorSecureConnectionFailed,
@@ -252,9 +252,9 @@ final class AppModel: ObservableObject {
             }
         }
         if let t = error as? TransportError, case .http(let status, let detail) = t {
-            if status == 403 { return "Code de jumelage refusé : utilise le code affiché actuellement par le calculateur (il change à chaque démarrage)." }
-            if status == 429 { return "Trop d’essais : redémarre le calculateur pour obtenir un nouveau code." }
-            return "Calculateur : erreur \(status) \(detail)"
+            if status == 403 { return "Code de jumelage refusé : utilisez le code affiché actuellement par le calculateur (il change à chaque démarrage)." }
+            if status == 429 { return "Trop d’essais : redémarrez le calculateur pour obtenir un nouveau code." }
+            return "Le calculateur a refusé la demande (erreur \(status)). Relancez-le si le problème persiste. (Détail : \(detail))"
         }
         return error.localizedDescription + code
     }

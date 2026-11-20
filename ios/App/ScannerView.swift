@@ -1,6 +1,7 @@
 import RealityKit
 import ScanCore
 import SwiftUI
+import UIKit
 
 struct ARViewContainer: UIViewRepresentable {
     let arView: ARView
@@ -20,6 +21,7 @@ struct ScannerView: View {
     @State private var mode: PreviewMode = .both
     @State private var shareURL: URL?
     @State private var now = Date()
+    @State private var openedAt = Date()
     @State private var askName = false
     @State private var confirmClose = false
     @State private var confirmFinish = false
@@ -62,6 +64,10 @@ struct ScannerView: View {
             .animation(reduceMotion ? nil : .spring(duration: 0.3), value: showSliders)
         }
         .preferredColorScheme(.dark)
+        // A scan lasts a minute or two without a touch: left alone, the iPhone dims and locks in the middle of
+        // it, which stops the camera, breaks the tracking and loses the tour. Same while the model is computed.
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .onReceive(ticker) { now = $0 }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
         .onChange(of: controller.phase) { _, phase in
@@ -73,6 +79,11 @@ struct ScannerView: View {
                 Button("Mettre en pause") { controller.pause() }
                 Button("Abandonner le scan", role: .destructive) { leave(abandon: true) }
                 Button("Continuer le scan", role: .cancel) {}
+            case .paused:
+                // The pause card says the scan is kept: leaving must not drop it without a word.
+                Button("Garder le scan pour plus tard") { leave(abandon: false) }
+                Button("Abandonner le scan", role: .destructive) { leave(abandon: true) }
+                Button("Rester", role: .cancel) {}
             case .uploadingRest:
                 Button("Quitter") { leave(abandon: false) }
                 Button("Rester", role: .cancel) {}
@@ -101,8 +112,8 @@ struct ScannerView: View {
     private func closeTapped() {
         Haptics.tap()
         switch controller.phase {
-        case .scanning, .uploadingRest, .finishing: confirmClose = true
-        case .placing, .needsNewBox, .paused, .done: leave(abandon: true)
+        case .scanning, .paused, .uploadingRest, .finishing: confirmClose = true
+        case .placing, .needsNewBox, .done: leave(abandon: true)
         }
     }
 
@@ -119,6 +130,7 @@ struct ScannerView: View {
     private var closeTitle: String {
         switch controller.phase {
         case .scanning: return "Arrêter ce scan ?"
+        case .paused: return "Quitter ce scan ?"
         case .uploadingRest: return "Quitter pendant l’envoi ?"
         default: return "Quitter pendant le calcul ?"
         }
@@ -127,6 +139,7 @@ struct ScannerView: View {
     private var closeMessage: String {
         switch controller.phase {
         case .scanning: return "Vous pouvez le mettre en pause pour le reprendre, ou l’abandonner."
+        case .paused: return "Gardé, le scan reste sur l’iPhone et vous pourrez l’envoyer depuis l’accueil. Abandonné, il est retiré."
         case .uploadingRest: return "Les vues restantes sont gardées sur l’iPhone. Vous pourrez les envoyer depuis l’accueil."
         default: return "Le calcul continue sur le calculateur. Le plat apparaîtra dans Mes plats quand son modèle sera prêt."
         }
@@ -187,6 +200,10 @@ struct ScannerView: View {
         if let e = controller.errorText, controller.phase != .scanning { return ("Un problème est survenu", e, Theme.bad) }
         switch controller.phase {
         case .placing:
+            // Not in the first seconds: the calculator has not answered the first ping yet.
+            if !controller.calculatorOnline && now.timeIntervalSince(openedAt) > 3 {
+                return ("Calculateur injoignable", "Allumez le calculateur sur le PC et gardez l’iPhone sur le même Wi‑Fi : le scan pourra alors démarrer.", Theme.warn)
+            }
             return box.placed
                 ? ("Centrez la boîte sur le plat", "Glissez pour déplacer, pincez pour ajuster la taille. Les poignées règlent chaque côté.", .white)
                 : ("Placez la boîte", "Touchez la table au pied du plat.", .white)
@@ -201,6 +218,9 @@ struct ScannerView: View {
         case .finishing:
             return ("Finition du modèle", "Le calculateur assemble le modèle final.", .white)
         case .done:
+            if let g = controller.lastGeometry, g.kind == "final", (g.triangle_count ?? 0) == 0 {
+                return ("Aucun modèle obtenu", "Ce scan n’a pas donné de surface. Refaites-le en tournant lentement tout autour du plat.", Theme.bad)
+            }
             return ("Modèle prêt", "Faites-le tourner du doigt, puis retrouvez-le dans Mes plats.", Theme.good)
         case .scanning:
             if !controller.calculatorOnline {
@@ -368,7 +388,8 @@ struct ScannerView: View {
         HStack(spacing: 10) {
             switch controller.phase {
             case .placing:
-                PrimaryButton(title: "Démarrer le scan", icon: "record.circle", enabled: box.placed) {
+                // Without the calculator the views would stay on the iPhone with no way to finish the dish.
+                PrimaryButton(title: "Démarrer le scan", icon: "record.circle", enabled: box.placed && controller.calculatorOnline) {
                     showSliders = false
                     controller.start()
                 }

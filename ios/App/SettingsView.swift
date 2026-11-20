@@ -14,7 +14,7 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         computerCard
-                        if model.lidarSupported || !model.trackingSupported { deviceCard }
+                        deviceCard
                         measureCard
                         Text("DishPlay Scan \(version)")
                             .font(.footnote).foregroundStyle(.white.opacity(0.45))
@@ -89,7 +89,7 @@ struct SettingsView: View {
             Toggle(isOn: $showProvenance) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Colorer les zones estimées").font(.subheadline.weight(.semibold))
-                    Text("Teinte en bleu ce qui n’a pas été mesuré directement. Sinon, le modèle garde ses vraies couleurs.")
+                    Text("Teinte en bleu ou en rose ce qui n’a pas été mesuré directement. Sinon, le modèle garde ses vraies couleurs.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
