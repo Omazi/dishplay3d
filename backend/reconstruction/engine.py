@@ -29,7 +29,7 @@ from .live_pose import AnchorConfig, Tie, anchor_pose, common_correction, sample
 from .stereo_depth import StereoParams, View, _box_mask, combine_depths, compute_pair_depth, epipolar_matches
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.9.0"
+ENGINE_VERSION = "p1-0.10.0"
 
 
 @dataclass

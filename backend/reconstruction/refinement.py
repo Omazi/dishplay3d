@@ -20,8 +20,8 @@ from .coordinates import invert_rigid, scale_intrinsics
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
 from .exports import write_glb, write_mesh_ply, write_points_ply, write_usdz
 from .fusion import FusionConfig
-from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, drop_small_pieces, edge_manifold_triangles,
-                           supported_mesh, surface_area)
+from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, distinct_triangles, drop_small_pieces,
+                           edge_manifold_triangles, supported_mesh, surface_area)
 from .preview_format import encode_geometry
 from .stereo_depth import View
 
@@ -244,9 +244,12 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 under = fp.core if fp.core is not None and fp.core.any() else fp.grid
                 ii, jj = np.nonzero(under)
                 floor_xz = (np.stack([ii, jj], 1) + 0.5) * fp.cell_m + fp.origin
+            # Where the cameras were: a hole they looked at was photographed, only not measured (uniform or shiny
+            # area). Those are closed even when wide, and the photographs are then laid over them like the rest.
+            cams = np.array(list(fusion.camera_centres.values()), np.float64).reshape(-1, 3)
             V, C, N, cls, T, closure_info = close_surface(
                 V, C, N, cls, T, engine.box.size_m, floor_y=fp.table_y if on_table else None, floor_xz=floor_xz,
-                floor_slope=(fp.slope_x, fp.slope_z) if on_table else (0.0, 0.0))
+                floor_slope=(fp.slope_x, fp.slope_z) if on_table else (0.0, 0.0), cameras=cams if len(cams) else None)
             if closure_info.get("added_triangles"):
                 glb_extras = {**glb_extras, "closed": True}
         except Exception as exc:   # never lose a scan because the closing failed: the open model is delivered
@@ -263,7 +266,8 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                 # The delivered file: fewer triangles, texture taken from the photographs at full resolution,
                 # vertices shared wherever the atlas has no seam, JPEG texture. The full mesh stays in mesh.ply.
                 Vw, Cw, Nw, cw, Tw = decimate_for_web(V, C, N, cls, T, web_triangles)
-                ok_t = edge_manifold_triangles(Tw)     # the atlas refuses an edge shared by three triangles
+                Tw = Tw[distinct_triangles(Tw)]        # the atlas refuses two triangles on the same three vertices...
+                ok_t = edge_manifold_triangles(Tw)     # ...and an edge shared by three triangles
                 if not ok_t.all():
                     Tw = Tw[ok_t]
                 views = _texture_views(fin, list(fusion.integrated_frames))
@@ -336,7 +340,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
         "live": engine.metrics(), "snapshots": engine.snapshot_log, "timings_s": {**timings, "total": time.perf_counter() - t0},
         "notes": [
             "Global pose refinement (bundle adjustment on SIFT tracks) runs when finishing; it is applied only if it lowers the reprojection error and stays close to ARKit (see pose_refinement).",
-            "Small gaps are closed with a smooth surface and the dish gets a flat base on the table. Everything added is labelled estimated (class 2); the model as measured is kept in model_mesure.glb (see closure).",
+            "Gaps are closed with a smooth surface and the dish gets a flat base on the table: gaps up to 16 mm wide everywhere, and wider holes (up to 6 cm) when they are enclosed by the reconstructed surface and the cameras looked at them (photographed, not measured). Everything added is labelled estimated (class 2) and textured from the photographs where they show it; the model as measured is kept in model_mesure.glb (see closure).",
             "model.usdz holds the same mesh and texture as model.glb, for AR Quick Look on iPhone and iPad; it is written only when the texture succeeded.",
         ],
     }

@@ -193,3 +193,111 @@ def test_a_hole_above_a_box_set_too_low_is_closed_too():
     assert np.median(dist_to_mesh(V, T, P)) > 0.002
     V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.035, 0.2), max_gap_m=0.02)
     assert np.percentile(dist_to_mesh(V2, T2, P), 95) < 0.002
+
+
+def cameras_around(n=12, radius=0.35, elevations=(35.0, 65.0)):
+    """Where the phone was: two rings above the object, looking at it."""
+    out = []
+    for el in elevations:
+        for k in range(n):
+            a, e = 2 * np.pi * k / n, np.radians(el)
+            out.append([radius * np.cos(e) * np.cos(a), radius * np.sin(e), radius * np.cos(e) * np.sin(a)])
+    return np.array(out)
+
+
+def _inside_hole(centre, radius, n=1500, seed=0, scale=1.0):
+    """Points of the true sphere inside a hole (not too close to its rim)."""
+    rng = np.random.default_rng(seed)
+    P = centre + rng.normal(scale=radius, size=(n, 3))
+    P = scale * R * P / np.linalg.norm(P, axis=1, keepdims=True)
+    return P[np.linalg.norm(P - centre, axis=1) < 0.75 * radius]
+
+
+def test_a_wide_hole_that_the_cameras_looked_at_is_closed():
+    """A uniform or shiny area of a dish: photographed from everywhere, never measured by stereo. The hole is
+    5 cm wide, far beyond what the 8 mm rule mends, and the dark base showed through it on real captures. It is
+    enclosed by the surface and the cameras looked straight at it: a smooth surface is laid across it (and the
+    photographs are then laid on that surface like on the rest)."""
+    centre = on_sphere([0.5, 1.0, 0.2])
+    V, C, N, cls, T = dome(hole_at=centre, hole_radius=0.025)
+    P = _inside_hole(centre, 0.025)
+    middle = P[np.linalg.norm(P - centre, axis=1) < 0.008]
+    assert len(P) > 200 and len(middle) > 20
+    # without knowing where the cameras were nothing says the hole was seen: only its rim is mended, as before
+    V1, _, _, _, T1, info1 = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2))
+    assert np.median(dist_to_mesh(V1, T1, middle)) > 0.004 and info1.get("holes_closed", 0) == 0
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2), cameras=cameras_around())
+    # what existed is untouched and comes first; everything added is labelled estimated
+    assert np.array_equal(V2[:len(V)], V) and np.array_equal(cls2[:len(V)], cls) and np.array_equal(T2[:len(T)], T)
+    assert (cls2[len(V):] == ESTIMATED).all()
+    assert check_measured_protected(V, cls, CompletionProposal(V2, T2, cls2 == ESTIMATED, "test", "n/a"))
+    # the hole is covered, by a surface that continues the sphere
+    assert np.percentile(dist_to_mesh(V2, T2, P), 95) < 0.003, np.percentile(dist_to_mesh(V2, T2, P), 95)
+    new = V2[len(V):]
+    in_hole = np.linalg.norm(new - centre, axis=1) < 0.02
+    assert in_hole.sum() > 30 and np.percentile(np.abs(np.linalg.norm(new[in_hole], axis=1) - R), 95) < 0.003
+    assert info["holes_closed"] >= 1 and info["largest_hole_closed_m"] > 0.03
+    from reconstruction.mesh_preview import edge_manifold_triangles
+    assert edge_manifold_triangles(T2[len(T):]).all()
+
+
+def test_what_no_camera_could_see_is_not_skinned_over():
+    """A small dome open underneath, no table found: the opening is only 5 cm wide and enclosed by the surface,
+    but it faces the table and no camera ever looked at it. Laying a surface there would be invention - the
+    bulging skin of the first version of this step."""
+    V, C, N, cls, T = dome()
+    V = (V * (0.025 / R)).astype(np.float32)             # 2.5 cm of radius
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2), cameras=cameras_around())
+    under = np.array([[0.0, 0.001, 0.0], [0.006, 0.001, 0.0], [0.0, 0.001, -0.006]])
+    assert dist_to_mesh(V2, T2, under).min() > 0.006, "a lid was laid under the dome"
+    assert info.get("holes_closed", 0) == 0
+    new = V2[len(V):]
+    if len(new):
+        d, _ = cKDTree(V[np.unique(T)]).query(new)
+        assert d.max() <= 0.008 + 0.004                   # nothing beyond the usual mending of rims
+
+
+def test_a_hole_wider_than_the_limit_stays_open():
+    """A missing part 10 cm wide is not a hole in the dish, it is a part of it that was never rebuilt."""
+    centre = 2 * on_sphere([0.3, 1.0, 0.2])
+    V, C, N, cls, T = dome()
+    V = (V * 2).astype(np.float32)                        # 12 cm of radius
+    keep = np.linalg.norm(V[T].mean(1) - centre, axis=1) > 0.05
+    T = T[keep]
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.3, 0.15, 0.3), cameras=cameras_around(radius=0.45))
+    assert dist_to_mesh(V2, T2, centre[None])[0] > 0.02
+    assert info.get("holes_closed", 0) == 0 and info["holes_left_open"].get("too_wide", 0) >= 1
+
+
+def test_a_wide_hole_is_closed_on_a_dish_that_also_gets_its_base():
+    centre = on_sphere([0.2, 1.0, -0.3])
+    V, C, N, cls, T = dome(hole_at=centre, hole_radius=0.02)
+    g = np.stack(np.meshgrid(np.arange(-R, R, 0.002), np.arange(-R, R, 0.002)), -1).reshape(-1, 2)
+    under = g[np.linalg.norm(g, axis=1) < R - 0.004]
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2), floor_y=0.0, floor_xz=under,
+                                               cameras=cameras_around())
+    P = _inside_hole(centre, 0.02, seed=3)
+    assert np.percentile(dist_to_mesh(V2, T2, P), 95) < 0.003
+    assert info["floor"] and info["holes_closed"] >= 1
+    assert V2[:, 1].min() > -0.003
+
+
+def test_a_pinhole_is_covered_too():
+    """Seen on a real capture once the wide holes were closed: dozens of dark dots left on the cover of a book.
+    A hole a few millimetres wide is nowhere farther than a millimetre from its own rim, so "lies off the
+    surface" could not be a matter of distance: what counts is that nothing covers the spot."""
+    V, C, N, cls, T = dome()
+    c = on_sphere([0.4, 1.0, 0.3])
+    order = np.argsort(np.linalg.norm(V[T].mean(1) - c, axis=1))
+    gone = order[:2]                                           # two neighbouring triangles: a hole about 3 mm wide
+    spots = V[T[gone]].mean(1)
+    T = np.delete(T, gone, axis=0)
+    assert dist_to_mesh(V, T, spots).min() > 0.0004 and dist_to_mesh(V, T, spots).max() < 0.0015
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.1, 0.2))
+    assert dist_to_mesh(V2, T2, spots).max() < 0.0003, dist_to_mesh(V2, T2, spots)
+    assert np.array_equal(V2[:len(V)], V) and np.array_equal(T2[:len(T)], T)
+    # and nothing is laid over what is already there: only the hole and its rim receive triangles
+    new = V2[len(V):]
+    near_hole = np.linalg.norm(new - c, axis=1) < 0.012
+    assert near_hole.sum() > 0
+    assert not (~near_hole & (new[:, 1] > 0.012)).any()       # (the open rim at the bottom of the dome is mended as before)

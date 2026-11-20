@@ -272,6 +272,8 @@ def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     rep = finish_session(eng, tmp_path / "final")
     assert rep["texture"]["status"] == "ok"
     assert (tmp_path / "final" / "apercu.png").exists() and (tmp_path / "final" / "model_avec_table.glb").exists()
+    # the closing step knows where the cameras were (holes they looked at are closed even when wide) and says what it did
+    assert rep["closure"]["status"] == "ok" and {"holes_closed", "largest_hole_closed_m", "holes_left_open"} <= set(rep["closure"])
     assert "applied" in rep["pose_refinement"]
     js, b = read_glb(tmp_path / "final" / "model.glb")
     at = js["meshes"][0]["primitives"][0]["attributes"]

@@ -232,6 +232,21 @@ def edge_manifold_triangles(T: np.ndarray) -> np.ndarray:
     return keep
 
 
+def distinct_triangles(T: np.ndarray) -> np.ndarray:
+    """Mask of the triangles to keep so that none stands on the same three vertices as another (whichever way
+    round) and none uses a vertex twice. Decimation can leave such a pair where it flattened a sliver; no edge
+    is then shared by more than two triangles, yet the texture atlas refuses the whole mesh."""
+    T = np.asarray(T, np.int64).reshape(-1, 3)
+    keep = (T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])
+    idx = np.nonzero(keep)[0]
+    if len(idx):
+        _, first = np.unique(np.sort(T[idx], 1), axis=0, return_index=True)
+        only = np.zeros(len(idx), bool)
+        only[first] = True
+        keep[idx[~only]] = False
+    return keep
+
+
 def drop_small_pieces(V, C, N, cls, T, min_triangles: int = 300, min_area_share: float = 0.0):
     """Remove the crumbs: connected pieces of fewer than min_triangles triangles (a few cm2), or smaller than
     min_area_share of the whole surface — typically scraps of table or of the surroundings left around the

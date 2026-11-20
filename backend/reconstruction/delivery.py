@@ -44,6 +44,7 @@ def decimate_for_web(V, C, N, cls, T, max_triangles: int = 60000):
     m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(np.asarray(V, np.float64)), o3d.utility.Vector3iVector(np.asarray(T, np.int32)))
     m = m.simplify_quadric_decimation(int(max_triangles))
     m.remove_degenerate_triangles()
+    m.remove_duplicated_triangles()        # a flattened sliver can leave two triangles on the same three vertices
     m.remove_unreferenced_vertices()
     m.compute_vertex_normals()
     V2, T2 = np.asarray(m.vertices), np.asarray(m.triangles)

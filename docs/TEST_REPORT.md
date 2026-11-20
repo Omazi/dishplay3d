@@ -648,7 +648,43 @@ parenthèses équilibrées dans les fichiers réécrits ; le code suit les règl
 clair et en sombre, les grandes tailles de texte, VoiceOver. Les revues `ui-review` et `accessibility-audit` restent à faire sur une
 version compilée, avant publication.
 
-MODEL_SECTION
+**Modèle : les trous dans la surface (`closure.py`).** Les taches sombres visibles sur la couverture du livre
+n'étaient pas un défaut de texture : c'étaient des trous de plus de 8 mm — des aplats unis, photographiés mais que
+la stéréo n'a pas pu mesurer — par lesquels on voyait la base ajoutée sous l'objet. La règle des 8 mm (ne rien
+poser à plus de 8 mm d'une mesure) les laissait ouverts. Désormais un trou plus large est fermé quand il est
+entouré par la surface reconstruite, large de 6 cm au plus, et qu'au moins 35 % de sa surface a été vue par deux
+caméras sans rien entre elles. L'extérieur du modèle, son dos et son dessous ne remplissent jamais ces conditions :
+la « peau gonflée » de la première version ne revient pas. Tout ce qui est ajouté reste étiqueté « estimé », le
+modèle tel que mesuré reste dans `model_mesure.glb`, et les photos sont ensuite projetées sur ces surfaces comme
+sur le reste.
+
+Deux défauts trouvés en chemin et corrigés : des trous d'épingle (quelques millimètres) restaient ouverts parce
+que « hors de la surface » était jugé par une distance — un trou de 3 mm n'est jamais à plus d'1 mm de son bord ;
+c'est maintenant jugé par ce qui recouvre ou non l'endroit. Et, après simplification, deux triangles pouvaient se
+retrouver sur les trois mêmes sommets : l'atlas de texture refusait alors tout le maillage et le modèle serait
+parti avec ses couleurs par sommet au lieu de ses photos.
+
+Avant → après sur quatre vraies captures (même maillage mesuré, mêmes positions, mêmes photos ; seule la fin du
+traitement change). Mesure : part de l'image, à l'intérieur du contour de l'objet, où le regard traverse le modèle.
+
+| Capture | Vu de dessus | Vues obliques | Trous fermés | Restés ouverts |
+|---|---|---|---|---|
+| Livre | 4,0 → 0,06 % | 4,1 → 0,27 % | 5 (le plus large : 3,0 cm) | 2 au bord de la boîte, 1 jamais vu |
+| Chaussures | 5,7 → 2,5 % | 15,0 → 13,0 % | 1 (5,5 cm, l'ouverture d'une chaussure) | 2 trop larges, 3 jamais vus |
+| Tasse sombre | 24,8 → 24,5 % | 26,8 → 27,0 % | 1 (2,9 cm) | 1 trop large, 8 au bord de la boîte, 1 jamais vu |
+| Boîtes imprimées A | 11,6 → 11,1 % | 33,6 → 33,4 % | 1 (1,7 cm) | 1 trop large, 16 au bord de la boîte, 2 jamais vus |
+
+Le gain est net là où des aplats manquaient au milieu d'une surface (le livre : le titre se lit en entier), partiel
+sur les chaussures, nul sur la tasse et les boîtes, dont les manques sont de grands pans jamais reconstruits et non
+des trous. Fichier livré inchangé (2,7 à 2,9 Mo), fermeture en 2 à 4 s, texture et `model.usdz` produits sur les
+quatre captures. Image : `docs/evidence/trous_fermes_avant_apres.jpg` (rendu dans le navigateur).
+
+**Limites.** L'ouverture d'un vrai creux (une chaussure) est fermée par une surface dont la forme est estimée. Un
+trou au bord de la boîte de scan reste ouvert. Les surfaces unies ou brillantes de grande étendue restent le rôle
+du modèle de profondeur, toujours jamais exécuté ici.
+
+119 tests passés, 2 sautés (le vrai réseau de profondeur et la bibliothèque de Pixar, absents ici), suite complète
+exécutée seule sur le code livré (15 min 32 s). App iOS : toujours **non compilée** (dépôt privé).
 
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de

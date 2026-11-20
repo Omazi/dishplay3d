@@ -98,3 +98,63 @@ def test_the_base_under_the_dish_is_painted_plain():
     assert n > 200
     assert (tex[8:14, 8:14] == (90, 80, 70)).all()                 # inside the plain triangle
     assert np.array_equal(tex[40:50, 40:46], before[40:50, 40:46])  # the other triangle keeps its photograph
+
+
+def test_the_same_triangle_twice_is_delivered_once():
+    """Found on a real capture: after decimation two triangles stood on the same three vertices. No edge was
+    shared by more than two triangles, so the existing filter let the pair through; the texture atlas then
+    refused the whole mesh ("non-manifold") and the model would have gone out with vertex colours instead of
+    its photographs."""
+    import pytest
+    from reconstruction.mesh_preview import distinct_triangles, edge_manifold_triangles
+    V, T = grid_mesh(8, 8)
+    base = len(V)
+    V2 = np.concatenate([V, [[0.05, 0.0, 0.0], [0.052, 0.0, 0.0], [0.05, 0.0, 0.002]]])
+    twice = np.array([[base, base + 1, base + 2], [base + 1, base, base + 2]])      # the same triangle, both ways round
+    T2 = np.concatenate([T, twice])
+    assert edge_manifold_triangles(T2).all(), "the filter on edges does not see it"
+
+    def atlas(tri):
+        tm = o3d.t.geometry.TriangleMesh()
+        tm.vertex.positions = o3d.core.Tensor(V2.astype(np.float32))
+        tm.triangle.indices = o3d.core.Tensor(tri.astype(np.int32))
+        tm.compute_uvatlas(size=256)
+
+    with pytest.raises(RuntimeError):
+        atlas(T2)
+    keep = distinct_triangles(T2)
+    assert keep.sum() == len(T2) - 1 and keep[:len(T)].all() and keep[len(T):].sum() == 1
+    atlas(T2[keep])                                             # accepted once the copy is gone
+    # a triangle that uses a vertex twice is no triangle either
+    assert distinct_triangles(np.array([[0, 1, 2], [3, 3, 4], [2, 1, 0]])).tolist() == [True, False, False]
+    assert distinct_triangles(T).all()
+
+
+def test_what_the_cameras_saw_is_painted_from_the_photographs_whatever_its_vertex_colour():
+    """A surface laid across a hole has no measured colour of its own (its vertices carry a blend of the colours
+    around the hole). Where the cameras looked at it - a uniform area that stereo could not measure was still
+    photographed - it must show the photographs, like the measured surface next to it."""
+    from reconstruction.refinement import texture_mesh
+    from reconstruction.stereo_depth import View
+    V, T = grid_mesh(30, 30)
+    V = V - [0.03, 0.0, 0.03]                              # a 6 cm square on the table, centred
+    T = T[:, [0, 2, 1]]                                    # facing up
+    photo_bgr = (30, 120, 230)
+    views = []
+    for k, (x, z) in enumerate([(0.0, 0.0), (0.04, 0.0), (0.0, -0.04)]):
+        Tm = np.eye(4)
+        Tm[:3, :3] = [[1, 0, 0], [0, 0, -1], [0, 1, 0]]    # camera looking straight down
+        Tm[:3, 3] = [x, 0.30, z]
+        K = np.array([[600.0, 0, 239.5], [0, 600.0, 239.5], [0, 0, 1]])
+        img = np.empty((480, 480, 3), np.uint8)
+        img[:] = photo_bgr
+        views.append(View(k, img, K, Tm))
+    grey = np.full((len(V), 3), 128.0)                      # what the vertices would give
+    uv, tex, n_views, filled = texture_mesh(V.astype(np.float32), T, views, tex_size=512, colors_bgr=grey)
+    assert n_views == 3 and filled < 0.2
+    H, W = tex.shape[:2]
+    inner = np.abs(V[T].mean(1)[:, [0, 2]]).max(1) < 0.02   # triangles away from the border of the square
+    c = uv[inner].mean(1)
+    seen = tex[np.clip((c[:, 1] * (H - 1)).round().astype(int), 0, H - 1), np.clip((c[:, 0] * (W - 1)).round().astype(int), 0, W - 1)].astype(float)
+    assert np.abs(np.median(seen, 0) - photo_bgr).max() < 12, np.median(seen, 0)
+    assert (np.abs(seen - photo_bgr).max(1) < 25).mean() > 0.97
