@@ -43,14 +43,17 @@ struct ScannerView: View {
                 VStack(spacing: 0) {
                     ZStack {
                         ARViewContainer(arView: controller.ar.arView).ignoresSafeArea(edges: .top)
-                        VStack(spacing: 12) {
-                            topBar
-                            if !expanded { instructionCard }
-                            Spacer(minLength: 0)
-                            if box.placed && !box.locked && !expanded { dimensions }
-                            actionBar
+                        // Everything floating over the camera is glass, and shares one container.
+                        GlassGroup {
+                            VStack(spacing: Spacing.s) {
+                                topBar
+                                if !expanded { instructionCard }
+                                Spacer(minLength: 0)
+                                if box.placed && !box.locked && !expanded { dimensions }
+                                actionBar
+                            }
                         }
-                        .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 40)
+                        .padding(.horizontal, Spacing.m).padding(.top, 6).padding(.bottom, Spacing.xxl)
                     }
                     Color.clear.frame(height: previewHeight - 28)
                 }
@@ -158,7 +161,7 @@ struct ScannerView: View {
             // Always answers a tap. While something is running it asks first instead of doing nothing.
             Button(action: closeTapped) {
                 Image(systemName: "xmark").font(.subheadline.weight(.bold)).foregroundStyle(.white)
-                    .frame(width: 44, height: 44).glass(Circle())
+                    .frame(width: 44, height: 44).glass(Circle(), interactive: true)
             }
             .accessibilityLabel("Quitter le scan")
             HStack(spacing: 14) {
@@ -445,9 +448,9 @@ struct ScannerView: View {
             if placing { compactPreview } else { fullPreview }
         }
         .frame(maxWidth: .infinity)
-        .background(Theme.panel, in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
+        .background(Theme.canvas, in: UnevenRoundedRectangle(topLeadingRadius: Radius.stage, topTrailingRadius: Radius.stage))
         .overlay(alignment: .top) {
-            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28).strokeBorder(Color.white.opacity(0.08)).allowsHitTesting(false)
+            UnevenRoundedRectangle(topLeadingRadius: Radius.stage, topTrailingRadius: Radius.stage).strokeBorder(Theme.hairline).allowsHitTesting(false)
         }
     }
 
@@ -501,8 +504,8 @@ struct ScannerView: View {
                     .padding(.horizontal, 36).allowsHitTesting(false)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .padding(.horizontal, 12)
+            .clipShape(.rect(cornerRadius: Radius.card))
+            .padding(.horizontal, Spacing.s)
             if controller.lastGeometry != nil {
                 Picker("", selection: $mode) { ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) } }
                     .pickerStyle(.segmented).padding(.horizontal, 18)

@@ -9,20 +9,34 @@ struct OnboardingView: View {
     private struct Page: Identifiable {
         let id: Int
         let symbol: String
+        let kicker: String
         let title: String
         let text: String
     }
 
     private let pages: [Page] = [
-        Page(id: 0, symbol: "", title: "Vos plats en 3D", text: "Tournez autour d’une assiette avec l’iPhone : sa forme se construit sous vos yeux."),
-        Page(id: 1, symbol: "cube.transparent", title: "Posez la boîte", text: "Touchez la table au pied du plat, puis ajustez la boîte à sa taille."),
-        Page(id: 2, symbol: "arrow.triangle.2.circlepath", title: "Faites le tour", text: "L’anneau se remplit à mesure que chaque côté est vu. Quand il est complet, terminez."),
+        Page(id: 0, symbol: "", kicker: "Bienvenue", title: "Vos plats en 3D",
+             text: "Tournez autour d’une assiette avec l’iPhone : sa forme se construit sous vos yeux."),
+        Page(id: 1, symbol: "cube.transparent", kicker: "Étape 1", title: "Posez la boîte",
+             text: "Touchez la table au pied du plat, puis ajustez la boîte à sa taille."),
+        Page(id: 2, symbol: "arrow.triangle.2.circlepath", kicker: "Étape 2", title: "Faites le tour",
+             text: "L’anneau se remplit à mesure que chaque côté est vu. Quand il est complet, terminez."),
     ]
 
     var body: some View {
         ZStack {
-            AmbientBackground()
+            ScreenBackground()
             VStack(spacing: 0) {
+                HStack {
+                    Wordmark()
+                    Spacer()
+                    Button("Passer", action: done)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .opacity(current == pages.count - 1 ? 0 : 1)
+                }
+                .padding(.horizontal, Spacing.l).padding(.top, Spacing.xs)
+
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 0) {
                         ForEach(pages) { item in
@@ -31,7 +45,7 @@ struct OnboardingView: View {
                                 .scrollTransition { content, phase in
                                     content
                                         .opacity(phase.isIdentity ? 1 : 0.25)
-                                        .scaleEffect(phase.isIdentity ? 1 : 0.9)
+                                        .scaleEffect(phase.isIdentity ? 1 : 0.94)
                                 }
                         }
                     }
@@ -41,15 +55,15 @@ struct OnboardingView: View {
                 .scrollIndicators(.hidden)
                 .scrollPosition(id: $page)
 
-                HStack(spacing: 8) {
+                HStack(spacing: Spacing.xs) {
                     ForEach(pages) { item in
                         Capsule()
-                            .fill(item.id == current ? Theme.accent : Color.white.opacity(0.25))
+                            .fill(item.id == current ? Theme.textPrimary : Theme.hairline)
                             .frame(width: item.id == current ? 22 : 8, height: 8)
                     }
                 }
                 .animation(reduceMotion ? nil : .snappy, value: current)
-                .padding(.bottom, 22)
+                .padding(.bottom, Spacing.l)
                 .accessibilityHidden(true)
 
                 PrimaryButton(title: current == pages.count - 1 ? "Commencer" : "Continuer", icon: "arrow.right") {
@@ -61,13 +75,7 @@ struct OnboardingView: View {
                         withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) { page = current + 1 }
                     }
                 }
-                .padding(.horizontal, 24)
-
-                Button("Passer", action: done)
-                    .font(.subheadline).foregroundStyle(.white.opacity(0.6))
-                    .frame(height: 44)
-                    .opacity(current == pages.count - 1 ? 0 : 1)
-                    .padding(.bottom, 8)
+                .padding(.horizontal, Spacing.l).padding(.bottom, Spacing.m)
             }
         }
     }
@@ -75,29 +83,32 @@ struct OnboardingView: View {
     private var current: Int { page ?? 0 }
 
     private func pageView(_ item: Page) -> some View {
-        VStack(spacing: 18) {
+        VStack(alignment: .leading, spacing: Spacing.m) {
             Spacer(minLength: 0)
-            Group {
-                if item.symbol.isEmpty {
-                    HeroDishView()
-                } else {
-                    Image(systemName: item.symbol)
-                        .font(.system(size: 110, weight: .thin))
-                        .foregroundStyle(Theme.accent)
-                        .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
-                        .accessibilityHidden(true)
+            Stage {
+                Group {
+                    if item.symbol.isEmpty {
+                        HeroDishView()
+                    } else {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 104, weight: .thin))
+                            .foregroundStyle(Theme.textOnStage)
+                            .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                            .accessibilityHidden(true)
+                    }
                 }
+                .frame(height: 300)
             }
-            .frame(height: 300)
-            Text(item.title)
-                .font(.system(.largeTitle, design: .rounded).bold())
-                .multilineTextAlignment(.center)
-            Text(item.text)
-                .font(.title3).foregroundStyle(.white.opacity(0.75))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(item.kicker).appText(.kicker).foregroundStyle(Theme.accent)
+                Text(item.title).appText(.display).foregroundStyle(Theme.textPrimary)
+                Text(item.text)
+                    .font(.title3).foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Spacing.xxs)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, Spacing.m)
     }
 }

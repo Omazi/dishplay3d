@@ -7,67 +7,88 @@ struct HomeView: View {
     let openLibrary: () -> Void
     @State private var appeared = false
     @State private var dishes: [DishRecord] = []
+    @Namespace private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack {
-            AmbientBackground()
-            ScrollView {
-                VStack(spacing: 0) {
-                    HeroDishView()
-                        .frame(height: 300)
-                        .padding(.top, 8)
-                    VStack(spacing: 10) {
-                        Text("DishPlay")
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                        Text("Vos plats en 3D, en un tour d’assiette.")
-                            .font(.title3).foregroundStyle(.white.opacity(0.75))
-                            .multilineTextAlignment(.center)
-                    }
-                    .staged(appeared, order: 0, reduceMotion: reduceMotion)
-
-                    statusChip
-                        .padding(.top, 18)
-                        .staged(appeared, order: 1, reduceMotion: reduceMotion)
-
-                    action
-                        .padding(.horizontal, 24).padding(.top, 22)
-                        .staged(appeared, order: 2, reduceMotion: reduceMotion)
-
-                    if model.pendingScan != nil || model.pendingText != nil {
-                        PendingScanCard()
-                            .padding(.horizontal, 20).padding(.top, 22)
-                            .staged(appeared, order: 3, reduceMotion: reduceMotion)
-                    }
-                    if !dishes.isEmpty {
-                        recent
-                            .padding(.top, 30)
-                            .staged(appeared, order: 3, reduceMotion: reduceMotion)
-                    }
+        NavigationStack {
+            content
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: DishRecord.self) { dish in
+                    DishDetailView(dish: dish, changed: reload)
+                        .modifier(ZoomDestination(id: dish.id, namespace: zoom))
                 }
-                .padding(.bottom, 32)
-            }
-            .scrollIndicators(.hidden)
         }
         .task { await model.checkHealth() }
         .onAppear {
-            dishes = Array(DishLibrary.all().prefix(8))
+            reload()
             model.refreshPending()
             appeared = true
         }
     }
 
+    private func reload() { dishes = Array(DishLibrary.all().prefix(8)) }
+
+    private var content: some View {
+        ZStack {
+            ScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Wordmark()
+                        Spacer()
+                        statusChip
+                    }
+                    .padding(.horizontal, Spacing.l).padding(.top, Spacing.xs)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Vos plats.").foregroundStyle(Theme.textPrimary)
+                        Text("En trois dimensions.").foregroundStyle(Theme.textSecondary)
+                    }
+                    .appText(.display)
+                    .accessibilityElement(children: .combine)
+                    .padding(.horizontal, Spacing.l).padding(.top, Spacing.xl)
+                    .staged(appeared, order: 0, reduceMotion: reduceMotion)
+
+                    Stage {
+                        HeroDishView().frame(height: 280)
+                    }
+                    .padding(.horizontal, Spacing.m).padding(.top, Spacing.l)
+                    .staged(appeared, order: 1, reduceMotion: reduceMotion)
+
+                    action
+                        .padding(.horizontal, Spacing.l).padding(.top, Spacing.l)
+                        .staged(appeared, order: 2, reduceMotion: reduceMotion)
+
+                    if model.pendingScan != nil || model.pendingText != nil {
+                        PendingScanCard()
+                            .padding(.horizontal, Spacing.l).padding(.top, Spacing.l)
+                            .staged(appeared, order: 3, reduceMotion: reduceMotion)
+                    }
+                    if !dishes.isEmpty {
+                        recent
+                            .padding(.top, Spacing.xl)
+                            .staged(appeared, order: 3, reduceMotion: reduceMotion)
+                    }
+                }
+                .padding(.bottom, Spacing.xl)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    /// Where the calculator stands, one tap from its settings. Part of the page, so no glass.
     private var statusChip: some View {
         Button(action: openSettings) {
-            HStack(spacing: 8) {
+            HStack(spacing: Spacing.xs) {
                 Circle().fill(model.paired ? Theme.good : Theme.warn).frame(width: 8, height: 8)
                 Text(model.paired ? "Calculateur relié" : "Calculateur à relier")
                     .font(.footnote.weight(.semibold))
-                Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.5))
+                Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(Theme.textSecondary)
             }
-            .padding(.horizontal, 14).frame(height: 44)
-            .foregroundStyle(.white)
-            .glass(Capsule())
+            .padding(.horizontal, 14).frame(minHeight: 44)
+            .foregroundStyle(Theme.textPrimary)
+            .background { Capsule().fill(Theme.surface).strokeBorder(Theme.hairline) }
         }
         .buttonStyle(PressableStyle())
         .accessibilityHint("Ouvre les réglages du calculateur")
@@ -88,32 +109,33 @@ struct HomeView: View {
     }
 
     private var recent: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.s) {
             HStack {
-                Text("Derniers plats").font(.title3.bold())
+                Text("Derniers plats").appText(.section).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 Button("Tout voir", action: openLibrary)
                     .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
                     .frame(minHeight: 44)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, Spacing.l)
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 14) {
+                LazyHStack(spacing: Spacing.s) {
                     ForEach(dishes) { dish in
-                        Button(action: openLibrary) {
-                            DishCard(dish: dish)
-                                .frame(width: 168)
+                        NavigationLink(value: dish) {
+                            DishCard(dish: dish, progress: model.dishProgress[dish.id])
+                                .frame(width: 196)
                         }
                         .buttonStyle(PressableStyle())
+                        .modifier(ZoomSource(id: dish.id, namespace: zoom))
                         .scrollTransition { content, phase in
                             content
-                                .scaleEffect(phase.isIdentity ? 1 : 0.92)
-                                .opacity(phase.isIdentity ? 1 : 0.6)
+                                .scaleEffect(phase.isIdentity ? 1 : 0.94)
+                                .opacity(phase.isIdentity ? 1 : 0.7)
                         }
                     }
                 }
                 .scrollTargetLayout()
-                .padding(.horizontal, 20)
+                .padding(.horizontal, Spacing.l)
             }
             .scrollTargetBehavior(.viewAligned)
             .scrollIndicators(.hidden)
@@ -126,57 +148,8 @@ private extension View {
     func staged(_ shown: Bool, order: Int, reduceMotion: Bool) -> some View {
         self
             .opacity(shown ? 1 : 0)
-            .offset(y: shown || reduceMotion ? 0 : 22)
-            .animation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.7, bounce: 0.22).delay(0.9 + 0.12 * Double(order)),
+            .offset(y: shown || reduceMotion ? 0 : 18)
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.6, bounce: 0.18).delay(0.12 + 0.09 * Double(order)),
                        value: shown)
-    }
-}
-
-/// A scan that was interrupted (app closed, Wi-Fi lost): send the rest or drop it.
-struct PendingScanCard: View {
-    @EnvironmentObject var model: AppModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let p = model.pendingScan {
-                Label("Scan interrompu", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-                    .font(.headline).foregroundStyle(Theme.warn)
-                Text(p.pending > 0 ? "\(p.pending) vues sur \(p.total) n’ont pas été envoyées au calculateur."
-                                   : "Les \(p.total) vues sont sur le calculateur, mais la finition n’a pas été lancée.")
-                    .font(.subheadline).fixedSize(horizontal: false, vertical: true)
-            }
-            if let t = model.pendingText {
-                HStack(spacing: 10) {
-                    if model.pendingBusy { ProgressView() }
-                    Text(t).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            if model.pendingScan != nil {
-                HStack(spacing: 10) {
-                    SmallButton(title: "Envoyer et terminer", icon: "arrow.up.circle") { Task { await model.resumePending() } }
-                        .disabled(model.pendingBusy || !model.paired)
-                    SmallButton(title: "Ignorer", icon: "trash") { model.discardPending() }
-                        .disabled(model.pendingBusy)
-                }
-            }
-        }
-        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: Theme.corner))
-        .overlay(RoundedRectangle(cornerRadius: Theme.corner).strokeBorder(Color.white.opacity(0.09)))
-    }
-}
-
-struct SmallButton: View {
-    let title: String
-    let icon: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: icon).font(.footnote.weight(.semibold))
-                .padding(.horizontal, 14).frame(minHeight: 44)
-                .background(Color.white.opacity(0.10), in: Capsule()).foregroundStyle(.white)
-        }
-        .buttonStyle(PressableStyle())
     }
 }

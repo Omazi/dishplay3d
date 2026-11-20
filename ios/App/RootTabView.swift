@@ -22,6 +22,7 @@ struct RootTabView: View {
                 .tag(AppTab.settings)
         }
         .tint(Theme.accent)
+        .minimizingTabBar()
         .sensoryFeedback(.selection, trigger: tab)
         .onAppear {
             if let wanted = model.nextTab {

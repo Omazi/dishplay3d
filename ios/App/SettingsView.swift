@@ -10,17 +10,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AmbientBackground()
+                ScreenBackground()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: Spacing.m) {
                         computerCard
                         deviceCard
                         measureCard
                         Text("DishPlay Scan \(version)")
-                            .font(.footnote).foregroundStyle(.white.opacity(0.45))
+                            .font(.footnote).foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 28)
+                    .padding(.horizontal, Spacing.m).padding(.top, Spacing.xs).padding(.bottom, Spacing.xl)
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
@@ -38,10 +38,10 @@ struct SettingsView: View {
             if model.paired {
                 HStack(spacing: 14) {
                     Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(Theme.good).accessibilityHidden(true)
-                        .frame(width: 48, height: 48).background(Theme.good.opacity(0.15), in: Circle())
+                        .frame(width: 48, height: 48).background(Theme.good.opacity(0.14), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Ordinateur relié").font(.headline)
-                        Text(model.healthText ?? "Vérification…").font(.footnote).foregroundStyle(.secondary)
+                        Text("Ordinateur relié").font(.headline).foregroundStyle(Theme.textPrimary)
+                        Text(model.healthText ?? "Vérification…").font(.footnote).foregroundStyle(Theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
@@ -51,11 +51,11 @@ struct SettingsView: View {
                     SmallButton(title: "Changer d’ordinateur", icon: "xmark") { model.forget() }
                 }
             } else {
-                Text("Relier l’ordinateur").font(.headline)
+                Text("Relier l’ordinateur").font(.headline).foregroundStyle(Theme.textPrimary)
                 step(1, "Lancez le calculateur sur votre PC.")
                 step(2, "Scannez son QR code avec l’appareil photo de l’iPhone.")
                 if let st = model.step {
-                    HStack(spacing: 10) { ProgressView(); Text(st).font(.footnote) }
+                    HStack(spacing: 10) { ProgressView(); Text(st).font(.footnote).foregroundStyle(Theme.textPrimary) }
                 }
                 if let m = model.message {
                     Text(m).font(.footnote.weight(.semibold)).foregroundStyle(model.messageIsError ? Theme.bad : Theme.good)
@@ -76,7 +76,7 @@ struct SettingsView: View {
                     }
                     .padding(.top, 10)
                 }
-                .font(.subheadline).tint(.secondary)
+                .font(.subheadline).foregroundStyle(Theme.textPrimary).tint(Theme.textSecondary)
             }
         }
     }
@@ -88,17 +88,17 @@ struct SettingsView: View {
             }
             Toggle(isOn: $showProvenance) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Colorer les zones estimées").font(.subheadline.weight(.semibold))
+                    Text("Colorer les zones estimées").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
                     Text("Teinte en bleu ou en rose ce qui n’a pas été mesuré directement. Sinon, le modèle garde ses vraies couleurs.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Theme.textSecondary)
                 }
             }
             .tint(Theme.accent)
             if model.lidarSupported {
                 Toggle(isOn: $model.useLidar) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Utiliser le LiDAR").font(.subheadline.weight(.semibold))
-                        Text("Sinon, reconstruction à partir des images seules.").font(.footnote).foregroundStyle(.secondary)
+                        Text("Utiliser le LiDAR").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
+                        Text("Sinon, reconstruction à partir des images seules.").font(.footnote).foregroundStyle(Theme.textSecondary)
                     }
                 }
                 .tint(Theme.accent)
@@ -108,13 +108,14 @@ struct SettingsView: View {
 
     private var measureCard: some View {
         card {
-            Text("Largeur réelle du contenant").font(.subheadline.weight(.semibold))
+            Text("Largeur réelle du contenant").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
             HStack {
                 TextField("facultatif", text: $model.referenceWidthCm).keyboardType(.decimalPad)
-                Text("cm").foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.textPrimary)
+                Text("cm").foregroundStyle(Theme.textSecondary)
             }
-            .padding(12).background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-            Text("Sert à vérifier l’échelle du modèle final.").font(.footnote).foregroundStyle(.secondary)
+            .padding(Spacing.s).background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Radius.field))
+            Text("Sert à vérifier l’échelle du modèle final.").font(.footnote).foregroundStyle(Theme.textSecondary)
         }
     }
 
@@ -123,21 +124,20 @@ struct SettingsView: View {
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 14) { content() }
             .padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.corner))
-            .overlay(RoundedRectangle(cornerRadius: Theme.corner).strokeBorder(Color.white.opacity(0.08)))
+            .cardSurface()
     }
 
     private func step(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Text("\(n)").font(.footnote.bold()).frame(width: 24, height: 24).background(Theme.accent, in: Circle()).foregroundStyle(.black)
-            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+            Text("\(n)").font(.footnote.bold()).frame(width: 24, height: 24).background(Theme.accent, in: Circle()).foregroundStyle(Theme.onAccent)
+            Text(text).font(.subheadline).foregroundStyle(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func field(_ placeholder: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
         TextField(placeholder, text: text).keyboardType(keyboard)
             .textInputAutocapitalization(.never).autocorrectionDisabled()
-            .font(.footnote.monospaced())
-            .padding(12).background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            .font(.footnote.monospaced()).foregroundStyle(Theme.textPrimary)
+            .padding(Spacing.s).background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Radius.field))
     }
 }

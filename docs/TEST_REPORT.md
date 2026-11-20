@@ -614,6 +614,41 @@ désormais actif pendant le scan par défaut (`DISHPLAY_MONO_LIVE=0` pour le ré
 suite complète exécutée seule sur le code livré (12 min 52 s). App iOS : modifications **non compilées** (dépôt
 privé, minutes Actions épuisées).
 
+## Mise à jour du 20 novembre (soir) — nouvelle identité de l'app, modèle sans trous (moteur `p1-0.10.0`)
+
+**App : refonte visuelle (écrite, non compilée).** Demande : une app « premium », d'autres couleurs, « un vrai
+truc », le rendu des applications de 2026. Choix faits, tous modifiables en un endroit :
+- **Identité du site** : papier crème, encre, et le bleu de « dishplay. » comme unique couleur d'action. L'orange
+  en dégradé, les halos et le fond violet disparaissent.
+- **Clair et sombre** : l'app suit le réglage de l'iPhone (elle était forcée en sombre). Le scan, posé sur l'image
+  de la caméra, reste sombre ; les modèles 3D restent sur une « scène » sombre dans les deux cas.
+- **Vrai verre d'iOS 26** (`glassEffect`, conteneur de verre, barre d'onglets système qui se replie au défilement),
+  réservé à ce qui flotte : commandes au-dessus de la caméra, barres. Les cartes, qui sont du contenu, n'en ont
+  pas. Avant iOS 26, le flou système.
+- **Un système de design** (`ios/App/DesignSystem/`, un composant par fichier) : couleurs nommées par rôle dans le
+  catalogue de l'app avec leurs deux valeurs (`tools/ios_colors.py` les écrit depuis une seule table), échelles
+  d'espacement et de rayons, styles de texte bâtis sur ceux du système (ils suivent la taille de texte choisie par
+  l'utilisateur), bouton principal, bouton discret, carte, scène, marque. Changer la couleur d'action tient en une
+  ligne de la table.
+- Écrans repris : accueil (marque, titre en deux tons, plat animé sur sa scène, un seul bouton coloré), Mes plats,
+  fiche d'un plat, réglages, introduction, scan (jetons de couleur, verre groupé).
+- Deux défauts d'usage corrigés en passant : toucher un plat sur l'accueil ouvre ce plat (et non la liste), avec
+  l'état de son calcul ; abandonner un scan interrompu demande confirmation.
+
+Maquette des cinq écrans, en clair et en sombre, avec trois couleurs d'action à essayer (bleu, tomate, encre) :
+https://claude.ai/artifact/To3msLfaCC8kfxsDCg39gF (lien privé). C'est un dessin fait d'après le code, pas une
+capture de l'app.
+
+Vérifié ici, faute de compilateur Swift : chaque couleur nommée dans le code existe dans le catalogue
+(`tools/ios_colors.py --check` : 13 utilisées, 0 manquante) ; plus aucun blanc ou noir écrit en dur hors de
+l'écran de scan (ils seraient illisibles en clair) ; accolades et parenthèses équilibrées dans les fichiers
+réécrits ; le code suit les règles SwiftUI du projet (`swiftui-pro`, `liquid-glass`, `design-system`,
+`typography`). **Non vérifié** : la compilation, le rendu réel sur iPhone en clair et en sombre, les contrastes,
+les grandes tailles de texte, VoiceOver. Les revues `ui-review` et `accessibility-audit` restent à faire sur une
+version compilée, avant publication.
+
+MODEL_SECTION
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

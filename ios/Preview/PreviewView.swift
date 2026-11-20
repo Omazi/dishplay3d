@@ -173,7 +173,7 @@ struct PreviewView: UIViewRepresentable {
         let v = MTKView(frame: .zero, device: renderer.device)
         v.colorPixelFormat = .bgra8Unorm
         v.depthStencilPixelFormat = .depth32Float
-        v.clearColor = MTLClearColor(red: 0.13, green: 0.13, blue: 0.15, alpha: 1)
+        v.clearColor = MTLClearColor(red: 0.082, green: 0.086, blue: 0.075, alpha: 1)   // Theme.stage
         v.preferredFramesPerSecond = 30
         v.delegate = renderer
         v.addGestureRecognizer(UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:))))

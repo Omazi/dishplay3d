@@ -17,8 +17,8 @@ struct CoverageRingView: View {
         let cx: Double = Double(size.width) / 2
         let cy: Double = Double(size.height) / 2
         let R: Double = Double(min(size.width, size.height)) / 2 - 5
-        let emptyOuter = Color.white.opacity(0.20)
-        let emptyInner = Color.white.opacity(0.13)
+        let emptyOuter = Theme.textPrimary.opacity(0.22)
+        let emptyInner = Theme.textPrimary.opacity(0.14)
         for k in 0..<12 {
             let side: Bool = counts.count == 3 && (counts[0][k] + counts[1][k]) > 0
             let high: Bool = counts.count == 3 && counts[2][k] > 0
@@ -32,13 +32,13 @@ struct CoverageRingView: View {
             ctx.fill(inner, with: .color(high ? Theme.good : emptyInner))
         }
         let dish = CGRect(x: cx - R * 0.2, y: cy - R * 0.2, width: R * 0.4, height: R * 0.4)
-        ctx.fill(Path(ellipseIn: dish), with: .color(Color.white.opacity(0.35)))
+        ctx.fill(Path(ellipseIn: dish), with: .color(Theme.textPrimary.opacity(0.35)))
         var me = Path()
         me.move(to: CGPoint(x: cx, y: cy + R - 3))
         me.addLine(to: CGPoint(x: cx - 5, y: cy + R + 5))
         me.addLine(to: CGPoint(x: cx + 5, y: cy + R + 5))
         me.closeSubpath()
-        ctx.fill(me, with: .color(Color.white))
+        ctx.fill(me, with: .color(Theme.textPrimary))
     }
 
     private static func point(_ cx: Double, _ cy: Double, _ r: Double, _ a: Double) -> CGPoint {

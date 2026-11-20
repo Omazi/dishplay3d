@@ -27,19 +27,20 @@ struct DishDetailView: View {
 
     var body: some View {
         ZStack {
-            AmbientBackground()
+            ScreenBackground()
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: Spacing.l) {
                     preview
                     if dish.state != .ready && !modelShown { unfinished }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Nom du plat").font(.footnote).foregroundStyle(.white.opacity(0.6))
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text("Nom du plat").appText(.kicker).foregroundStyle(Theme.textSecondary)
                         TextField("Nom du plat", text: $name)
                             .font(.title3.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
                             .submitLabel(.done)
                             .onSubmit(save)
                             .padding(14)
-                            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                            .cardSurface(radius: Radius.field)
                     }
                     facts
                     actions
@@ -47,7 +48,7 @@ struct DishDetailView: View {
                         Text(exportError).font(.footnote).foregroundStyle(Theme.bad)
                     }
                 }
-                .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 28)
+                .padding(.horizontal, Spacing.m).padding(.top, Spacing.xs).padding(.bottom, Spacing.xl)
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -75,13 +76,15 @@ struct DishDetailView: View {
         }
     }
 
+    /// The dish on its dark stage: the 3D model when it is on the iPhone, else a picture, else a placeholder.
     @ViewBuilder private var preview: some View {
         if modelShown {
-            VStack(spacing: 10) {
-                PreviewView(renderer: renderer)
-                    .frame(height: 330)
-                    .clipShape(.rect(cornerRadius: 22))
-                    .accessibilityLabel("Modèle 3D du plat. Glisser pour le tourner, pincer pour zoomer.")
+            VStack(spacing: Spacing.s) {
+                Stage {
+                    PreviewView(renderer: renderer)
+                        .frame(height: 340)
+                        .accessibilityLabel("Modèle 3D du plat. Glisser pour le tourner, pincer pour zoomer.")
+                }
                 Picker("Affichage", selection: $mode) {
                     ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -89,28 +92,31 @@ struct DishDetailView: View {
                 .onChange(of: mode) { _, m in renderer.mode = m }
             }
         } else if let picture {
-            Image(uiImage: picture).resizable().scaledToFit()
-                .frame(maxWidth: .infinity).frame(maxHeight: 420)
-                .clipShape(.rect(cornerRadius: 22))
-                .accessibilityLabel(dish.state == .ready ? "Quatre vues du modèle 3D" : "Une des vues prises pendant le scan")
-        } else {
-            VStack(spacing: 10) {
-                Image(systemName: dish.state == .ready ? "cube" : "hourglass").font(.system(size: 44)).foregroundStyle(.white.opacity(0.4))
-                    .accessibilityHidden(true)
-                Text(dish.state == .ready ? "Chargement…" : "Le modèle n’est pas encore sur l’iPhone.")
-                    .font(.footnote).foregroundStyle(.white.opacity(0.6))
+            Stage {
+                Image(uiImage: picture).resizable().scaledToFit()
+                    .frame(maxHeight: 420)
+                    .accessibilityLabel(dish.state == .ready ? "Quatre vues du modèle 3D" : "Une des vues prises pendant le scan")
             }
-            .frame(maxWidth: .infinity).frame(height: 220)
-            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22))
+        } else {
+            Stage {
+                VStack(spacing: 10) {
+                    Image(systemName: dish.state == .ready ? "cube" : "hourglass").font(.system(size: 44))
+                        .foregroundStyle(Theme.textOnStage.opacity(0.4))
+                        .accessibilityHidden(true)
+                    Text(dish.state == .ready ? "Chargement…" : "Le modèle n’est pas encore sur l’iPhone.")
+                        .font(.footnote).foregroundStyle(Theme.textOnStage.opacity(0.7))
+                }
+                .frame(height: 220)
+            }
         }
     }
 
     /// A dish without its model yet: where it stands, and the button that finishes it.
     private var unfinished: some View {
         let progress = model.dishProgress[dish.id]
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: Spacing.s) {
             Label(progress?.text ?? "Vérification auprès du calculateur…", systemImage: "hourglass")
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             if let fraction = progress?.fraction {
                 ProgressView(value: fraction).tint(Theme.accent)
@@ -123,11 +129,11 @@ struct DishDetailView: View {
                     }
                 }
                 Text("Les vues restantes sont envoyées, puis le calculateur construit le modèle.")
-                    .font(.footnote).foregroundStyle(.white.opacity(0.6))
+                    .font(.footnote).foregroundStyle(Theme.textSecondary)
             }
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        .padding(Spacing.m).frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
         .task {
             while !Task.isCancelled {
                 if await model.refreshDishProgress() {
@@ -144,43 +150,34 @@ struct DishDetailView: View {
         VStack(spacing: 0) {
             if let date = dish.date {
                 LabeledContent("Scanné le", value: date.formatted(date: .long, time: .shortened))
-                Divider().overlay(Color.white.opacity(0.1))
+                Divider()
             }
             LabeledContent("Vues prises", value: "\(dish.frames)")
         }
         .font(.subheadline)
         .padding(.horizontal, 14).padding(.vertical, 6)
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .cardSurface(radius: Radius.field)
     }
 
     private var actions: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Spacing.s) {
             if let arModel = dish.arModel {
                 // iOS shows the textured model itself: turned by hand, or placed on the table at real size.
-                Button { arPreview = arModel } label: {
-                    Label("Voir sur votre table", systemImage: "arkit")
-                        .font(.headline).frame(maxWidth: .infinity).frame(height: 56)
-                        .background(Theme.accent, in: Capsule()).foregroundStyle(.black)
-                }
-                .accessibilityHint("Ouvre le modèle avec ses vraies couleurs, en 3D ou en réalité augmentée.")
+                PrimaryButton(title: "Voir sur votre table", icon: "arkit") { arPreview = arModel }
+                    .accessibilityHint("Ouvre le modèle avec ses vraies couleurs, en 3D ou en réalité augmentée.")
             }
             if let model = dish.model {
                 ShareLink(item: model) {
-                    Label("Partager le modèle 3D", systemImage: "square.and.arrow.up")
-                        .font(dish.arModel == nil ? .headline : .subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity).frame(height: dish.arModel == nil ? 56 : 50)
-                        .background(dish.arModel == nil ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.white.opacity(0.10)), in: Capsule())
-                        .foregroundStyle(dish.arModel == nil ? Color.black : Color.white)
+                    QuietButtonLabel(title: "Partager le modèle 3D", icon: "square.and.arrow.up")
                 }
             }
             Button(action: exportAll) {
-                Label("Exporter le dossier complet", systemImage: "archivebox")
-                    .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 50)
-                    .background(Color.white.opacity(0.10), in: Capsule()).foregroundStyle(.white)
+                QuietButtonLabel(title: "Exporter le dossier complet", icon: "archivebox")
             }
             Button(role: .destructive) { confirmDelete = true } label: {
                 Label("Supprimer", systemImage: "trash")
-                    .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 50)
+                    .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(minHeight: 48)
+                    .foregroundStyle(Theme.bad)
             }
         }
         .buttonStyle(PressableStyle())

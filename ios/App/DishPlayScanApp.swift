@@ -34,7 +34,6 @@ struct RootView: View {
             }
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: model.screen)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder private var home: some View {
