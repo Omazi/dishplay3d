@@ -229,6 +229,11 @@ def test_quality_verdict_follows_the_model(session):
     holed = T[(np.floor(centre[:, 0] / 0.012) + np.floor(centre[:, 2] / 0.012)) % 2 == 0]   # checkerboard of holes
     bad = scan_quality(V, holed, cls, DishFootprint.from_vertices(V), 60, 1.0)
     assert bad["level"] != "good" and "fragmented" in bad["issues"], bad
+    # No table found under the dish (uneven support, or a table too plain to be rebuilt): a verdict is still given
+    whole = scan_quality(V, T, cls, None, 60, 1.0)
+    assert whole["level"] in ("good", "fair") and whole["top_coverage"] > 0.9, whole
+    pierced = T[np.linalg.norm(centre[:, [0, 2]] - np.median(V[:, [0, 2]], 0), axis=1) > 0.035]         # a 7 cm hole in the middle
+    assert scan_quality(V[np.unique(pierced)], np.searchsorted(np.unique(pierced), pierced), cls[np.unique(pierced)], None, 60, 1.0)["top_coverage"] < whole["top_coverage"] - 0.05
 
 
 def test_long_scans_are_finished_on_a_spread_subset(tmp_path):

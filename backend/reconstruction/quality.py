@@ -36,6 +36,22 @@ def top_coverage(V: np.ndarray, fp: DishFootprint) -> float:
     return float((occ & region).sum() / region.sum())
 
 
+def own_coverage(V: np.ndarray, cell_m: float = 0.002) -> float:
+    """Seen from above, share of the model's own outline that has a surface. Used when no table was found under
+    the dish (uneven support, or a table too plain to be reconstructed): the outline of the dish is then not
+    known from the table, only from the model itself, so this sees the holes inside it and not a missing side."""
+    from scipy import ndimage
+    if len(V) < 50:
+        return 0.0
+    origin = V[:, [0, 2]].min(0) - 8 * cell_m
+    ij = np.floor((V[:, [0, 2]] - origin) / cell_m).astype(int)
+    occ = np.zeros(ij.max(0) + 9, bool)
+    occ[ij[:, 0], ij[:, 1]] = True
+    occ = ndimage.binary_closing(occ, iterations=2)          # vertices are a few cells apart: only real gaps remain
+    region = ndimage.binary_fill_holes(ndimage.binary_closing(occ, iterations=6))
+    return float(occ.sum() / region.sum()) if region.sum() else 0.0
+
+
 def raggedness(V: np.ndarray, T: np.ndarray) -> float:
     """Length of the open edges of the surface divided by the square root of its area. A whole dish has
     one outline; every hole and every loose fragment adds open edges. About 10-16 on the clean test
@@ -55,11 +71,12 @@ def raggedness(V: np.ndarray, T: np.ndarray) -> float:
 
 def scan_quality(V, T, cls, fp: DishFootprint | None, integrated: int, sides_seen: float) -> dict:
     """Verdict for the app: level, score (0-100), the numbers behind it and what to do about it."""
-    if fp is None or len(V) < 500 or integrated < 8:
+    if len(V) < 500 or integrated < 8:
         return {"level": EARLY, "score": 0, "issues": [], "top_coverage": None, "measured_share": None,
                 "raggedness": None, "sides_seen": round(float(sides_seen), 2), "views": int(integrated)}
     V = np.asarray(V, np.float64)
-    cov = top_coverage(V, fp)
+    # Without a table under the dish the verdict is still given (it used to stay "too early" for the whole scan).
+    cov = top_coverage(V, fp) if fp is not None else own_coverage(V)
     rag = raggedness(V, np.asarray(T))
     whole = float(np.clip((30.0 - rag) / 14.0, 0.0, 1.0))   # 1 at 16 and below, 0 at 30 and above
     measured = float((cls == MEASURED).mean()) if len(cls) else 0.0
