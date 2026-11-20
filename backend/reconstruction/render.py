@@ -18,13 +18,24 @@ def view_matrix(az_deg, el_deg, centre, dist):
     return R, -R @ eye
 
 
-def render(g, az, el, size=480, mode="both"):
+def render(g, az, el, size=480, mode="both", provenance=False, fit="content", background=(38, 33, 33)):
+    """One view. By default the model is shown as it looks (real colours) and fills the picture, whatever the
+    size of the scan box. provenance=True tints what is interpolated (blue) or estimated (magenta) and
+    fit="box" frames the whole box: the diagnostic view."""
     h = g["header"]
     bs = np.array(h["box_size_m"])
     centre = np.array([0, bs[1] / 3, 0])
-    R, t = view_matrix(az, el, centre, 1.6 * max(bs[0], bs[2]))
+    dist = 1.6 * max(bs[0], bs[2])
+    if fit == "content":
+        P = g["verts"] if len(g["tris"]) else g["points"]
+        if len(P) >= 10:
+            lo, hi = np.percentile(P, 1, 0), np.percentile(P, 99, 0)
+            centre = (lo + hi) / 2.0
+            dist = max(2.3 * float(np.linalg.norm(hi - lo)) / 2.0, 0.05)
+    R, t = view_matrix(az, el, centre, dist)
     f = size * 0.95
-    img = np.full((size, size, 3), 40, np.uint8)
+    img = np.empty((size, size, 3), np.uint8)
+    img[:] = background
     zbuf = np.full((size, size), np.inf)
     light = np.array([0.3, 1.0, 0.4]) / np.linalg.norm([0.3, 1.0, 0.4])
 
@@ -38,8 +49,9 @@ def render(g, az, el, size=480, mode="both"):
         T = g["tris"].astype(np.int64)
         col = g["vert_rgbc"][:, :3].astype(np.float64)
         cls = g["vert_rgbc"][:, 3]
-        col[cls == 1] = col[cls == 1] * 0.5 + np.array([60, 90, 200]) * 0.5
-        col[cls == 2] = col[cls == 2] * 0.4 + np.array([220, 60, 200]) * 0.6
+        if provenance:
+            col[cls == 1] = col[cls == 1] * 0.5 + np.array([60, 90, 200]) * 0.5
+            col[cls == 2] = col[cls == 2] * 0.4 + np.array([220, 60, 200]) * 0.6
         n = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
         shade = 0.45 + 0.55 * np.abs(n @ light)
@@ -67,13 +79,20 @@ def render(g, az, el, size=480, mode="both"):
 
 
 
-def contact_sheet(g, mode: str = "mesh", label: str | None = None) -> np.ndarray:
-    """Four views (two oblique, top, side) in one image."""
-    tiles = [render(g, az, el, mode=mode) for az, el in ((30, 35), (150, 35), (270, 70), (90, 15))]
+def contact_sheet(g, mode: str = "mesh", label: str | None = None, diagnostic: bool = False) -> np.ndarray:
+    """Four views (two oblique, top, side) in one image.
+
+    This is the picture written next to every finished model (apercu.png); the app shows its first view as the
+    dish's thumbnail. So by default: real colours, the dish filling each view, no text. diagnostic=True gives
+    the engineering view instead (provenance tints, whole box, counters and legend)."""
+    kw = dict(provenance=True, fit="box", background=(40, 40, 40)) if diagnostic else {}
+    tiles = [render(g, az, el, mode=mode, **kw) for az, el in ((30, 35), (150, 35), (270, 70), (90, 15))]
     out = np.vstack([np.hstack(tiles[:2]), np.hstack(tiles[2:])])
-    h = g["header"]
-    text = label or f"v{h['version']} {h['kind']} frames={h.get('integrated_frames')} pts={h['point_count']} tris={h['triangle_count']}"
-    cv2.putText(out, text, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.putText(out, "bleu = interpole (texture trop faible pour mesurer)", (8, out.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
-                (255, 200, 150), 1, cv2.LINE_AA)
+    if diagnostic or label:
+        h = g["header"]
+        text = label or f"v{h['version']} {h['kind']} frames={h.get('integrated_frames')} pts={h['point_count']} tris={h['triangle_count']}"
+        cv2.putText(out, text, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    if diagnostic:
+        cv2.putText(out, "bleu = interpole, magenta = estime", (8, out.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                    (255, 200, 150), 1, cv2.LINE_AA)
     return out

@@ -2,7 +2,7 @@
 """Render a DPG1 preview/final geometry file to PNG (software rasteriser, no GPU).
 
 Used for reports and visual checks. Shows points and/or the mesh with simple
-shading; interpolated vertices are tinted blue, provisional points dimmed.
+shading, in real colours; --diagnostic tints interpolated (blue) and estimated (magenta) parts.
 
   python tools/render_geometry.py session/preview/latest.dpg out.png [--mode mesh|points|both]
 """
@@ -25,9 +25,10 @@ def main():
     ap.add_argument("dpg")
     ap.add_argument("png")
     ap.add_argument("--mode", default="both", choices=["both", "mesh", "points"])
+    ap.add_argument("--diagnostic", action="store_true", help="engineering view: provenance tints, whole box, counters")
     a = ap.parse_args()
     g = decode_geometry(Path(a.dpg).read_bytes())
-    cv2.imwrite(a.png, contact_sheet(g, a.mode))
+    cv2.imwrite(a.png, contact_sheet(g, a.mode, diagnostic=a.diagnostic))
 
 
 if __name__ == "__main__":

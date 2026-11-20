@@ -179,3 +179,42 @@ def test_colab_notebook_embeds_the_current_trainer():
     nb = json.loads((root / "colab" / "essai_neuronal.ipynb").read_text())
     cell = next("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code" and "".join(c["source"]).startswith("%%writefile"))
     assert cell.split("\n", 1)[1].rstrip("\n") == (root / "backend" / "reconstruction" / "splat_train.py").read_text().rstrip("\n")
+
+
+def _toy_geometry(box=(0.6, 0.1, 0.6)):
+    """A small red square of interpolated surface in the middle of a much larger scan box."""
+    import numpy as np
+    xs, zs = np.meshgrid(np.linspace(-0.04, 0.04, 9), np.linspace(-0.04, 0.04, 9), indexing="ij")
+    V = np.stack([xs.ravel(), np.full(xs.size, 0.01), zs.ravel()], 1).astype(np.float32)
+    T = np.array([[i * 9 + j, (i + 1) * 9 + j, i * 9 + j + 1] for i in range(8) for j in range(8)]
+                 + [[(i + 1) * 9 + j, (i + 1) * 9 + j + 1, i * 9 + j + 1] for i in range(8) for j in range(8)], np.uint32)
+    rgbc = np.tile(np.array([[210, 40, 40, 1]], np.uint8), (len(V), 1))            # class 1 = interpolated
+    N = np.tile(np.array([[0, 127, 0]], np.int8), (len(V), 1))
+    return {"header": {"box_size_m": list(box), "version": 1, "kind": "final", "point_count": 0, "triangle_count": len(T)},
+            "points": np.zeros((0, 3), np.float32), "point_rgbc": np.zeros((0, 4), np.uint8),
+            "verts": V, "vert_rgbc": rgbc, "normals": N, "tris": T}
+
+
+def test_the_result_picture_shows_the_dish_large_in_its_real_colours():
+    """The app uses the first view of apercu.png as the dish's thumbnail: no blue tint, no engineering text,
+    and the dish fills the picture even when the scan box is much larger than the dish."""
+    import numpy as np
+    from reconstruction.render import contact_sheet, render
+    g = _toy_geometry()
+    tile = render(g, 30, 35)
+    obj = (tile[:, :, 2].astype(int) > tile[:, :, 0].astype(int) + 60)             # clearly red pixels (BGR image)
+    assert obj.any()
+    cols = np.nonzero(obj.any(0))[0]
+    assert (cols.max() - cols.min()) > 0.45 * tile.shape[1], "the dish fills the view"
+    px = tile[obj].astype(float)
+    assert px[:, 2].mean() > 2.2 * px[:, 0].mean(), "red stays red: no blue tint on interpolated surface"
+    sheet = contact_sheet(g)
+    assert sheet.shape[:2] == (960, 960)
+    bright = (sheet.max(2) > 235) & (sheet.min(2) > 200)                            # white caption text
+    assert bright.sum() == 0, "no caption on the picture shown to the owner"
+    # the engineering view still exists: tinted, whole box, with its legend
+    diag = render(g, 30, 35, provenance=True, fit="box")
+    objd = (diag[:, :, 2].astype(int) > 90) & (diag[:, :, 0].astype(int) > 90) & (diag.sum(2) > 250)
+    cd = np.nonzero(objd.any(0))[0]
+    assert len(cd) and (cd.max() - cd.min()) < 0.3 * diag.shape[1]
+    assert ((contact_sheet(g, diagnostic=True).min(2) > 150).sum()) > 50
