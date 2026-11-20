@@ -45,7 +45,7 @@ class BundleConfig:
     # start with), 40 steps under the firm ties stopped at 1.15 px and 300 steps reached 0.72 px, while ties
     # three times looser converged to 0.35 px within 120 steps.
     relax_above_px: float = 0.5        # median reprojection error after the first stage that triggers it
-    relax_factor: float = 10.0         # how much looser the ties to the tracker are (1 = no second stage)
+    relax_factors: tuple = (10.0, 3.0)  # how much looser the ties to the tracker are, tried in this order (() = no second stage)
     relax_iterations: int = 120
     # Looser ties are safe only when the picture itself holds the cameras: with few tracked points they let the
     # cameras slide along their viewing axis (seen on the weakly textured synthetic bowl).
@@ -256,32 +256,63 @@ def refine_poses(views: dict, size_m, params: StereoParams | None = None, cfg: B
                         max_nfev=cfg.max_iterations, verbose=0)
     r1 = residuals(sol.x)
     reproj1 = float(np.median(np.hypot(r1[:nobs], r1[nobs:2 * nobs])))
-    x, steps, relaxed, reproj_first = sol.x, int(sol.nfev), False, reproj1
-    if cfg.relax_factor > 1.0 and reproj1 > cfg.relax_above_px and nobs >= cfg.relax_min_obs_per_view * nc:
+    def cameras(xv):
+        """(poses, largest and median shift from the tracker in m, largest rotation from the tracker in degrees)."""
+        rv, t, _ = unpack(xv)
+        R = Rotation.from_rotvec(rv).as_matrix()
+        poses, shift, rot = {}, [], []
+        for k, f in enumerate(ids):
+            T = np.eye(4)
+            T[:3, :3], T[:3, 3] = R[k], t[k]
+            Toc = invert_rigid(T)
+            poses[f] = Toc
+            shift.append(float(np.linalg.norm(Toc[:3, 3] - views[f].T_obj_from_cam[:3, 3])))
+            dR = Toc[:3, :3] @ views[f].T_obj_from_cam[:3, :3].T
+            rot.append(float(np.degrees(np.arccos(np.clip((np.trace(dR) - 1) / 2, -1, 1)))))
+        return poses, max(shift), float(np.median(shift)), max(rot)
+
+    x, steps, relaxed, reproj_first, tried = sol.x, int(sol.nfev), False, reproj1, []
+    if cfg.relax_factors and reproj1 > cfg.relax_above_px and nobs >= cfg.relax_min_obs_per_view * nc:
         # The tracker's frame-to-frame motion is less exact on this capture than the firm ties assume (fast
-        # movement, rolling shutter): continue from where the first stage stopped, with looser ties.
-        sol2 = least_squares(residuals, x, jac_sparsity=S, method="trf", loss="soft_l1", f_scale=1.5, x_scale="jac",
-                             max_nfev=cfg.relax_iterations, verbose=0, args=(cfg.relax_factor,))
-        r2 = residuals(sol2.x, cfg.relax_factor)
-        reproj2 = float(np.median(np.hypot(r2[:nobs], r2[nobs:2 * nobs])))
-        steps += int(sol2.nfev)
-        if reproj2 < 0.8 * reproj1:
-            x, reproj1, relaxed = sol2.x, reproj2, True
-    rv, t, _ = unpack(x)
-    R = Rotation.from_rotvec(rv).as_matrix()
-    poses, shift, rot = {}, [], []
-    for k, f in enumerate(ids):
-        T = np.eye(4)
-        T[:3, :3], T[:3, 3] = R[k], t[k]
-        Toc = invert_rigid(T)
-        poses[f] = Toc
-        shift.append(float(np.linalg.norm(Toc[:3, 3] - views[f].T_obj_from_cam[:3, 3])))
-        dR = Toc[:3, :3] @ views[f].T_obj_from_cam[:3, :3].T
-        rot.append(float(np.degrees(np.arccos(np.clip((np.trace(dR) - 1) / 2, -1, 1)))))
-    info.update(reproj_before_px=reproj0, reproj_after_px=reproj1, max_shift_mm=max(shift) * 1000, median_shift_mm=float(np.median(shift)) * 1000,
-                max_rot_deg=max(rot), seconds=time.perf_counter() - t0, iterations=steps, relaxed=relaxed,
-                reproj_first_stage_px=reproj_first, obs_per_view=round(nobs / nc))
-    ok = (reproj1 < 0.9 * reproj0 or reproj1 < 0.6) and max(shift) <= cfg.accept_max_shift_m and max(rot) <= cfg.accept_max_rot_deg
+        # movement, rolling shutter): continue from where the first stage stopped, with looser ties. The
+        # loosest setting is tried first; it is kept only if it clearly lowers the error AND leaves the cameras
+        # near the tracker (on a flat scene — boxes on a shelf — nearly free cameras slid away, and the whole
+        # refinement was then thrown out). Otherwise the next setting, otherwise the first stage stands.
+        for tie in cfg.relax_factors:
+            sol2 = least_squares(residuals, x, jac_sparsity=S, method="trf", loss="soft_l1", f_scale=1.5, x_scale="jac",
+                                 max_nfev=cfg.relax_iterations, verbose=0, args=(tie,))
+            r2 = residuals(sol2.x, tie)
+            reproj2 = float(np.median(np.hypot(r2[:nobs], r2[nobs:2 * nobs])))
+            steps += int(sol2.nfev)
+            _, far, _, turned = cameras(sol2.x)
+            keep = reproj2 < 0.8 * reproj1 and far <= cfg.accept_max_shift_m and turned <= cfg.accept_max_rot_deg
+            tried.append({"ties_x": tie, "reproj_px": round(reproj2, 3), "max_shift_mm": round(far * 1000, 1), "max_rot_deg": round(turned, 2), "kept": keep})
+            if keep:
+                x, reproj1, relaxed = sol2.x, reproj2, True
+                break
+    poses, max_shift, median_shift, max_rot = cameras(x)
+    scale = 1.0
+    if relaxed:
+        # The pictures alone do not know the size of the scene: only the tracker (through its motion sensors)
+        # does, and looser ties let the size float (measured: 1 to 2.5 % on three real captures). The refined
+        # trajectory keeps its new shape but is brought back to the tracker's size, about the first camera.
+        A = np.array([views[f].T_obj_from_cam[:3, 3] for f in ids])
+        B = np.array([poses[f][:3, 3] for f in ids])
+        a0, b0 = A - A.mean(0), B - B.mean(0)
+        U, D, Vt = np.linalg.svd(b0.T @ a0 / len(A))
+        sign = np.diag([1.0, 1.0, float(np.sign(np.linalg.det(U @ Vt)))])
+        scale = float(np.trace(np.diag(D) @ sign) / max(a0.var(0).sum(), 1e-18))    # refined size / tracker size
+        if 0.8 < scale < 1.25:
+            c0 = poses[ids[0]][:3, 3].copy()
+            shift = []
+            for f in ids:
+                poses[f][:3, 3] = c0 + (poses[f][:3, 3] - c0) / scale
+                shift.append(float(np.linalg.norm(poses[f][:3, 3] - views[f].T_obj_from_cam[:3, 3])))
+            max_shift, median_shift = max(shift), float(np.median(shift))
+    info.update(reproj_before_px=reproj0, reproj_after_px=reproj1, max_shift_mm=max_shift * 1000, median_shift_mm=median_shift * 1000,
+                max_rot_deg=max_rot, seconds=time.perf_counter() - t0, iterations=steps, relaxed=relaxed,
+                reproj_first_stage_px=reproj_first, obs_per_view=round(nobs / nc), second_stage=tried, size_before_restoring=scale)
+    ok = (reproj1 < 0.9 * reproj0 or reproj1 < 0.6) and max_shift <= cfg.accept_max_shift_m and max_rot <= cfg.accept_max_rot_deg
     if not ok:
         info["reason"] = "not_better_or_too_far_from_arkit"
         return BundleResult({}, False, info)

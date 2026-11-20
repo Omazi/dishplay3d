@@ -48,6 +48,14 @@ def _shape_error_mm(poses: dict, truth: dict) -> float:
     return float(np.median(np.linalg.norm(a0 @ R.T - b0, axis=1)) * 1000)
 
 
+def _size_ratio(poses: dict, reference: dict) -> float:
+    """Size of one camera trajectory relative to another (spread of the camera positions)."""
+    ids = sorted(poses)
+    A = np.array([poses[k][:3, 3] for k in ids])
+    B = np.array([reference[k][:3, 3] for k in ids])
+    return float(np.sqrt(((A - A.mean(0)) ** 2).sum() / ((B - B.mean(0)) ** 2).sum()))
+
+
 @pytest.fixture(scope="module")
 def noisy():
     return _views(jitter_mm=1.5, jitter_deg=0.15)
@@ -57,7 +65,7 @@ def test_a_second_looser_stage_runs_when_the_first_leaves_a_high_error(noisy):
     views, truth = noisy
     reported = {i: v.T_obj_from_cam.copy() for i, v in views.items()}
     firm = refine_poses({i: View(i, v.image, v.K, reported[i].copy(), features=v.features) for i, v in views.items()}, SIZE,
-                        cfg=BundleConfig(relax_factor=1.0))
+                        cfg=BundleConfig(relax_factors=()))
     both = refine_poses({i: View(i, v.image, v.K, reported[i].copy(), features=v.features) for i, v in views.items()}, SIZE)
     assert firm.info.get("relaxed") is False and both.info.get("relaxed") is True
     assert both.info["reproj_first_stage_px"] > 0.5                                   # the reason the second stage ran
@@ -67,6 +75,8 @@ def test_a_second_looser_stage_runs_when_the_first_leaves_a_high_error(noisy):
     # it and makes them worse): the trajectory itself is compared with the true one.
     e_reported, e_firm, e_both = _shape_error_mm(reported, truth), _shape_error_mm(firm.poses, truth), _shape_error_mm(both.poses, truth)
     assert e_both < e_firm and e_both < 0.5 * e_reported, (e_reported, e_firm, e_both)
+    # the looser stage may reshape the trajectory, not resize it: the size of the scene comes from the tracker
+    assert abs(_size_ratio(both.poses, reported) - 1.0) < 0.004, _size_ratio(both.poses, reported)
 
 
 def test_the_looser_stage_needs_enough_points_to_hold_the_cameras(noisy):
@@ -87,3 +97,34 @@ def test_good_tracking_is_left_to_the_first_stage():
     res = refine_poses(views, SIZE)
     assert res.info.get("relaxed") is False
     assert res.info["reproj_after_px"] < 0.5
+
+
+def test_a_second_stage_that_slides_away_does_not_cost_the_first(noisy, monkeypatch):
+    """Found on a real capture (boxes on a shelf, a flat scene): with nearly free cameras the second stage
+    reached a low reprojection error far from the tracker; it was selected, then the whole refinement was
+    refused and the scan fell back to the raw tracker poses — worse than before. A second stage is now kept
+    only if it stays near the tracker; otherwise the next setting is tried, and the first stage stands."""
+    import reconstruction.bundle as bundle
+    views, truth = noisy
+    real = bundle.least_squares
+
+    class Slid:
+        def __init__(self, x, n_cams):
+            self.x = x.copy()
+            self.x[n_cams * 3: n_cams * 6] += 0.2          # every camera moved by 20 cm and more
+            self.nfev = 5
+
+    def fake(fun, x0, *a, **kw):
+        if kw.get("args") == (10.0,):
+            return Slid(np.asarray(x0, float), len(views))
+        return real(fun, x0, *a, **kw)
+
+    monkeypatch.setattr(bundle, "least_squares", fake)
+    res = refine_poses({i: View(i, v.image, v.K, v.T_obj_from_cam.copy(), features=v.features) for i, v in views.items()}, SIZE)
+    tried = res.info["second_stage"]
+    assert tried[0]["ties_x"] == 10.0 and tried[0]["kept"] is False and tried[0]["max_shift_mm"] > 100
+    assert res.applied, "the refinement as a whole is not thrown away"
+    assert res.info["max_shift_mm"] < 50
+    assert len(tried) == 2 and tried[1]["ties_x"] == 3.0      # the intermediate setting got its chance
+    reported = {i: v.T_obj_from_cam for i, v in views.items()}
+    assert _shape_error_mm(res.poses, truth) < 0.6 * _shape_error_mm(reported, truth)
