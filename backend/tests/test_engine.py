@@ -280,6 +280,21 @@ def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     UV = glb_accessor(js, b, at["TEXCOORD_0"])
     prov = glb_accessor(js, b, at["_PROVENANCE"]).reshape(-1)
     assert (tmp_path / "final" / "model_mesure.glb").exists()     # the model as reconstructed, before closing
+    # The same mesh and texture are delivered for iPhone and iPad (AR Quick Look): same points, same triangles,
+    # texture coordinates turned the USD way up, same picture.
+    import re
+    from reconstruction.exports import read_usdz
+    assert rep["texture"]["usdz"]["status"] == "ok" and rep["texture"]["usdz"]["file_mb"] < 8
+    usda, files = read_usdz(tmp_path / "final" / "model.usdz")
+    num = r"\(([-\d.e]+), ([-\d.e]+), ([-\d.e]+)\)"
+    pts = np.array(re.findall(num, re.search(r"point3f\[\] points = \[(.*?)\]", usda, re.S).group(1)), float)
+    assert pts.shape == P.shape and np.allclose(pts, P, atol=2e-5)
+    idx = np.array(re.search(r"int\[\] faceVertexIndices = \[(.*?)\]", usda, re.S).group(1).split(","), int)
+    assert np.array_equal(idx, glb_accessor(js, b, js["meshes"][0]["primitives"][0]["indices"]).reshape(-1))
+    st = np.array(re.findall(r"\(([-\d.e]+), ([-\d.e]+)\)", re.search(r"texCoord2f\[\] primvars:st = \[(.*?)\]", usda, re.S).group(1)), float)
+    assert np.allclose(st, np.stack([UV[:, 0], 1.0 - UV[:, 1]], 1), atol=2e-5)
+    vi = js["bufferViews"][js["images"][0]["bufferView"]]
+    assert files["textures/dish.jpg"] == b[vi["byteOffset"]: vi["byteOffset"] + vi["byteLength"]]
     reconstructed = prov < 1.5                                     # the estimated parts (closed holes, base) have no true colour to compare with
     P, N, UV = P[reconstructed], N[reconstructed], UV[reconstructed]
     v = js["bufferViews"][js["images"][0]["bufferView"]]
@@ -302,3 +317,85 @@ def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     truth = np.clip(surface_color(X, mat) * (0.55 + 0.45 * np.abs(ans["primitive_normals"].numpy().astype(float) @ light))[:, None], 0, 1) * 255
     assert (seen.sum(1) < 15)[hit].mean() < 0.05, "no black (unprojected) patches"
     assert np.abs(seen[hit] - truth[hit]).mean() < 30, "texture colours match the scene when read as glTF"
+
+
+def test_a_dish_taller_than_its_box_comes_out_whole(tmp_path):
+    """The box is set by hand in the app. Set too low (12 mm here, for a rim at 22 mm and food at 34 mm), it used
+    to slice the top off the dish. What rises above the box is the dish: it is kept, and the app is not told
+    that anything is wrong as long as the top is not cut."""
+    sdir = write_session(tmp_path, n=60, box_size=(0.28, 0.012, 0.28))
+    eng, snaps = run(sdir)
+    g = decode_geometry(snaps[-1][1])
+    V = g["verts"]
+    food = np.linalg.norm(V[:, [0, 2]] - FOOD_CENTER[[0, 2]], axis=1) < FOOD_RADIUS
+    assert food.sum() > 50
+    top = FOOD_CENTER[1] + FOOD_RADIUS
+    assert V[food, 1].max() > top - 0.003, f"top of the food at {top * 1000:.0f} mm, model stops at {V[food, 1].max() * 1000:.1f} mm"
+    r = np.hypot(V[:, 0], V[:, 2])
+    rim = V[(r > 0.1) & (r < 0.115), 1]
+    assert len(rim) > 10 and np.percentile(rim, 90) > 0.018
+    d = distance_to_scene(SyntheticScene(), V)
+    assert np.median(d) < 0.003
+    q = snaps[-1][0]["quality"]
+    assert "box_too_low" not in q["issues"]
+    assert snaps[-1][0]["above_box_mm"] == pytest.approx((V[:, 1].max() - 0.012) * 1000, abs=1.0)
+
+
+def test_the_app_is_told_when_the_dish_is_cut_at_the_top():
+    """Beyond the headroom the model is cut flat. That is said, so that the app can ask for a taller box."""
+    from reconstruction.coordinates import headroom
+    from reconstruction.quality import top_is_cut
+    size = (0.2, 0.03, 0.2)
+    limit = size[1] + headroom(size)
+    rng = np.random.default_rng(0)
+    xz = rng.uniform(-0.05, 0.05, size=(4000, 2))
+    whole = np.stack([xz[:, 0], 0.04 * (1 - (xz ** 2).sum(1) / 0.005), xz[:, 1]], 1)       # dome 4 cm high: inside
+    assert not top_is_cut(whole, size)
+    tall = np.stack([xz[:, 0], 0.12 * (1 - (xz ** 2).sum(1) / 0.005), xz[:, 1]], 1)        # 12 cm high: cut
+    cut = tall[tall[:, 1] <= limit + 0.005]
+    assert top_is_cut(cut, size)
+    assert not top_is_cut(cut[:20], size)                                                  # too little to tell
+
+
+def _jittered(poses, mm=1.5, deg=0.15, seed=5):
+    """The same cameras as a tracker would report them: each a little off, independently of its neighbours."""
+    import cv2
+    rng = np.random.default_rng(seed)
+    out = []
+    for T in poses:
+        J = np.eye(4)
+        J[:3, :3] = cv2.Rodrigues(rng.normal(scale=np.radians(deg), size=3))[0]
+        J[:3, 3] = rng.normal(scale=mm / 1000.0, size=3)
+        out.append(T @ J)
+    return out
+
+
+def test_scanning_with_a_shaky_tracker_keeps_what_was_measured(tmp_path):
+    """Real trackers place each view to within a millimetre or two. Between two views a few centimetres apart
+    that is several per cent of depth: views contradict each other and much of what was measured is thrown
+    away during the scan. Each new view is now tied to the views already processed (reconstruction/live_pose.py)."""
+    poses = orbit_poses(60)
+    sdir = write_session(tmp_path, poses=poses, reported_poses=_jittered(poses))
+    with_ties, snaps = run(sdir)
+    without, snaps0 = run(sdir, cfg=EngineConfig(anchor_live=False))
+    a, b = with_ties.confirm_stats, without.confirm_stats
+    kept, kept0 = a["confirmed"] / a["valid"], b["confirmed"] / b["valid"]
+    lost, lost0 = a["violated"] / a["valid"], b["violated"] / b["valid"]
+    assert kept > kept0 + 0.08 and lost < 0.7 * lost0, (kept, kept0, lost, lost0)
+    lp = with_ties.metrics()["live_pose"]
+    assert lp["anchored"] >= 30 and lp["median_residual_after_px"] < 0.5 * lp["median_residual_before_px"], lp
+    assert lp["largest_shift_mm"] < 15
+    # and the model is closer to the true plate
+    sc = SyntheticScene()
+    d = distance_to_scene(sc, decode_geometry(snaps[-1][1])["verts"])
+    d0 = distance_to_scene(sc, decode_geometry(snaps0[-1][1])["verts"])
+    assert np.percentile(d, 80) < np.percentile(d0, 80) + 0.0005, (np.percentile(d, 80), np.percentile(d0, 80))
+    assert np.median(d) < 0.004
+
+
+def test_an_exact_tracker_is_left_alone(session):
+    """With poses that already fit, tying views to the model must not move them (it would only add noise)."""
+    eng, _ = run(session)
+    lp = eng.metrics()["live_pose"]
+    assert lp["enabled"] and lp["anchored"] <= 3, lp
+    assert lp["already_consistent"] >= 40, lp

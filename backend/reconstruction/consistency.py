@@ -23,6 +23,8 @@ class DepthView:
     K: np.ndarray
     T_obj_from_cam: np.ndarray
     image: np.ndarray | None = None   # BGR on the depth grid, lightly blurred (photo-consistency)
+    confirmed: np.ndarray | None = None   # the same depth once other views have confirmed it (set when fused)
+    predicted: np.ndarray | None = None   # mask of the pixels whose depth was predicted, not measured
 
 
 def consistency_counts(ref: DepthView, others: list[DepthView], rel_tol: float = 0.012, abs_tol: float = 0.0015,

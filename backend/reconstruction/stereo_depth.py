@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from .coordinates import box_corners, invert_rigid, rotation_angle_deg, transform_points
+from .coordinates import headroom, inside_box, invert_rigid, rotation_angle_deg, transform_points, volume_corners
 
 
 @dataclass
@@ -23,6 +23,7 @@ class View:
     gray: np.ndarray | None = None
     features: tuple | None = None
     weak: np.ndarray | None = None
+    matches: dict = field(default_factory=dict)   # other frame id -> epipolar_matches() with that view
 
     def weak_texture(self, thr: float = 1.2) -> np.ndarray:
         """Pixels whose local texture is too faint to pin depth down by itself. There the matcher
@@ -94,8 +95,7 @@ def _skew(t):
 
 def _box_mask(view: View, size_m, margin: float) -> np.ndarray:
     h, w = view.image.shape[:2]
-    corners = box_corners([size_m[0] + 2 * margin, size_m[1] + margin, size_m[2] + 2 * margin])
-    corners[:, 1] -= margin / 2
+    corners = volume_corners(size_m, margin=margin, below=margin / 2, above=margin / 2 + headroom(size_m))
     pc = transform_points(invert_rigid(view.T_obj_from_cam), corners)
     mask = np.zeros((h, w), np.uint8)
     if (pc[:, 2] <= 0.02).any():
@@ -132,8 +132,73 @@ def _sampson_px(E, n1, n2, f):
     return np.sqrt(num / np.maximum(den, 1e-18)) * f
 
 
+def recover_pose(E: np.ndarray, n1: np.ndarray, n2: np.ndarray, inliers: np.ndarray):
+    """Rotation and unit translation of an essential matrix: of its four decompositions, the one that puts the
+    matched points in front of both cameras. Returns (R, t, mask of the inliers that are in front of both).
+
+    Same answer as cv2.recoverPose, which triangulates every point with a small SVD: 170 ms for 1500 matches,
+    more than the stereo matching itself. Here the two depths of each point come from a closed form.
+    """
+    R1, R2, t = cv2.decomposeEssentialMat(E)
+    t = t.ravel()
+    x1 = np.hstack([n1, np.ones((len(n1), 1))])
+    x2 = np.hstack([n2, np.ones((len(n2), 1))])
+    inliers = np.asarray(inliers).ravel() > 0
+    best = None
+    for R in (R1, R2):
+        Rx1 = x1 @ R.T
+        c = np.cross(x2, Rx1)
+        den = np.maximum((c * c).sum(1), 1e-18)
+        for tt in (t, -t):
+            z1 = -(np.cross(x2, tt) * c).sum(1) / den          # depth in the first camera, in baselines
+            z2 = Rx1[:, 2] * z1 + tt[2]                        # and in the second
+            front = inliers & (z1 > 0) & (z2 > 0) & (z1 < 50) & (z2 < 50)
+            n = int(front.sum())
+            if best is None or n > best[0]:
+                best = (n, R, tt, front)
+    return best[1], best[2], best[3]
+
+
+def epipolar_matches(ref: View, other: View, size_m, params: StereoParams) -> dict:
+    """SIFT matches between two views and the relative motion they imply, whatever the poses say.
+
+    {"status": "ok" | "few_features" | "few_matches" | "essential_failed", "matches": n, and when ok:
+     "m1", "m2" (matched pixels in ref / other), "i1", "i2" (which keypoints of each view they are), "n1", "n2"
+     (the pixels, normalised), "R", "t" (unit length, a point of ref seen in other is R x + s t), "inliers" (mask
+     of the matches that agree with that motion)}.
+    It depends on the two pictures only, so it is kept on the reference view: the pose of a new view (see
+    live_pose.py) and its stereo depth use the same matches without computing them twice.
+    """
+    hit = ref.matches.get(other.frame_id)
+    if hit is not None:
+        return hit
+    out = {"status": "few_features", "matches": 0}
+    p1, d1 = _features(ref, size_m, params)
+    p2, d2 = _features(other, size_m, params)
+    if d1 is not None and d2 is not None and len(p1) >= params.min_matches and len(p2) >= params.min_matches:
+        knn = cv2.BFMatcher(cv2.NORM_L2).knnMatch(d1, d2, k=2)
+        good = [m[0] for m in knn if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
+        out["matches"] = len(good)
+        out["status"] = "few_matches"
+        if len(good) >= params.min_matches:
+            i1 = np.array([g.queryIdx for g in good], np.int64)
+            i2 = np.array([g.trainIdx for g in good], np.int64)
+            m1, m2 = p1[i1], p2[i2]
+            n1, n2 = _normalize(m1, ref.K), _normalize(m2, other.K)
+            # Bounded RANSAC: this only checks/corrects a pose that ARKit already gives, it does not have to
+            # find one from scratch. (Unbounded, it took more than half of the per-view time.)
+            E, inl = cv2.findEssentialMat(n1, n2, np.eye(3), method=cv2.RANSAC, prob=0.99, threshold=1.0 / float(ref.K[0, 0]),
+                                          maxIters=250)
+            out["status"] = "essential_failed"
+            if E is not None and E.shape == (3, 3):
+                R_e, t_e, front = recover_pose(E, n1, n2, inl)
+                out.update(status="ok", m1=m1, m2=m2, i1=i1, i2=i2, n1=n1, n2=n2, R=R_e, t=t_e, inliers=front)
+    ref.matches[other.frame_id] = out
+    return out
+
+
 def verify_relative_pose(ref: View, other: View, size_m, params: StereoParams, report: PairReport):
-    """Return (R, t) mapping ref-camera coords to other-camera coords, or None.
+    """Return (R, t, inlier_pts_ref, inlier_pts_other) of other-from-ref, or None if rejected.
 
     The ARKit relative pose is the metric initialisation. SIFT matches + RANSAC
     on the essential matrix check it; a correction (rotation and translation
@@ -142,8 +207,6 @@ def verify_relative_pose(ref: View, other: View, size_m, params: StereoParams, r
     """
     T_other_from_ref = invert_rigid(other.T_obj_from_cam) @ ref.T_obj_from_cam
     R_a, t_a = T_other_from_ref[:3, :3], T_other_from_ref[:3, 3]
-    p1, d1 = _features(ref, size_m, params)
-    p2, d2 = _features(other, size_m, params)
     none = np.zeros((0, 2))
 
     def unverified(reason: str):
@@ -156,33 +219,19 @@ def verify_relative_pose(ref: View, other: View, size_m, params: StereoParams, r
         report.pose_source, report.reason = "arkit_unverified", reason
         return R_a, t_a, none, none
 
-    if d1 is None or d2 is None or len(p1) < params.min_matches or len(p2) < params.min_matches:
-        return unverified("few_features")
-    matcher = cv2.BFMatcher(cv2.NORM_L2)
-    knn = matcher.knnMatch(d1, d2, k=2)
-    good = [m[0] for m in knn if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
-    report.matches = len(good)
-    if len(good) < params.min_matches:
-        return unverified("few_matches")
-    m1 = p1[[g.queryIdx for g in good]]
-    m2 = p2[[g.trainIdx for g in good]]
-    n1, n2 = _normalize(m1, ref.K), _normalize(m2, other.K)
+    em = epipolar_matches(ref, other, size_m, params)
+    report.matches = em["matches"]
+    if em["status"] != "ok":
+        return unverified(em["status"])
+    m1, m2, n1, n2, R_e, t_e, inliers = em["m1"], em["m2"], em["n1"], em["n2"], em["R"], em["t"], em["inliers"]
     f = float(ref.K[0, 0])
     E_a = _skew(t_a / np.linalg.norm(t_a)) @ R_a
     res_a = _sampson_px(E_a, n1, n2, f)
-    # Bounded RANSAC: this only checks/corrects a pose that ARKit already gives, it does not have to
-    # find one from scratch. (Unbounded, it took more than half of the per-view time.)
-    E, inl = cv2.findEssentialMat(n1, n2, np.eye(3), method=cv2.RANSAC, prob=0.99, threshold=1.0 / f, maxIters=250)
-    if E is None or E.shape != (3, 3):
-        return unverified("essential_failed")
-    _, R_e, t_e, inl2 = cv2.recoverPose(E, n1, n2, np.eye(3), mask=inl.copy())
-    inliers = inl2.ravel() > 0
     report.inliers = int(inliers.sum())
     if report.inliers < params.min_matches * 0.6:
         return unverified("few_inliers")
     # Residual of the ARKit pose on matches that agree with *some* rigid motion.
     report.residual_arkit_px = float(np.median(res_a[inliers]))
-    t_e = t_e.ravel()
     rot_diff = rotation_angle_deg(R_e @ R_a.T)
     dir_diff = float(np.degrees(np.arccos(np.clip(np.dot(t_e, t_a / np.linalg.norm(t_a)), -1, 1))))
     report.rot_correction_deg, report.dir_correction_deg = rot_diff, dir_diff
@@ -274,8 +323,8 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     cx, cy = P1[0, 2], P1[1, 2]
     B = abs(shift) / f_rect
     # Box depth range in rectified reference camera -> disparity search range.
-    corners = box_corners([size_m[0] + 0.02, size_m[1] + 0.02, size_m[2] + 0.02])
-    corners[:, 1] -= 0.01
+    # (with the height kept above the box: a dish taller than its box is searched and measured like the rest)
+    corners = volume_corners(size_m, margin=0.01, below=0.01, above=0.01 + headroom(size_m))
     pc = transform_points(invert_rigid(ref.T_obj_from_cam), corners) @ R1.T
     zmin, zmax = max(float(pc[:, 2].min()), 0.08), float(pc[:, 2].max())
     if zmax <= 0.08:
@@ -389,8 +438,7 @@ def compute_pair_depth(ref: View, other: View, size_m, params: StereoParams = St
     # Keep points inside the box (with margin) in object coordinates.
     pts_obj = transform_points(ref.T_obj_from_cam, pts_ref)
     m = params.box_margin_m
-    keep = ((np.abs(pts_obj[:, 0]) <= size_m[0] / 2 + m) & (np.abs(pts_obj[:, 2]) <= size_m[2] / 2 + m)
-            & (pts_obj[:, 1] >= -m) & (pts_obj[:, 1] <= size_m[1] + m) & (pts_ref[:, 2] > 0.05))
+    keep = inside_box(pts_obj, size_m, margin=m, below=m, above=m + headroom(size_m)) & (pts_ref[:, 2] > 0.05)
     pts_ref = pts_ref[keep]
     report.stages["in_box"] = int(keep.sum())
     # Rasterise into the reference image grid (nearest surface wins).

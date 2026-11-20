@@ -15,20 +15,21 @@ import cv2
 import numpy as np
 import open3d as o3d
 
-from .coordinates import (box_corners, inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
-                          scale_intrinsics, transform_points)
+from .coordinates import (headroom, inside_box, intrinsics_matrix, invert_rigid, mat4_from_rowmajor, object_from_camera_cv,
+                          scale_intrinsics, transform_points, volume_corners)
 from .consistency import (DepthView, confirmed_depth, depth_bias_between, depth_bias_from_views, depth_scale_from_views,
                           pick_neighbours)
 from .fusion import SOURCE_LIDAR, SOURCE_STEREO, FusionConfig, LiveFusion
 from .mesh_preview import INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, supported_mesh, surface_area
 from .pair_selector import PairLimits, select_partners
 from .preview_format import encode_geometry
-from .quality import scan_quality
+from .quality import scan_quality, top_is_cut
 from .mono_depth import align_and_fill
-from .stereo_depth import StereoParams, View, _box_mask, combine_depths, compute_pair_depth
+from .live_pose import AnchorConfig, Tie, anchor_pose, common_correction, sample_depth
+from .stereo_depth import StereoParams, View, _box_mask, combine_depths, compute_pair_depth, epipolar_matches
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.8.0"
+ENGINE_VERSION = "p1-0.9.0"
 
 
 @dataclass
@@ -64,6 +65,13 @@ class EngineConfig:
     scale_max_dev: float = 0.06
     scale_gain: float = 0.8
     align_to_model: bool = False  # experimental: measured worse on synthetic data, see docs/TEST_REPORT.md
+    # While scanning, the pose of each new view is tied to the views already processed (see live_pose.py).
+    # The finishing step refines all the poses together instead and turns this off.
+    anchor_live: bool = True
+    anchor_views: int = 3        # views a new one is tied to: its stereo partners first, then its nearest neighbours
+    anchor_memory: int = 6       # recent tied views whose common correction places a view that could not be tied...
+    anchor_memory_frames: int = 10   # ...if the last of them is no older than this many frames
+    anchor: AnchorConfig = field(default_factory=AnchorConfig)
     max_backlog_live: int = 12  # beyond this, older frames are stored but deferred to finishing
     fusion: FusionConfig = field(default_factory=FusionConfig)
     mesh: MeshConfig = field(default_factory=MeshConfig)
@@ -127,17 +135,29 @@ class SessionEngine:
         self.frames_since_snapshot = 0
         self.pair_reports: list[dict] = []
         self.alignments: list[dict] = []
-        self.pose_overrides: dict[int, np.ndarray] = {}   # refined T_obj_from_cam (finishing only)
+        # Corrected T_obj_from_cam: tied to the model while scanning (_anchor), refined all together when finishing.
+        self.pose_overrides: dict[int, np.ndarray] = {}
+        self._anchor_done: set[int] = set()
+        self.anchor_stats = {"anchored": 0, "predicted": 0, "already_consistent": 0, "refused": {}, "shift_mm": [],
+                             "before_px": [], "after_px": []}
+        self.anchor_log: list[dict] = []    # one line per view: what the ties said and what was done
+        self._corrections: list[tuple[int, np.ndarray]] = []   # (view, tied pose * inverse(tracker pose)), the last few
+        # Confirmed depth of the keypoints of every fused view (pixels, depths): a few kilobytes per view, kept
+        # for the whole scan, so that a view passing again over a place seen long before is tied to it.
+        self._landmarks: dict[int, tuple[np.ndarray, np.ndarray]] = {}
         self._model_mesh = None
         self._depth_cache: list[DepthView] = []     # recent raw depth maps (bounded window)
         self._awaiting: list[tuple[int, np.ndarray]] = []  # (frame id, pair-support map) not fused yet
         self.confirm_stats = {"valid": 0, "confirmed": 0, "violated": 0}
         self.scale_stats = {"applied": 0, "skipped": 0, "abs_dev_sum": 0.0}
         self.bias_stats = {"applied": 0, "skipped": 0, "moved_sum": 0.0, "moved_max": 0.0}
+        self.bias_log: list[tuple[int, float]] = []   # (view, mean relative correction of one of its pair depth maps)
         # Optional learned single-image depth (see mono_depth.py): fills what stereo cannot measure.
         self.mono = None
         self.mono_stats = {"views": 0, "views_filled": 0, "filled_px": 0, "kept_px": 0, "errors": 0, "skipped": {}}
         self._mono_filled: dict[int, np.ndarray] = {}
+        self._mono_asked: set[int] = set()     # pictures whose prediction was asked ahead (model on its own thread)
+        self._live = False                      # set by process_pending: while scanning nothing waits for the model
         self._geom: dict = {}
         self._scale_raw: list[float] = []
         self.latencies: list[float] = []
@@ -154,9 +174,14 @@ class SessionEngine:
         self._depth_cache = []
         self._awaiting = []
         self._mono_filled = {}
+        self._mono_asked = set()
         self._scale_raw = []
         self._geom = {}
         self.views.clear()
+        self.pose_overrides = {}     # they are expressed in the frame of the box, which has just changed
+        self._anchor_done = set()
+        self._landmarks = {}
+        self._corrections = []
         if reprocess:
             for rec in self.frames.values():
                 rec.attempts = 0
@@ -263,9 +288,26 @@ class SessionEngine:
                 self._frame_event(self.frames[f])
             todo = todo[-self.cfg.max_backlog_live:]
         n = 0
-        for fid in todo + retry:
+        order = todo + retry
+        self._live = live
+        ahead = int(getattr(self.mono, "ahead", 0)) if hasattr(self.mono, "request") else -1
+        for i, fid in enumerate(order):
+            if ahead >= 0:
+                # The model works on its own thread: it is given this picture (and, when finishing, the next
+                # ones) now, and computes while stereo is busy with the same pictures.
+                self._ask_mono(order[i: i + 1 + (0 if live else ahead)], live)
             n += self._process(fid)
         return n
+
+    def _ask_mono(self, frame_ids: list[int], live: bool) -> None:
+        for f in frame_ids:
+            if f in self._mono_asked:
+                continue
+            self._mono_asked.add(f)
+            try:
+                self.mono.request(f, self._view(f).image, live)
+            except ValueError:
+                pass        # unreadable picture: _process reports it
 
     def _sharpness_ok(self, rec: FrameRecord, view: View) -> bool:
         rec.sharpness = laplacian_sharpness(view.gray_image())
@@ -293,6 +335,8 @@ class SessionEngine:
         depths, reports = [], []
         if partners:
             rec.attempts += 1
+            if self.cfg.anchor_live:
+                self._anchor(fid, ref, partners)
         for g in partners:
             res = compute_pair_depth(ref, self._view(g.other_id), self.box.size_m, self.cfg.stereo)
             rep = asdict(res.report)
@@ -316,12 +360,84 @@ class SessionEngine:
         if self.mono is not None:
             depth = self._fill_from_mono(fid, depth, ref)
         # Not fused yet: wait for neighbouring views so the depth can be confirmed or contradicted.
-        self._depth_cache.append(DepthView(fid, depth, ref.K, ref.T_obj_from_cam, cv2.GaussianBlur(ref.image, (5, 5), 0)))
+        self._depth_cache.append(DepthView(fid, depth, ref.K, ref.T_obj_from_cam, cv2.GaussianBlur(ref.image, (5, 5), 0),
+                                           predicted=self._mono_filled.get(fid)))
         if len(self._depth_cache) > self.cfg.confirm_window:
             self._depth_cache.pop(0)
         self._awaiting.append((fid, support))
         rec.status, rec.reason = "depth_ready", ""
         return self._fuse_ready(flush=False)
+
+    def _tracker_pose(self, fid: int) -> np.ndarray:
+        return object_from_camera_cv(self.box.T_world_from_object, mat4_from_rowmajor(self.frames[fid].meta["T_world_from_cameraAR"]))
+
+    def _anchor(self, fid: int, ref: View, partners: list) -> None:
+        """Tie the pose of a new view to the views already processed, before its depth is computed (live_pose.py).
+        The view keeps the tracker's pose whenever the ties are too few, already satisfied, or point far away."""
+        if fid in self._anchor_done or fid in self.pose_overrides or not self._depth_cache:
+            return            # (nothing built yet: the first views define the frame everything else is tied to)
+        cache = {d.frame_id: d for d in self._depth_cache}
+        ids = [g.other_id for g in partners]
+        near = pick_neighbours(DepthView(fid, None, ref.K, ref.T_obj_from_cam), self._depth_cache, self.cfg.anchor_views)
+        ids += [d.frame_id for d in near if d.frame_id not in ids][: max(0, self.cfg.anchor_views - len(ids))]
+        ties, starts = [], []
+        T_trk = ref.T_obj_from_cam
+        for oid in ids:
+            try:
+                other = self._view(oid)
+            except ValueError:
+                continue
+            em = epipolar_matches(ref, other, self.box.size_m, self.cfg.stereo)
+            if em["status"] != "ok" or int(em["inliers"].sum()) < 30:
+                continue
+            m1, m2, i2 = em["m1"][em["inliers"]], em["m2"][em["inliers"]], em["i2"][em["inliers"]]
+            depth = np.zeros(len(m1))
+            dv = cache.get(oid)
+            lm = self._landmarks.get(oid)
+            if lm is not None and len(lm[0]) > int(i2.max(initial=-1)) and np.array_equal(lm[0][i2], m2.astype(np.float32)):
+                depth = lm[1][i2].astype(np.float64)      # fused view: depth confirmed by other views
+            elif dv is not None:                          # still waiting for its confirmation: depth as computed
+                depth = sample_depth(dv.depth, m2)
+                if dv.predicted is not None:      # a predicted depth is not a measurement to tie a camera to
+                    ui = np.clip(np.round(m2[:, 0]).astype(np.int64), 0, dv.predicted.shape[1] - 1)
+                    vi = np.clip(np.round(m2[:, 1]).astype(np.int64), 0, dv.predicted.shape[0] - 1)
+                    depth[dv.predicted[vi, ui]] = 0
+            ties.append(Tie(other.K, other.T_obj_from_cam, m1, m2, depth))
+            if oid in self.pose_overrides:
+                # The tracker drifts slowly: what was found for a neighbour is a good first guess for this view.
+                starts.append(other.T_obj_from_cam @ invert_rigid(self._tracker_pose(oid)) @ T_trk)
+        # Where the neighbours say this view is: the tracker's pose moved by what the last tied views have in common.
+        recent = [C for f, C in self._corrections if abs(fid - f) <= self.cfg.anchor_memory_frames]
+        common = common_correction(recent) if self._corrections and abs(fid - self._corrections[-1][0]) <= self.cfg.anchor_memory_frames else None
+        fallback = common @ T_trk if common is not None else None
+        if not ties and fallback is None:
+            return
+        T, info = anchor_pose(T_trk, ref.K, ties, self.cfg.anchor, tuple(starts), fallback)
+        self._anchor_done.add(fid)
+        self.anchor_log.append({"frame_id": fid, "tied_to": [int(i) for i in ids], **info})
+        st = self.anchor_stats
+        if "residual_before_px" in info:
+            st["before_px"].append(info["residual_before_px"])
+        if T is None:
+            if info["status"] == "already_consistent":
+                st["already_consistent"] += 1
+                self._remember_correction(fid, np.eye(4))      # here the model sits where the tracker says
+            else:
+                st["refused"][info["status"]] = st["refused"].get(info["status"], 0) + 1
+            return
+        if info["status"] == "anchored":
+            st["anchored"] += 1
+            st["after_px"].append(info["residual_after_px"])
+            self._remember_correction(fid, T @ invert_rigid(T_trk))
+        else:                                # placed where its neighbours are: says nothing new about the model
+            st["predicted"] += 1
+        st["shift_mm"].append(info["shift_mm"])
+        ref.T_obj_from_cam = T
+        self.pose_overrides[fid] = T
+
+    def _remember_correction(self, fid: int, C: np.ndarray) -> None:
+        self._corrections.append((fid, C))
+        del self._corrections[: max(0, len(self._corrections) - self.cfg.anchor_memory)]
 
     def _align_pairs(self, fid: int, depths: list[np.ndarray], ref: View) -> bool:
         """Remove the smooth bias of each pair depth map (in place). True when the accepted views were the
@@ -349,6 +465,7 @@ class SessionEngine:
             moved = np.abs(fixed[::4, ::4][sub > 0] - sub[sub > 0]) / sub[sub > 0]
             st["applied"] += 1
             st["moved_sum"] += float(moved.mean())
+            self.bias_log.append((fid, round(float(moved.mean()), 5)))
             st["moved_max"] = max(st["moved_max"], float(np.percentile(moved, 95)))
             depths[i] = fixed
             anchor = depths[i] if anchor is None else anchor
@@ -377,9 +494,16 @@ class SessionEngine:
         st = self.mono_stats
         st["views"] += 1
         try:
-            pred = self.mono.predict(ref.image, fid)
+            if hasattr(self.mono, "request"):       # on its own thread: while scanning, not ready = not used
+                pred = self.mono.predict(ref.image, fid, live=self._live)
+                if pred is None:
+                    st["skipped"]["not_ready"] = st["skipped"].get("not_ready", 0) + 1
+                    return depth
+            else:
+                pred = self.mono.predict(ref.image, fid)
             roi = _box_mask(ref, self.box.size_m, 0.0) > 0
-            zc = transform_points(invert_rigid(ref.T_obj_from_cam), box_corners(self.box.size_m))[:, 2]
+            zc = transform_points(invert_rigid(ref.T_obj_from_cam),
+                                  volume_corners(self.box.size_m, above=headroom(self.box.size_m)))[:, 2]
             out, fill, info = align_and_fill(depth, pred, roi, (max(0.03, float(zc.min()) - 0.01), float(zc.max()) + 0.01))
         except Exception as exc:
             st["errors"] += 1
@@ -408,6 +532,7 @@ class SessionEngine:
                 continue
             others = pick_neighbours(dv, self._depth_cache, self.cfg.confirm_neighbours)
             depth, agree, st = confirmed_depth(dv, others, self.cfg.confirm_min_views)
+            dv.confirmed = depth
             for k in self.confirm_stats:
                 self.confirm_stats[k] += st[k]
             ref = self._view(fid)
@@ -418,6 +543,10 @@ class SessionEngine:
             if filled is not None:   # predicted, then confirmed by other views: shown, but never called measured
                 weak = weak | filled
                 self.mono_stats["kept_px"] += int((filled & (depth > 0)).sum())
+            if self.cfg.anchor_live and ref.features is not None and len(ref.features[0]):
+                # what later views are tied to (see _anchor); a predicted depth is not a measurement to tie a camera to
+                kp = ref.features[0].astype(np.float32)
+                self._landmarks[fid] = (kp, sample_depth(depth if filled is None else np.where(filled, 0, depth), kp).astype(np.float32))
             n = self.fusion.integrate(fid, ref.image, depth, ref.K, ref.T_obj_from_cam, sup, SOURCE_STEREO, weak)
             rec.status = "integrated" if n > 0 else "rejected"
             rec.reason = "" if n > 0 else ("not_confirmed_by_other_views" if st["valid"] else "no_points_in_box")
@@ -509,7 +638,8 @@ class SessionEngine:
                         table_hidden = True
             cov = self.coverage()
             sides = float((np.array(cov["views_per_bin"]).sum(0) > 0).mean())
-            quality = scan_quality(V, T, cls, fp if table_hidden else None, n_integrated, sides)
+            quality = scan_quality(V, T, cls, fp if table_hidden else None, n_integrated, sides, self.box.size_m)
+            above_box = max(0.0, float(V[:, 1].max()) - float(self.box.size_m[1])) if len(V) else 0.0
             if len(T):
                 verts, normals, tris = V, N, T
                 vrgbc = np.concatenate([Cv, cls[:, None]], 1)
@@ -541,6 +671,9 @@ class SessionEngine:
             "classes": {"0": "measured", "1": "interpolated", "2": "estimated", "3": "tracking", "4": "provisional_single_view"},
         }
         header["table_hidden"] = bool(want_mesh and locals().get("table_hidden", False))
+        # How far the model rises above the box set in the app (0 when it fits). The engine keeps it up to the
+        # headroom; the quality verdict says "box_too_low" when even that is not enough.
+        header["above_box_mm"] = round(locals().get("above_box", 0.0) * 1000, 1)
         header["quality"] = locals().get("quality") or scan_quality(np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0), None, n_integrated, 0.0)
         header["compute_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         header.update(point_count=int(len(p_rgbc)), vertex_count=0 if verts is None else int(len(verts)),
@@ -564,9 +697,12 @@ class SessionEngine:
         if self.mono is None:
             return {"enabled": False}
         st = self.mono_stats
-        return {"enabled": True, **{k: v for k, v in st.items()},
-                "kept_share": round(st["kept_px"] / st["filled_px"], 3) if st["filled_px"] else None,
-                "seconds": round(float(getattr(self.mono, "seconds", 0.0)), 2), "calls": int(getattr(self.mono, "calls", 0))}
+        out = {"enabled": True, **{k: v for k, v in st.items()},
+               "kept_share": round(st["kept_px"] / st["filled_px"], 3) if st["filled_px"] else None,
+               "seconds": round(float(getattr(self.mono, "seconds", 0.0)), 2), "calls": int(getattr(self.mono, "calls", 0))}
+        if hasattr(self.mono, "stats"):       # model on its own thread: asked / in time / late / dropped / stepped back
+            out["parallel"] = self.mono.stats()
+        return out
 
     def metrics(self) -> dict:
         lat = np.array(self.latencies) if self.latencies else None
@@ -593,4 +729,15 @@ class SessionEngine:
             "pairs": {"total": len(pr), "ok": sum(p["status"] == "ok" for p in pr),
                       "corrected_pose": sum(p["pose_source"] == "corrected" for p in pr),
                       "median_residual_px": float(np.nanmedian([p["residual_used_px"] for p in pr])) if pr else None},
+            "live_pose": self.live_pose_report(),
         }
+
+    def live_pose_report(self) -> dict:
+        """How many views were tied to the model while scanning, and by how much they moved."""
+        st = self.anchor_stats
+        med = lambda a: round(float(np.median(a)), 3) if a else None
+        return {"enabled": bool(self.cfg.anchor_live), "anchored": st["anchored"], "predicted": st["predicted"],
+                "already_consistent": st["already_consistent"],
+                "refused": dict(st["refused"]), "median_shift_mm": med(st["shift_mm"]),
+                "largest_shift_mm": round(float(max(st["shift_mm"])), 3) if st["shift_mm"] else None,
+                "median_residual_before_px": med(st["before_px"]), "median_residual_after_px": med(st["after_px"])}

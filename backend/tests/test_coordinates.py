@@ -1,9 +1,10 @@
 import numpy as np
 import pytest
 
-from reconstruction.coordinates import (C_AR_FROM_CV, backproject, camera_cv_from_object, crop_intrinsics, intrinsics_matrix,
-                                        invert_rigid, is_rigid, look_at_ar, mat4_from_rowmajor, mat4_to_rowmajor,
-                                        object_from_camera_cv, project, scale_intrinsics)
+from reconstruction.coordinates import (C_AR_FROM_CV, backproject, camera_cv_from_object, crop_intrinsics, headroom,
+                                        inside_box, intrinsics_matrix, invert_rigid, is_rigid, look_at_ar,
+                                        mat4_from_rowmajor, mat4_to_rowmajor, object_from_camera_cv, project,
+                                        scale_intrinsics, volume_corners)
 
 
 def rand_pose(rng):
@@ -91,3 +92,26 @@ def test_scale_consistency_baseline():
     a, b = rand_pose(rng), rand_pose(rng)
     oa, ob = object_from_camera_cv(T_world_obj, a), object_from_camera_cv(T_world_obj, b)
     assert np.linalg.norm(oa[:3, 3] - ob[:3, 3]) == pytest.approx(np.linalg.norm(a[:3, 3] - b[:3, 3]))
+
+
+def test_what_rises_above_the_box_is_kept_up_to_the_headroom():
+    """The box is set by hand and often a little low. Nothing stands in the air above a dish, so what rises above
+    the top of the box is the dish itself: it is kept, up to a limit that grows with the box and stays bounded."""
+    assert headroom((0.3, 0.02, 0.3)) == pytest.approx(0.02)      # flat dish: at least 2 cm
+    assert headroom((0.2, 0.08, 0.2)) == pytest.approx(0.04)      # half the height in between
+    assert headroom((0.1, 0.25, 0.1)) == pytest.approx(0.06)      # never more than 6 cm
+    size = (0.2, 0.04, 0.2)
+    top = headroom(size)
+    p = np.array([[0.0, 0.04 + top - 0.001, 0.0],      # above the box, inside the headroom
+                  [0.0, 0.04 + top + 0.002, 0.0],      # above the headroom
+                  [0.11, 0.05, 0.0],                   # beside the box: the sides are not widened
+                  [0.0, -0.002, 0.0]])                 # under the table
+    assert inside_box(p, size, above=top).tolist() == [True, False, False, False]
+    assert inside_box(p, size).tolist() == [False, False, False, False]   # without it, the strict box as before
+    assert inside_box(p, size, margin=0.012, below=0.003, above=top).tolist() == [True, False, True, True]
+
+
+def test_the_search_volume_is_the_box_plus_its_margins():
+    c = volume_corners((0.2, 0.04, 0.3), margin=0.01, below=0.005, above=0.02)
+    assert c.shape == (8, 3)
+    assert c.min(0) == pytest.approx([-0.11, -0.005, -0.16]) and c.max(0) == pytest.approx([0.11, 0.06, 0.16])

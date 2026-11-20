@@ -123,15 +123,37 @@ def box_corners(size_m: Iterable[float]) -> np.ndarray:
     return np.array([[x, y, z] for x in xs for y in ys for z in zs])
 
 
-def inside_box(pts_obj: np.ndarray, size_m: Sequence[float], margin: float = 0.0, below: float = 0.0) -> np.ndarray:
-    """size_m = (width x, height y, depth z)."""
+def headroom(size_m: Sequence[float]) -> float:
+    """Height kept above the top of the scan box, in metres.
+
+    The box is set by hand in the app and is often a little low; a pose that drifts by a few millimetres also
+    tilts a flat object out of a tight box. Nothing stands in the air above a dish, so what is measured above
+    the top of the box, within its outline, is the dish itself. It is kept up to half the height of the box,
+    at least 2 cm and at most 6 cm (the search range of the matcher grows with it). The sides and the base are
+    not widened: the table and the neighbours of the dish are there.
+    """
+    return float(min(max(0.5 * float(size_m[1]), 0.02), 0.06))
+
+
+def volume_corners(size_m: Iterable[float], margin: float = 0.0, below: float = 0.0, above: float = 0.0) -> np.ndarray:
+    """Eight corners of the box widened by `margin` on its four sides, `below` under its base, `above` over its top."""
+    w, h, d = [float(v) for v in size_m]
+    xs = (-w / 2 - margin, w / 2 + margin)
+    ys = (-below, h + above)
+    zs = (-d / 2 - margin, d / 2 + margin)
+    return np.array([[x, y, z] for x in xs for y in ys for z in zs])
+
+
+def inside_box(pts_obj: np.ndarray, size_m: Sequence[float], margin: float = 0.0, below: float = 0.0,
+               above: float | None = None) -> np.ndarray:
+    """size_m = (width x, height y, depth z). `above`: what is kept over the top (as `margin` when not given)."""
     w, h, d = size_m
     p = pts_obj
     return (
         (np.abs(p[:, 0]) <= w / 2 + margin)
         & (np.abs(p[:, 2]) <= d / 2 + margin)
         & (p[:, 1] >= -below)
-        & (p[:, 1] <= h + margin)
+        & (p[:, 1] <= h + (margin if above is None else above))
     )
 
 

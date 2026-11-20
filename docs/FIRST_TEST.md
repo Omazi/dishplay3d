@@ -30,7 +30,8 @@ même Wi‑Fi, un vrai plat posé sur une table, un mètre ruban.
    texture). Le modèle final s'affiche dans le panneau. Comparer aux photos de contrôle ; vérifier que l'assiette
    reste creuse.
 9. **Exporter** (bouton) : zip de la session côté iPhone (originaux, métadonnées, résultats). Côté PC :
-   `~/dishplay-scan-data/sessions/<id>/final/` (model.glb, mesh.ply, points.ply, texture.png, report.json).
+   `~/dishplay-scan-data/sessions/<id>/final/` (model.glb, model.usdz pour la réalité augmentée sur iPhone, mesh.ply,
+   points.ply, texture.png, report.json).
    Rejouer à l'identique sans refaire le tour :
    ```bash
    backend/.venv/bin/python tools/verify_capture.py ~/dishplay-scan-data/sessions/<id>

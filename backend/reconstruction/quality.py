@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .coordinates import headroom
 from .mesh_preview import MEASURED, DishFootprint
 
 GOOD, FAIR, POOR, EARLY = "good", "fair", "poor", "too_early"
@@ -69,7 +70,17 @@ def raggedness(V: np.ndarray, T: np.ndarray) -> float:
     return length / np.sqrt(area) if area > 0 else 0.0
 
 
-def scan_quality(V, T, cls, fp: DishFootprint | None, integrated: int, sides_seen: float) -> dict:
+def top_is_cut(V: np.ndarray, size_m, slab_m: float = 0.003) -> bool:
+    """True when the model ends flat against the highest level the engine keeps (top of the box plus its
+    headroom): the dish is taller than that and its top is missing. The box has to be raised."""
+    if len(V) < 200:
+        return False
+    limit = float(size_m[1]) + headroom(size_m) + 0.005          # same limit as the crop of the surface
+    at_top = int((V[:, 1] >= limit - slab_m).sum())
+    return at_top >= max(40, int(0.003 * len(V)))
+
+
+def scan_quality(V, T, cls, fp: DishFootprint | None, integrated: int, sides_seen: float, box_size_m=None) -> dict:
     """Verdict for the app: level, score (0-100), the numbers behind it and what to do about it."""
     if len(V) < 500 or integrated < 8:
         return {"level": EARLY, "score": 0, "issues": [], "top_coverage": None, "measured_share": None,
@@ -93,12 +104,16 @@ def scan_quality(V, T, cls, fp: DishFootprint | None, integrated: int, sides_see
         issues.append("uniform_or_shiny")    # little real measurement: uniform or glossy food / plate
     if integrated < 25:
         issues.append("few_views")           # go slower, or keep turning
+    if box_size_m is not None and top_is_cut(V, box_size_m):
+        issues.append("box_too_low")         # the dish is taller than the box allows: raise the top of the box
     if cov >= 0.9 and rag <= 20 and measured >= 0.55 and sides_seen >= 0.9 and integrated >= 30:
         level = GOOD
     elif cov >= 0.75 and rag <= 26 and sides_seen >= 0.6:
         level = FAIR
     else:
         level = POOR
+    if "box_too_low" in issues and level == GOOD:
+        level = FAIR                         # everything else is fine, but the top of the dish is missing
     return {"level": level, "score": int(round(score)), "issues": issues, "top_coverage": round(cov, 3),
             "measured_share": round(measured, 3), "raggedness": round(rag, 1), "sides_seen": round(float(sides_seen), 2),
             "views": int(integrated)}

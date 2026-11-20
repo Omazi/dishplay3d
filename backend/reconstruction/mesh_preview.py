@@ -14,7 +14,7 @@ import numpy as np
 import open3d as o3d
 from scipy.spatial import cKDTree
 
-from .coordinates import inside_box
+from .coordinates import headroom, inside_box
 
 MEASURED, INTERPOLATED, ESTIMATED, TRACKING = 0, 1, 2, 3
 
@@ -61,7 +61,7 @@ def supported_mesh(mesh: o3d.geometry.TriangleMesh, size_m, pts, nframes, cfg: M
     if len(mesh.triangles) == 0:
         return empty
     V = np.asarray(mesh.vertices)
-    keep_v = inside_box(V, size_m, margin=0.005, below=0.005)
+    keep_v = inside_box(V, size_m, margin=0.005, below=0.005, above=0.005 + headroom(size_m))
     cls = classify_vertices(V, pts, nframes, cfg, weak)
     keep_v &= cls != 255
     T = np.asarray(mesh.triangles)

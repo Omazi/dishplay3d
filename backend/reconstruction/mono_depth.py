@@ -80,13 +80,152 @@ class MonoDepth:
         return cv2.resize(y, (w, h), interpolation=cv2.INTER_LINEAR)
 
 
+class AsyncMono:
+    """The depth model on a thread of its own, working ahead of the engine and at the same time as stereo.
+
+    The engine asks for the prediction of a picture as soon as it knows it will need it (`request`), goes on with
+    stereo, and collects the prediction when it gets there (`predict`). Both computations release the Python
+    interpreter while they run, so on a multi-core PC they really run side by side.
+
+    Finishing (live=False) is in no hurry: `predict` waits for the answer, in the order asked.
+
+    While scanning (live=True) nothing may slow the scan down:
+      * `predict` waits at most `live_patience_s`; a prediction that is not ready is not used (returns None) and
+        the view keeps what stereo measured, exactly as without the model;
+      * at most `ahead` requests wait their turn; older ones are dropped, the newest pictures first;
+      * after `give_up_after` answers of which fewer than `min_on_time` came in time, the computer cannot keep
+        up: the model steps back and is no longer asked during this scan. Finishing still uses it for every view.
+    """
+
+    def __init__(self, model, ahead: int = 3, live_patience_s: float = 0.12, give_up_after: int = 12,
+                 min_on_time: float = 0.3, keep: int = 8):
+        import threading
+        from collections import OrderedDict, deque
+        self.model = model
+        self.ahead, self.live_patience_s = int(ahead), float(live_patience_s)
+        self.give_up_after, self.min_on_time, self.keep = int(give_up_after), float(min_on_time), int(keep)
+        self._cv = threading.Condition()
+        self._queue: deque = deque()            # (frame id, image, live)
+        self._busy: int | None = None           # frame id being computed
+        self._ready: OrderedDict = OrderedDict()   # frame id -> prediction, or the exception the model raised
+        self._closed = False
+        self._st = {"requested": 0, "computed": 0, "on_time": 0, "late": 0, "dropped": 0, "errors": 0}
+        self._recent: deque = deque(maxlen=self.give_up_after)   # live answers: True = in time
+        self.stepped_back = False
+        self._thread = threading.Thread(target=self._work, name="mono-depth", daemon=True)
+        self._thread.start()
+
+    # the engine's report reads these on whatever it is given as a model
+    @property
+    def seconds(self) -> float:
+        return float(getattr(self.model, "seconds", 0.0))
+
+    @property
+    def calls(self) -> int:
+        return int(getattr(self.model, "calls", 0))
+
+    def _known(self, frame_id) -> bool:
+        return frame_id in self._ready or frame_id == self._busy or any(q[0] == frame_id for q in self._queue)
+
+    def request(self, frame_id: int, image_bgr: np.ndarray, live: bool = False) -> None:
+        """Start computing the prediction of this picture in the background (no effect if already asked)."""
+        with self._cv:
+            if self._closed or self._known(frame_id) or (live and self.stepped_back):
+                return
+            if live:
+                waiting = [q for q in self._queue if q[2]]
+                while len(waiting) >= self.ahead:       # the model is behind: the oldest picture is given up
+                    self._queue.remove(waiting.pop(0))
+                    self._st["dropped"] += 1
+            self._queue.append((frame_id, image_bgr, live))
+            self._st["requested"] += 1
+            self._cv.notify_all()
+
+    def predict(self, image_bgr: np.ndarray, frame_id: int | None = None, live: bool = False):
+        """The prediction for this picture. live=False: always an answer (computed now if it was never asked).
+        live=True: the answer if it is ready within `live_patience_s`, else None."""
+        if frame_id is None:
+            return self.model.predict(image_bgr, None)
+        deadline = time.monotonic() + self.live_patience_s
+        with self._cv:
+            if not live and not self._known(frame_id) and not self._closed:
+                self._queue.appendleft((frame_id, image_bgr, False))      # never asked: next in line
+                self._st["requested"] += 1
+                self._cv.notify_all()
+            while frame_id not in self._ready:
+                if self._closed:
+                    return None if live else self.model.predict(image_bgr, frame_id)
+                if live:
+                    left = deadline - time.monotonic()
+                    if left <= 0 or not self._known(frame_id):
+                        self._answered(False)
+                        return None
+                    self._cv.wait(left)
+                else:
+                    if not self._known(frame_id):             # dropped while scanning, wanted now
+                        self._queue.appendleft((frame_id, image_bgr, False))
+                        self._cv.notify_all()
+                    self._cv.wait(0.5)
+            out = self._ready.pop(frame_id)
+            if live:
+                self._answered(True)
+        if isinstance(out, BaseException):
+            raise out
+        return out
+
+    def _answered(self, in_time: bool) -> None:
+        self._st["on_time" if in_time else "late"] += 1
+        self._recent.append(in_time)
+        if len(self._recent) >= self.give_up_after and sum(self._recent) < self.min_on_time * len(self._recent):
+            self.stepped_back = True
+            for q in [q for q in self._queue if q[2]]:
+                self._queue.remove(q)
+                self._st["dropped"] += 1
+
+    def _work(self) -> None:
+        while True:
+            with self._cv:
+                while not self._queue and not self._closed:
+                    self._cv.wait()
+                if self._closed:
+                    return
+                frame_id, image, _ = self._queue.popleft()
+                self._busy = frame_id
+            try:
+                out = self.model.predict(image, frame_id)
+            except BaseException as exc:      # handed to whoever collects it; the thread goes on
+                out = exc
+            with self._cv:
+                self._busy = None
+                self._st["computed"] += 1
+                if isinstance(out, BaseException):
+                    self._st["errors"] += 1
+                self._ready[frame_id] = out
+                while len(self._ready) > self.keep:      # nobody came for the oldest ones
+                    self._ready.popitem(last=False)
+                self._cv.notify_all()
+
+    def stats(self) -> dict:
+        with self._cv:
+            return {**self._st, "pending": len(self._queue), "ready": len(self._ready), "stepped_back": self.stepped_back,
+                    "mean_seconds": round(self.seconds / self.calls, 3) if self.calls else None}
+
+    def close(self) -> None:
+        with self._cv:
+            self._closed = True
+            self._queue.clear()
+            self._cv.notify_all()
+        self._thread.join(timeout=5)
+
+
 def load_default(session_dir: Path | None = None):
     """The model if it is installed on this machine, else None (with the reason)."""
     path = model_path(session_dir)
     if not path.exists():
         return None, f"model_not_found:{path}"
     try:
-        return MonoDepth(path), "ok"
+        # Half of the processor for the model, the rest for stereo: the two run at the same time (AsyncMono).
+        return MonoDepth(path, threads=max(1, (os.cpu_count() or 2) // 2)), "ok"
     except ImportError:
         return None, "onnxruntime_not_installed"
     except Exception as exc:   # a damaged file or an incompatible runtime must never stop a scan

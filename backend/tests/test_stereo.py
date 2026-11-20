@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import pytest
 
-from reconstruction.coordinates import invert_rigid, object_from_camera_cv
+from reconstruction.coordinates import backproject, invert_rigid, object_from_camera_cv, transform_points
 from reconstruction.pair_selector import pair_geometry, select_partners
 from reconstruction.stereo_depth import StereoParams, View, combine_depths, compute_pair_depth
 from tests.synthetic import SyntheticScene, orbit_poses
@@ -146,3 +146,29 @@ def test_a_view_that_does_not_see_the_box_gets_no_partner():
     away = look_at_ar([0.0, 0.26, 0.10], [3.0, 0.0, 0.0]) @ C_AR_FROM_CV      # looking far off to the side
     near = look_at_ar([0.03, 0.26, 0.10], [3.0, 0.0, 0.0]) @ C_AR_FROM_CV
     assert select_partners(0, {0: (away, K, (1152, 864)), 1: (near, K, (1152, 864))}, (0.2, 0.05, 0.2)) == []
+
+
+def test_a_box_set_too_low_does_not_cut_the_top_of_the_dish(scene):
+    """The rim of the plate (22 mm) and the food (34 mm) rise above a box only 12 mm high. They used to be
+    discarded as "outside the box"; they are the dish, and are measured like the rest."""
+    low = (0.28, 0.012, 0.28)
+    P = orbit_poses(120)
+    (va, gt), (vb, _) = make_view(scene, P[0], 0), make_view(scene, P[1], 1)
+    res = compute_pair_depth(va, vb, low)
+    assert res.depth is not None, res.report
+    vs, us = np.nonzero(gt > 0)
+    pts = transform_points(va.T_obj_from_cam, backproject(va.K, np.stack([us, vs], 1), gt[vs, us]))
+    high = np.zeros(gt.shape, bool)
+    high[vs, us] = (pts[:, 1] > 0.025) & (np.hypot(pts[:, 0], pts[:, 2]) < 0.12)    # top of the food
+    assert high.sum() > 300
+    got = (res.depth > 0) & high
+    assert got.sum() > 0.6 * high.sum(), f"{got.sum()} of {high.sum()} pixels above the box were measured"
+    # ... as well as with a box of the right height (the cap of a small sphere is the hardest part of the scene)
+    right = compute_pair_depth(va, vb, SIZE).depth
+    ok = (right > 0) & high
+    assert got.sum() > 0.9 * ok.sum()
+    assert np.median(np.abs(res.depth[got] - gt[got])) < np.median(np.abs(right[ok] - gt[ok])) + 0.0015
+    # the sides are not widened: the table far around the box is still left out
+    far = np.zeros(gt.shape, bool)
+    far[vs, us] = (np.abs(pts[:, 0]) > 0.17) | (np.abs(pts[:, 2]) > 0.17)
+    assert far.sum() > 1000 and (res.depth[far] > 0).mean() < 0.01

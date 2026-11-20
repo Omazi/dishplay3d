@@ -434,7 +434,7 @@ final class ScanController: ObservableObject {
 
     private func downloadResults(_ files: [String]) async {
         guard let sid = serverSessionID, let store else { return }
-        for name in files where ["final_preview.dpg", "model.glb", "plat_seul.glb", "apercu.png", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
+        for name in files where ["final_preview.dpg", "model.glb", "model.usdz", "plat_seul.glb", "apercu.png", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
             if name == "final_preview.dpg" && lastGeometry?.kind == "final" { continue }   // already received as an event
             guard let d = try? await transport.download("sessions/\(sid)/artifacts/\(name)"), let u = try? store.saveArtifact(name: name, data: d) else { continue }
             if !resultFiles.contains(u) { resultFiles.append(u) }

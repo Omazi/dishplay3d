@@ -18,7 +18,7 @@ from .delivery import decimate_for_web, trim_ragged_border, weld_corners
 from .completion import NoCompletion
 from .coordinates import invert_rigid, scale_intrinsics
 from .engine import ENGINE_VERSION, PROVISIONAL, EngineConfig, SessionEngine
-from .exports import write_glb, write_mesh_ply, write_points_ply
+from .exports import write_glb, write_mesh_ply, write_points_ply, write_usdz
 from .fusion import FusionConfig
 from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, drop_small_pieces, edge_manifold_triangles,
                            supported_mesh, surface_area)
@@ -137,7 +137,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     t0 = time.perf_counter()
     timings = {}
     cfg = replace(engine.cfg, preview_width=finish_width, max_partners=3, confirm_min_views=2, confirm_lag=4,
-                  confirm_window=16, confirm_neighbours=6, view_cache=96,
+                  confirm_window=16, confirm_neighbours=6, view_cache=96, anchor_live=False,   # poses: refined all together below
                   fusion=FusionConfig(voxel_m=0.002, point_voxel_m=0.002, trunc_voxels=3.0))
     cfg.stereo = replace(cfg.stereo, max_disparities=384, coarse_fill=True)
     progress = {"done": 0}
@@ -277,6 +277,12 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                             "filled_from_vertex_colours": filled, "source_width": int(views[0].image.shape[1]) if views else None,
                             "triangles": int(len(Tg)), "vertices": int(len(Vg)),
                             "file_mb": round((out_dir / "model.glb").stat().st_size / 1e6, 2)}
+                # The same mesh and texture for iPhone and iPad: opened by iOS itself, in 3D or placed on the table.
+                try:
+                    uz = write_usdz(out_dir / "model.usdz", Vg, Tg, Ng, UVg, tex, texture_jpeg_quality=88)
+                    tex_info["usdz"] = {"status": "ok", "file_mb": round(uz["bytes"] / 1e6, 2)}
+                except Exception as exc:      # the GLB is delivered whatever happens here
+                    tex_info["usdz"] = {"status": "failed", "error": repr(exc)}
             except Exception as exc:  # documented fallback: vertex colours
                 tex_info = {"status": "failed_fallback_vertex_colors", "error": repr(exc)}
         if tex_info["status"] != "ok":
@@ -330,8 +336,8 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
         "live": engine.metrics(), "snapshots": engine.snapshot_log, "timings_s": {**timings, "total": time.perf_counter() - t0},
         "notes": [
             "Global pose refinement (bundle adjustment on SIFT tracks) runs when finishing; it is applied only if it lowers the reprojection error and stays close to ARKit (see pose_refinement).",
-            "Underside in contact with the table is never observed and is not completed.",
-            "Holes are left open: no hole filling, no watertight closing.",
+            "Small gaps are closed with a smooth surface and the dish gets a flat base on the table. Everything added is labelled estimated (class 2); the model as measured is kept in model_mesure.glb (see closure).",
+            "model.usdz holds the same mesh and texture as model.glb, for AR Quick Look on iPhone and iPad; it is written only when the texture succeeded.",
         ],
     }
     (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=float))

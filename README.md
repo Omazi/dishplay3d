@@ -27,6 +27,8 @@ Calculateur Windows/Linux : FastAPI ── processus de reconstruction
 Démarrage rapide : `./start-calculator.sh` (Linux) ou `start-calculator.ps1` (Windows), puis `docs/FIRST_TEST.md`.
 Au démarrage, le script installe les bibliothèques manquantes et télécharge une fois le modèle de profondeur
 optionnel (99 Mo, Apache-2.0) qui sert à combler les surfaces unies ou brillantes ; `DISHPLAY_MONO=0` pour s'en passer.
+Ce modèle tourne en parallèle du reste, pendant le scan et à la finition ; pendant le scan il ne fait jamais attendre
+une vue et se met en retrait seul si le PC ne suit pas (`DISHPLAY_MONO_LIVE=0` pour le réserver à la finition).
 Tests : `cd backend && .venv/bin/python -m pytest -q` ; Swift : `cd ios/ScanCore && swift test` (macOS / CI).
 
 Conventions : mètres ; `T_A_from_B` ; matrices sérialisées ligne par ligne ; repère objet = boîte (origine au

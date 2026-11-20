@@ -179,3 +179,17 @@ def test_the_table_is_not_removed_when_the_support_is_not_a_flat_table():
     cloth, dish2 = _object_on(lambda x, z: 0.25 * blanket(x, z))
     fp2 = DishFootprint.from_vertices(cloth)
     assert fp2 is not None and fp2.keep(cloth)[dish2].mean() > 0.97
+
+
+def test_a_hole_above_a_box_set_too_low_is_closed_too():
+    """The box was set lower than the dish (3.5 cm for a 6 cm dome). What rises above it is kept by the engine,
+    so a hole up there must be mended like any other."""
+    centre = on_sphere([0.3, 1.0, 0.2])                       # near the top, about 5.6 cm high
+    assert centre[1] > 0.05
+    V, C, N, cls, T = dome(hole_at=centre, hole_radius=0.008)
+    rng = np.random.default_rng(1)
+    P = centre + rng.normal(scale=0.002, size=(300, 3))
+    P = R * P / np.linalg.norm(P, axis=1, keepdims=True)
+    assert np.median(dist_to_mesh(V, T, P)) > 0.002
+    V2, C2, N2, cls2, T2, info = close_surface(V, C, N, cls, T, box_size_m=(0.2, 0.035, 0.2), max_gap_m=0.02)
+    assert np.percentile(dist_to_mesh(V2, T2, P), 95) < 0.002

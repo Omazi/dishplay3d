@@ -50,7 +50,7 @@ public struct GeometryHeader: Codable, Equatable, Sendable {
     public struct Quality: Codable, Equatable, Sendable {
         public var level: String?            // good, fair, poor, too_early
         public var score: Int?
-        public var issues: [String]?         // sides_missing, holes, fragmented, uniform_or_shiny, few_views
+        public var issues: [String]?         // sides_missing, holes, fragmented, uniform_or_shiny, few_views, box_too_low
         public var top_coverage: Double?
         public var measured_share: Double?
     }

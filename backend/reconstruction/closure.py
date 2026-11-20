@@ -19,6 +19,7 @@ import numpy as np
 import open3d as o3d
 from scipy.spatial import cKDTree
 
+from .coordinates import headroom
 from .mesh_preview import ESTIMATED, edge_manifold_triangles
 
 
@@ -60,7 +61,7 @@ def close_surface(V, C, N, cls, T, box_size_m, floor_y: float | None = None, flo
     # Never farther than max_gap_m from real data (a hole is bridged, an unseen side is not invented), and inside the box.
     d_data, _ = cKDTree(P).query(PV)
     w, h, dd = box_size_m
-    ok_v = (d_data <= max_gap_m) & (np.abs(PV[:, 0]) <= w / 2 + 0.005) & (np.abs(PV[:, 2]) <= dd / 2 + 0.005) & (PV[:, 1] <= h + 0.005)
+    ok_v = (d_data <= max_gap_m) & (np.abs(PV[:, 0]) <= w / 2 + 0.005) & (np.abs(PV[:, 2]) <= dd / 2 + 0.005) & (PV[:, 1] <= h + 0.005 + headroom(box_size_m))
     if floor:
         ok_v &= PV[:, 1] >= float(floor_y) + floor_slope[0] * PV[:, 0] + floor_slope[1] * PV[:, 2] - cell_m
     # Keep only what lies off the existing mesh: the patches.

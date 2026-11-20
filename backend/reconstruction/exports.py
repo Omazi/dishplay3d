@@ -1,8 +1,9 @@
-"""Exports: PLY point cloud, PLY mesh, GLB (vertex colours or embedded texture)."""
+"""Exports: PLY point cloud, PLY mesh, GLB (vertex colours or embedded texture), USDZ (textured, for AR Quick Look)."""
 from __future__ import annotations
 
 import json
 import struct
+import zlib
 from pathlib import Path
 
 import cv2
@@ -151,3 +152,135 @@ def glb_accessor(js: dict, binb: bytes, idx: int) -> np.ndarray:
     dt = {5126: "<f4", 5125: "<u4", 5121: "u1"}[a["componentType"]]
     width = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[a["type"]]
     return np.frombuffer(binb, dt, a["count"] * width, v["byteOffset"]).reshape(a["count"], width)
+
+
+# ----------------------------------------------------------------------------------------------- USDZ
+def _zip_stored_aligned(files: list[tuple[str, bytes]], align: int = 64) -> bytes:
+    """Zip archive as the USDZ format wants it: nothing compressed, and the bytes of every file starting on a
+    multiple of 64 from the start of the archive (the padding goes in the "extra" field of its header)."""
+    out = bytearray()
+    central = bytearray()
+    date, clock = (1 << 5) | 1, 0                     # 1980-01-01 00:00: the same bytes for the same model
+    for name, data in files:
+        nb = name.encode("utf-8")
+        offset = len(out)
+        pad = (-(offset + 30 + len(nb))) % align
+        if 0 < pad < 4:                               # an extra field cannot be shorter than its own 4-byte header
+            pad += align
+        extra = struct.pack("<HH", 0x1986, pad - 4) + b"\0" * (pad - 4) if pad else b""
+        crc = zlib.crc32(data) & 0xFFFFFFFF
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, 10, 0, 0, clock, date, crc, len(data), len(data), len(nb), len(extra))
+        out += nb + extra + data
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 10, 10, 0, 0, clock, date, crc, len(data), len(data),
+                               len(nb), 0, 0, 0, 0, 0, offset) + nb
+    start = len(out)
+    out += central
+    out += struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, len(files), len(files), len(central), start, 0)
+    return bytes(out)
+
+
+def _usd_tuples(a: np.ndarray, fmt: str) -> str:
+    cell = "(" + ", ".join([fmt] * a.shape[1]) + ")"
+    return ", ".join(cell % tuple(row) for row in a.tolist())
+
+
+def write_usdz(path: Path, V: np.ndarray, T: np.ndarray, normals: np.ndarray, uv: np.ndarray, texture_bgr: np.ndarray,
+               texture_jpeg_quality: int = 88, name: str = "Dish") -> dict:
+    """Textured model as a .usdz (y up, metres, real size): what an iPhone or iPad opens in AR Quick Look and
+    places on the table, with no app to install. Same mesh and texture as the GLB.
+
+    uv follows the glTF convention used everywhere else in the engine (v counted from the top of the picture);
+    USD counts it from the bottom, so it is turned over here. The scene is one text layer (USDA) with the mesh
+    and a UsdPreviewSurface material reading the JPEG texture. Returns {"bytes", "files"}.
+    """
+    V = np.asarray(V, np.float64)
+    T = np.asarray(T, np.int64).reshape(-1, 3)
+    n = np.asarray(normals, np.float64)
+    n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+    st = np.stack([np.asarray(uv, np.float64)[:, 0], 1.0 - np.asarray(uv, np.float64)[:, 1]], 1)
+    ok, jpg = cv2.imencode(".jpg", texture_bgr, [cv2.IMWRITE_JPEG_QUALITY, int(texture_jpeg_quality)])
+    assert ok
+    mat = f"/{name}/Materials/Surface"
+    usda = f"""#usda 1.0
+(
+    customLayerData = {{
+        string creator = "DishPlay Scan"
+    }}
+    defaultPrim = "{name}"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "{name}" (
+    kind = "component"
+)
+{{
+    def Mesh "Geometry" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {{
+        uniform bool doubleSided = 1
+        float3[] extent = [{_usd_tuples(np.stack([V.min(0), V.max(0)]), "%.5f")}]
+        int[] faceVertexCounts = [{", ".join(["3"] * len(T))}]
+        int[] faceVertexIndices = [{", ".join(map(str, T.reshape(-1).tolist()))}]
+        rel material:binding = <{mat}>
+        normal3f[] normals = [{_usd_tuples(n, "%.3f")}] (
+            interpolation = "vertex"
+        )
+        point3f[] points = [{_usd_tuples(V, "%.5f")}]
+        texCoord2f[] primvars:st = [{_usd_tuples(st, "%.5f")}] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+    }}
+
+    def Scope "Materials"
+    {{
+        def Material "Surface"
+        {{
+            token outputs:surface.connect = <{mat}/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {{
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = <{mat}/Texture.outputs:rgb>
+                float inputs:metallic = 0
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }}
+
+            def Shader "TexCoord"
+            {{
+                uniform token info:id = "UsdPrimvarReader_float2"
+                string inputs:varname = "st"
+                float2 outputs:result
+            }}
+
+            def Shader "Texture"
+            {{
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/dish.jpg@
+                token inputs:sourceColorSpace = "sRGB"
+                float2 inputs:st.connect = <{mat}/TexCoord.outputs:result>
+                token inputs:wrapS = "clamp"
+                token inputs:wrapT = "clamp"
+                float3 outputs:rgb
+            }}
+        }}
+    }}
+}}
+"""
+    files = [("model.usda", usda.encode("utf-8")), ("textures/dish.jpg", jpg.tobytes())]
+    data = _zip_stored_aligned(files)
+    Path(path).write_bytes(data)
+    return {"bytes": len(data), "files": [f[0] for f in files]}
+
+
+def read_usdz(path: Path) -> tuple[str, dict]:
+    """(text of the scene layer, {name: bytes} of every file) of a .usdz, for tests and inspection."""
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(Path(path).read_bytes())) as z:
+        names = z.namelist()
+        files = {nm: z.read(nm) for nm in names}
+    return files[names[0]].decode("utf-8"), files

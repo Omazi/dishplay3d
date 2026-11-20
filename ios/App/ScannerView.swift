@@ -296,7 +296,10 @@ struct ScannerView: View {
         let q = controller.lastGeometry?.quality
         let issues = q?.issues ?? []
         let advice: String
-        if issues.contains("sides_missing") {
+        if issues.contains("box_too_low") {
+            // The calculator keeps what rises a little above the box; beyond that the top of the dish is cut.
+            advice = "le haut du plat dépasse la boîte : mettez en pause, puis Boîte, et montez-la"
+        } else if issues.contains("sides_missing") {
             advice = "il manque des côtés, continuez le tour"
         } else if issues.contains("holes") || issues.contains("fragmented") {
             advice = "des zones sont vides, repassez dessus lentement"

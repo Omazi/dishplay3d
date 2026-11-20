@@ -1,3 +1,4 @@
+import QuickLook
 import ScanCore
 import SwiftUI
 
@@ -12,6 +13,8 @@ struct DishDetailView: View {
     @State private var confirmDelete = false
     @State private var exportURL: URL?
     @State private var exportError: String?
+    /// The textured model being shown by iOS itself (3D view and augmented reality), nil when closed.
+    @State private var arPreview: URL?
     @StateObject private var renderer = PreviewRenderer()
     @State private var modelShown = false
     @State private var mode: PreviewMode = .surface
@@ -60,6 +63,7 @@ struct DishDetailView: View {
             _ = await model.refreshDishProgress()
         }
         .sheet(item: $exportURL) { url in ShareSheet(items: [url]) }
+        .quickLookPreview($arPreview)
         .confirmationDialog("Supprimer ce plat de l’iPhone ?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) {
                 DishLibrary.delete(dish)
@@ -151,11 +155,22 @@ struct DishDetailView: View {
 
     private var actions: some View {
         VStack(spacing: 12) {
+            if let arModel = dish.arModel {
+                // iOS shows the textured model itself: turned by hand, or placed on the table at real size.
+                Button { arPreview = arModel } label: {
+                    Label("Voir sur votre table", systemImage: "arkit")
+                        .font(.headline).frame(maxWidth: .infinity).frame(height: 56)
+                        .background(Theme.accent, in: Capsule()).foregroundStyle(.black)
+                }
+                .accessibilityHint("Ouvre le modèle avec ses vraies couleurs, en 3D ou en réalité augmentée.")
+            }
             if let model = dish.model {
                 ShareLink(item: model) {
                     Label("Partager le modèle 3D", systemImage: "square.and.arrow.up")
-                        .font(.headline).frame(maxWidth: .infinity).frame(height: 56)
-                        .background(Theme.accent, in: Capsule()).foregroundStyle(.black)
+                        .font(dish.arModel == nil ? .headline : .subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity).frame(height: dish.arModel == nil ? 56 : 50)
+                        .background(dish.arModel == nil ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.white.opacity(0.10)), in: Capsule())
+                        .foregroundStyle(dish.arModel == nil ? .black : .white)
                 }
             }
             Button(action: exportAll) {

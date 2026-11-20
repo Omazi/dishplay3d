@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 
-from .coordinates import inside_box, invert_rigid, transform_points
+from .coordinates import headroom, inside_box, invert_rigid, transform_points
 
 SOURCE_STEREO = 0
 SOURCE_LIDAR = 1
@@ -67,7 +67,8 @@ class LiveFusion:
         z = depth[vs, us].astype(np.float64)
         pc = np.stack([(us - K[0, 2]) / K[0, 0] * z, (vs - K[1, 2]) / K[1, 1] * z, z], 1)
         po = transform_points(T_obj_from_cam, pc)
-        keep = inside_box(po, self.size_m, margin=self.cfg.box_margin_m, below=self.cfg.box_margin_m)
+        m = self.cfg.box_margin_m
+        keep = inside_box(po, self.size_m, margin=m, below=m, above=m + headroom(self.size_m))
         depth[vs[~keep], us[~keep]] = 0
         vs, us, po = vs[keep], us[keep], po[keep]
         if len(po) == 0:

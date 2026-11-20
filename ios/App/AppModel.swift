@@ -161,7 +161,7 @@ final class AppModel: ObservableObject {
     private func download(dish: DishRecord, sessionID sid: String, transport t: ScanTransport) async -> Bool {
         guard let files = try? await t.artifacts(sessionID: sid), let store = try? SessionStore(resuming: dish.id) else { return false }
         var got = false
-        for name in ["final_preview.dpg", "apercu.png", "model.glb", "report.json"] where files.contains(name) {
+        for name in ["final_preview.dpg", "apercu.png", "model.glb", "model.usdz", "report.json"] where files.contains(name) {
             if let d = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: d)) != nil { got = true }
         }
         return got

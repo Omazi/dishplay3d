@@ -26,8 +26,11 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
     if "preview_width" in settings:
         cfg.preview_width = int(settings["preview_width"])
     engine = SessionEngine(sdir, Box.from_json(box_json), cfg, emit=emit)
-    # Learned depth for uniform or shiny surfaces (reconstruction/mono_depth.py). Used when finishing;
-    # during capture only on request, because it adds processor time to every view.
+    # Learned depth for uniform or shiny surfaces (reconstruction/mono_depth.py). It runs on a thread of its
+    # own, at the same time as stereo, during the scan and when finishing. During the scan it never makes a
+    # view wait: a prediction that is not ready is not used, and a computer that cannot keep up makes the model
+    # step back by itself until the finishing step (AsyncMono). DISHPLAY_MONO=0 turns the model off,
+    # DISHPLAY_MONO_LIVE=0 keeps it for the finishing step only.
     mono_state = {"model": None, "reason": "not_loaded"}
 
     def mono_model():
@@ -35,11 +38,12 @@ def worker_main(cmd_q, evt_q, session_dir: str, box_json: dict, settings: dict, 
             mono_state["reason"] = "disabled"
             return None
         if mono_state["model"] is None and mono_state["reason"] == "not_loaded":
-            from reconstruction.mono_depth import load_default
-            mono_state["model"], mono_state["reason"] = load_default(sdir)
+            from reconstruction.mono_depth import AsyncMono, load_default
+            model, mono_state["reason"] = load_default(sdir)
+            mono_state["model"] = AsyncMono(model) if model is not None else None
         return mono_state["model"]
 
-    if settings.get("mono_live", False):
+    if settings.get("mono_live", True) and os.environ.get("DISHPLAY_MONO_LIVE", "1") != "0":
         engine.mono = mono_model()
     for meta_path, received_at in existing_frames:  # resume after a server restart
         _add(engine, Path(meta_path), received_at)

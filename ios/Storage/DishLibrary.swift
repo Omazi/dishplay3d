@@ -13,6 +13,9 @@ struct DishRecord: Identifiable, Hashable {
     let frames: Int
     let picture: URL?
     let model: URL?
+    /// The textured model in the format iPhone opens in augmented reality (USDZ); nil for dishes finished
+    /// by a calculator that did not make it yet.
+    let arModel: URL?
     /// The final model in the app's own format, shown turning in the dish screen.
     let geometry: URL?
     /// One of the captured views, so that a dish always has a face, even before its model exists.
@@ -35,6 +38,7 @@ enum DishLibrary {
             let results = root.appendingPathComponent("results", isDirectory: true)
             let picture = results.appendingPathComponent("apercu.png")
             let model = results.appendingPathComponent("model.glb")
+            let arModel = results.appendingPathComponent("model.usdz")
             let geometry = results.appendingPathComponent("final_preview.dpg")
             let hasGeometry = fm.fileExists(atPath: geometry.path)
             let hasPicture = fm.fileExists(atPath: picture.path)
@@ -63,6 +67,7 @@ enum DishLibrary {
             let name = (stored?.isEmpty == false) ? stored! : defaultName(date)
             out.append(DishRecord(id: id, root: root, name: name, date: date, state: state, frames: frames,
                                   picture: hasPicture ? picture : nil, model: hasModel ? model : nil,
+                                  arModel: fm.fileExists(atPath: arModel.path) ? arModel : nil,
                                   geometry: hasGeometry ? geometry : nil, photo: photo, pendingViews: max(0, frames - sent),
                                   serverSessionID: (sid?.isEmpty == false) ? sid : nil))
         }
