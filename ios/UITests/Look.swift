@@ -2,6 +2,9 @@
 struct Look {
     /// Used in the names of the pictures.
     let name: String
+    /// The appearance the simulator must be in during the walk. Whoever starts the walk sets it: the workflow
+    /// with `xcrun simctl ui <device> appearance dark`, a person with Features > Toggle Appearance. The walk
+    /// only checks it, on its first picture.
     let isDark: Bool
     /// A `UIContentSizeCategory` name, nil for the standard size.
     let textSize: String?

@@ -5,8 +5,8 @@ as `matrix=<json>` for GitHub Actions.
     devices: all         three iPhones instead of the reference one
 
 The reference is a current iPhone with the newest iOS: every walk, plus Apple's readers on the sample USDZ.
-With `devices: all`, two more machines take the light walk: a 6.1-inch iPhone with iOS 18 (how the app looks
-without the glass of iOS 26) and the smallest screen the app runs on.
+With `devices: all`, two more machines: a 6.1-inch iPhone with iOS 18 (how the app looks without the glass of
+iOS 26; light and dark walks) and the smallest screen the app runs on (light walk).
 """
 import json
 import re
@@ -29,7 +29,7 @@ def main() -> None:
     if devices == "all":
         matrix += [
             {"label": "iPhone 16e, iOS 18", "slug": "ios18", "device": "iPhone 16e", "ios": "18",
-             "walks": only or WALKS["light"], "usdz": False},
+             "walks": only or f"{WALKS['light']} {WALKS['dark']}", "usdz": False},
             {"label": "iPhone SE, newest iOS", "slug": "small", "device": "iPhone SE (3rd generation)", "ios": "",
              "walks": only or WALKS["light"], "usdz": False},
         ]

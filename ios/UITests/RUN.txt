@@ -8,4 +8,4 @@ Two optional lines, each alone on its line:
 
 devices: all
 
-run 3
+run 4

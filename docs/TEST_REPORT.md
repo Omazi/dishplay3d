@@ -686,6 +686,63 @@ du modèle de profondeur, toujours jamais exécuté ici.
 119 tests passés, 2 sautés (le vrai réseau de profondeur et la bibliothèque de Pixar, absents ici), suite complète
 exécutée seule sur le code livré (15 min 32 s). App iOS : toujours **non compilée** (dépôt privé).
 
+## Mise à jour du 21 novembre — l'app compilée, photographiée écran par écran, fichier AR lu par Apple (app 1.7.0)
+
+**Compilation.** Dépôt rendu public, les machines de GitHub ont repris. L'app redessinée a compilé du premier
+coup : Xcode 26.3, SDK iOS 26.2, Swift 6.2.4, aucune erreur et aucun avertissement Swift ; 11 tests ScanCore
+passés ; 119 tests du calculateur passés, 2 sautés (14 min 14 s sur GitHub).
+
+**Contrôle des écrans (nouveau, `docs/SCREEN_CHECK.md`).** Jusqu'ici rien de l'app n'avait jamais été vu :
+toute l'interface était écrite à l'aveugle. Des tests ouvrent maintenant chaque écran dans le simulateur iPhone
+de GitHub, en gardent une image et y passent l'audit d'accessibilité d'Apple. Vingt écrans par parcours :
+première ouverture, accueil, Mes plats, fiche d'un plat, réglages, et l'écran de scan à cinq moments d'un scan.
+Le simulateur n'a ni caméra ni calculateur : l'app y est lancée avec des options réservées aux versions de
+développement (absentes de la version publiée) et trois plats d'exemple, fabriqués par le vrai moteur à partir de
+l'assiette de synthèse du projet (`tools/make_screen_fixture.py`).
+
+Parcours exécutés et regardés image par image :
+
+| iPhone simulé | iOS | Parcours |
+|---|---|---|
+| iPhone 17 Pro | 26.2 | clair, sombre, très grand texte (235 %) |
+| iPhone 16e (6,1 pouces, la taille d'un iPhone 13) | 18.6 | clair — l'app sans le verre d'iOS 26 |
+| iPhone SE (3e génération), le plus petit écran | 26.2 | clair |
+
+**Défauts trouvés sur les images et corrigés** (tous revus sur une nouvelle série d'images) :
+- fiche d'un plat : les deux lignes « Scanné le / Vues prises » étaient collées l'une à l'autre ; la photo d'un
+  plat sans modèle laissait deux bandes noires sur ses côtés ; la visionneuse d'iOS s'ouvrait sous le titre
+  « model » au lieu du nom du plat ;
+- scan : en pause, la carte disait « Allez vers votre gauche » au lieu de « Votre scan est conservé » ; le modèle
+  final s'affichait entouré des points de mesure restés sur la table, comme de la poussière (il s'affiche
+  maintenant seul) ; le texte de la finition touchait les bords de sa pastille ; les nombres s'écrivent à la
+  française (« 19 846 points ») ;
+- calculateur éteint : l'accueil et les réglages affichaient « relié » en vert alors qu'il ne répondait pas ; ils
+  disent maintenant « injoignable » ;
+- très grand texte : boutons coupés au milieu d'un mot (« En-voyer et ter-miner »), dernière ligne de la première
+  page perdue, valeur d'une ligne étalée sur quatre lignes, pastilles numérotées trop petites pour leur chiffre ;
+  l'écran de scan, lui, arrête de grossir à 160 % pour ne pas cacher le plat qu'il sert à scanner ;
+- zones tactiles trop petites signalées par l'audit d'Apple (« Passer », « Tout voir », boutons ronds du scan) ;
+- l'app allait chercher les fichiers d'un plat une seule fois : un téléchargement coupé, ou un plat reçu par une
+  version précédente, restait sans modèle pour la réalité augmentée. Elle les redemande maintenant.
+
+**Audit d'accessibilité d'Apple.** Après corrections, il ne signale plus de zone tactile trop petite sur un
+bouton. Restent des constats de contraste sur des textes passés sous la barre d'onglets au moment de la capture,
+et de nombreux « texte coupé » ou « taille de texte partiellement prise en charge » que les images ne confirment
+pas (les textes grossissent bien à 235 %), sauf sur l'écran de scan où la limite est voulue.
+
+**Fichier pour la réalité augmentée (`model.usdz`).** Il n'avait été relu que par notre propre code et par
+three.js. Il est maintenant ouvert par les lecteurs d'Apple sur un Mac de GitHub (`ios/ci/usdz-check.swift`) :
+- `usdchecker --arkit`, le vérificateur d'Apple : « Success » ;
+- Model I/O : 1 maillage, 4 897 sommets, coordonnées de texture présentes ;
+- RealityKit, le moteur de la réalité augmentée d'iOS : 1 pièce, 1 matériau avec son image ; taille 24,3 × 3,5 ×
+  24,3 cm pour une assiette de synthèse de 24 cm — l'échelle réelle est donc bonne ;
+- SceneKit en fait une image, texture à l'endroit.
+
+**Limites.** Le simulateur n'affiche pas la visionneuse 3D d'iOS (elle montre seulement le nom du fichier, sous
+iOS 18 comme sous iOS 26) : « Voir sur votre table » n'a donc toujours jamais été ouvert sur un iPhone. La
+caméra, le suivi AR, la pose de la boîte, le verre des boutons par-dessus une image de caméra claire et
+VoiceOver ne se vérifient que sur appareil.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

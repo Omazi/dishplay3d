@@ -18,7 +18,8 @@ struct LibraryView: View {
                     ContentUnavailableView {
                         Label("Aucun plat pour l’instant", systemImage: "fork.knife")
                     } description: {
-                        Text("Les plats scannés apparaîtront ici, avec leur modèle 3D.")
+                        // The app's secondary ink: the system's grey is a little too light on the paper background.
+                        Text("Les plats scannés apparaîtront ici, avec leur modèle 3D.").foregroundStyle(Theme.textSecondary)
                     } actions: {
                         // The next thing to do: scan, or first link the calculator that computes the models.
                         if model.paired && model.trackingSupported {

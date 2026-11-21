@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Keeps what one walk through the app produces: a picture of each screen and the findings of Apple's
@@ -29,6 +30,35 @@ struct Recorder {
             }
         }
         if audit, look.audited { self.audit(name, app) }
+    }
+
+    /// The pictures of a walk are worth their name only if the simulator really is in that appearance. Read back
+    /// on a screen whose background is the app's canvas: paper in light, near black in dark.
+    func checkAppearance() {
+        guard let brightness = Self.brightness(of: XCUIScreen.main.screenshot().image, atX: 0.015, y: 0.2) else {
+            XCTFail("The appearance of the simulator could not be read from the screen")
+            return
+        }
+        let isDark = brightness < 0.5
+        XCTAssertEqual(isDark, look.isDark,
+                       "The simulator shows the \(isDark ? "dark" : "light") appearance during the walk named \(look.name)")
+    }
+
+    /// Mean brightness (0 to 1) of a few pixels of the picture, at a position given as fractions of its size.
+    private static func brightness(of image: UIImage, atX x: Double, y: Double) -> Double? {
+        guard let whole = image.cgImage,
+              let patch = whole.cropping(to: CGRect(x: Double(whole.width) * x, y: Double(whole.height) * y, width: 4, height: 4))
+        else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let drawn = pixel.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(patch, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        guard drawn else { return nil }
+        return (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / (3 * 255)
     }
 
     /// Findings are written down, not counted as test failures: they are read together with the pictures.

@@ -88,17 +88,23 @@ jobs:
           xcrun simctl launch "$SIM_UDID" app.dishplay.capture -uitest-sessions "$(mktemp -d)" || true
           sleep 25
           xcrun simctl terminate "$SIM_UDID" app.dishplay.capture || true
-          SELECT=()
-          for walk in $WALKS; do SELECT+=("-only-testing:ScreenCheck/ScreenCheckTests/$walk"); done
-          echo "Walks: ${WALKS:-all}"
           status=0
-          # A walk that fails is tried once more.
-          env TEST_RUNNER_SCREENS_DIR="$PWD/build/screens" xcodebuild test-without-building -project DishPlayScreens.xcodeproj \
-            -scheme ScreenCheck -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
-            -resultBundlePath build/screens.xcresult -retry-tests-on-failure -test-iterations 2 "${SELECT[@]}" \
-            > build/screens.log 2>&1 || status=$?
-          grep -E "error:|warning: .*\.swift|Test Case .*(passed|failed)|Executed [0-9]+ tests|\*\* TEST|: error|Not on screen|not received" build/screens.log | cut -c1-400 | head -200 || true
-          if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -80 build/screens.log | cut -c1-600; fi
+          : > build/screens.log
+          # One walk at a time: the appearance of the simulator is set from here before each of them (asked from
+          # inside a walk, it did not change). A walk that fails is tried once more.
+          for walk in ${WALKS:-test1Light test2Dark test3LargeText}; do
+            if [ "$walk" = "test2Dark" ]; then appearance=dark; else appearance=light; fi
+            xcrun simctl ui "$SIM_UDID" appearance "$appearance"
+            sleep 3
+            echo "== $walk, appearance: $(xcrun simctl ui "$SIM_UDID" appearance)"
+            env TEST_RUNNER_SCREENS_DIR="$PWD/build/screens" xcodebuild test-without-building -project DishPlayScreens.xcodeproj \
+              -scheme ScreenCheck -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
+              -resultBundlePath "build/screens-$walk.xcresult" -retry-tests-on-failure -test-iterations 2 \
+              "-only-testing:ScreenCheck/ScreenCheckTests/$walk" > "build/screens-$walk.log" 2>&1 || status=$?
+            grep -E "error:|Test Case .*(passed|failed)|\*\* TEST|: error|Not on screen|not received|appearance during" "build/screens-$walk.log" | cut -c1-400 | head -60 || true
+            cat "build/screens-$walk.log" >> build/screens.log
+          done
+          if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -60 build/screens.log | cut -c1-600; fi
           ls build/screens | head -100
           exit "$status"
       - name: Pictures and audit findings as text (small copies, to be read from this log)

@@ -17,13 +17,13 @@ final class ScreenCheckTests: XCTestCase {
 
     private func walk(_ look: Look) {
         continueAfterFailure = true
-        XCUIDevice.shared.appearance = look.isDark ? .dark : .light
         let record = Recorder(look: look, test: self)
 
         // First launch: the three introduction pages.
         var app = launch(look, onboarded: false)
         if appears(app.buttons["Continuer"]) {
             settle(3)
+            record.checkAppearance()
             record.capture("01-intro-1", app)
             app.buttons["Continuer"].tap()
             settle(1.5)
