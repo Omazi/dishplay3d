@@ -108,7 +108,9 @@ final class ScreenCheckTests: XCTestCase {
     private func launch(_ look: Look, onboarded: Bool = true, paired: Bool = false, sample: Bool = false,
                         scan: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        var arguments = ["-onboarding.done", onboarded ? "YES" : "NO",
+        // French, as on the iPhones the app is made for: dates and numbers are then written the French way.
+        var arguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR",
+                         "-onboarding.done", onboarded ? "YES" : "NO",
                          "-uitest-sessions", sessions(sample: sample).path(percentEncoded: false)]
         if paired { arguments.append("-uitest-paired") }
         if let scan { arguments += ["-uitest-scan", scan] }
@@ -146,7 +148,12 @@ final class ScreenCheckTests: XCTestCase {
 
     private func open(tab name: String, in app: XCUIApplication) {
         let inBar = app.tabBars.buttons[name].firstMatch
-        let button = inBar.waitForExistence(timeout: 8) ? inBar : app.buttons[name].firstMatch
+        if !inBar.waitForExistence(timeout: 4) {
+            // After a scroll down the tab bar shrinks to the current tab alone: scrolling back up brings it back.
+            app.swipeDown()
+            settle(1)
+        }
+        let button = inBar.waitForExistence(timeout: 4) ? inBar : app.buttons[name].firstMatch
         if appears(button, within: 8) { button.tap() }
         settle(1)
     }

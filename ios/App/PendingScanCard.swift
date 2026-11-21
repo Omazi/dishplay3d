@@ -21,7 +21,7 @@ struct PendingScanCard: View {
                 }
             }
             if model.pendingScan != nil {
-                HStack(spacing: 10) {
+                ActionRow {
                     SmallButton(title: "Envoyer et terminer", icon: "arrow.up.circle") { Task { await model.resumePending() } }
                         .disabled(model.pendingBusy || !model.paired)
                     SmallButton(title: "Abandonner", icon: "trash") { confirmDiscard = true }

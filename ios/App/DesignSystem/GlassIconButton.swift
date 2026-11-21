@@ -18,6 +18,7 @@ struct GlassIconButton: View {
             .frame(minWidth: 56, minHeight: 56)
             .foregroundStyle(Theme.textPrimary)
             .glass(Capsule(), interactive: true)
+            .contentShape(.capsule)
         }
         .buttonStyle(PressableStyle())
         .accessibilityLabel(label ?? name)

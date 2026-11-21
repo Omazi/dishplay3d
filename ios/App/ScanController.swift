@@ -99,7 +99,7 @@ final class ScanController: ObservableObject {
         case "scanning", "paused":
             // Seven of the twelve sides seen so far, from a low angle.
             for side in 0..<7 {
-                let angle = Double(side) * .pi / 6
+                let angle = (Double(side) + 0.5) * .pi / 6
                 scheduler.ring.add(cameraInObject: [cos(angle), 0.2, sin(angle)], boxHeight: Double(box.height))
             }
             cameraAzimuthDeg = 180

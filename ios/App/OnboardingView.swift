@@ -30,10 +30,13 @@ struct OnboardingView: View {
                 HStack {
                     Wordmark()
                     Spacer()
-                    Button("Passer", action: done)
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .opacity(current == pages.count - 1 ? 0 : 1)
+                    Button(action: done) {
+                        Text("Passer")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(.rect)
+                    }
+                    .opacity(current == pages.count - 1 ? 0 : 1)
                 }
                 .padding(.horizontal, Spacing.l).padding(.top, Spacing.xs)
 
@@ -82,33 +85,48 @@ struct OnboardingView: View {
 
     private var current: Int { page ?? 0 }
 
+    /// The page as designed when it fits. When it does not (very large text), a smaller picture and a page that
+    /// scrolls, so that no line of the explanation is lost.
     private func pageView(_ item: Page) -> some View {
+        ViewThatFits(in: .vertical) {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                pageContent(item, pictureHeight: 300)
+                Spacer(minLength: 0)
+            }
+            ScrollView {
+                pageContent(item, pictureHeight: 170)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(.horizontal, Spacing.m).padding(.top, Spacing.s)
+    }
+
+    private func pageContent(_ item: Page, pictureHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
-            Spacer(minLength: 0)
             Stage {
                 Group {
                     if item.symbol.isEmpty {
                         HeroDishView()
                     } else {
                         Image(systemName: item.symbol)
-                            .font(.system(size: 104, weight: .thin))
+                            .font(.system(size: pictureHeight / 3, weight: .thin))
                             .foregroundStyle(Theme.textOnStage)
                             .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
                             .accessibilityHidden(true)
                     }
                 }
-                .frame(height: 300)
+                .frame(height: pictureHeight)
             }
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(item.kicker).appText(.kicker).foregroundStyle(Theme.accent)
                 Text(item.title).appText(.display).foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(item.text)
                     .font(.title3).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, Spacing.xxs)
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, Spacing.m)
     }
 }

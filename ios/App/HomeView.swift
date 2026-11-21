@@ -87,8 +87,8 @@ struct HomeView: View {
     private var statusChip: some View {
         Button(action: openSettings) {
             HStack(spacing: Spacing.xs) {
-                Circle().fill(model.paired ? Theme.good : Theme.warn).frame(width: 8, height: 8)
-                Text(model.paired ? "Calculateur relié" : "Calculateur à relier")
+                Circle().fill(calculatorReady ? Theme.good : Theme.warn).frame(width: 8, height: 8)
+                Text(calculatorState)
                     .font(.footnote.weight(.semibold))
                 Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(Theme.textSecondary)
                     .accessibilityHidden(true)
@@ -99,6 +99,19 @@ struct HomeView: View {
         }
         .buttonStyle(PressableStyle())
         .accessibilityHint("Ouvre les réglages du calculateur")
+    }
+
+    /// Linked, and not known to be away.
+    private var calculatorReady: Bool { model.paired && model.reachable != false }
+
+    private var calculatorState: String {
+        if !model.paired {
+            "Calculateur à relier"
+        } else if model.reachable == false {
+            "Calculateur injoignable"
+        } else {
+            "Calculateur relié"
+        }
     }
 
     @ViewBuilder private var action: some View {
@@ -120,9 +133,12 @@ struct HomeView: View {
             HStack {
                 Text("Derniers plats").appText(.section).foregroundStyle(Theme.textPrimary)
                 Spacer()
-                Button("Tout voir", action: openLibrary)
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
-                    .frame(minHeight: 44)
+                Button(action: openLibrary) {
+                    Text("Tout voir")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(.rect)
+                }
             }
             .padding(.horizontal, Spacing.l)
             ScrollView(.horizontal) {

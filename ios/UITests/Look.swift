@@ -5,9 +5,13 @@ struct Look {
     let isDark: Bool
     /// A `UIContentSizeCategory` name, nil for the standard size.
     let textSize: String?
+    /// Whether Apple's accessibility audit is run on each screen (it takes a few seconds per screen).
+    let audited: Bool
 
-    static let light = Look(name: "clair", isDark: false, textSize: nil)
-    static let dark = Look(name: "sombre", isDark: true, textSize: nil)
+    static let light = Look(name: "clair", isDark: false, textSize: nil, audited: true)
+    static let dark = Look(name: "sombre", isDark: true, textSize: nil, audited: true)
     /// About 235 % of the standard size: above the 200 % that Apple's accessibility labels ask for.
-    static let largeText = Look(name: "grand-texte", isDark: false, textSize: "UICTContentSizeCategoryAccessibilityXL")
+    /// Not audited: at this size the pictures say more than the audit's long list of clipped texts.
+    static let largeText = Look(name: "grand-texte", isDark: false, textSize: "UICTContentSizeCategoryAccessibilityXL",
+                                audited: false)
 }

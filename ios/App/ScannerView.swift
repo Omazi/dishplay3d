@@ -68,14 +68,22 @@ struct ScannerView: View {
             .animation(reduceMotion ? nil : .spring(duration: 0.3), value: showSliders)
         }
         .preferredColorScheme(.dark)
+        // The controls float over the camera picture: beyond this size they would hide the dish they help to scan.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         // A scan lasts a minute or two without a touch: left alone, the iPhone dims and locks in the middle of
         // it, which stops the camera, breaks the tracking and loses the tour. Same while the model is computed.
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            if controller.phase == .done { showFinalSurface() }
+        }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .onReceive(ticker) { now = $0 }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
         .onChange(of: controller.phase) { _, phase in
-            if phase == .done { askName = true }
+            if phase == .done {
+                askName = true
+                showFinalSurface()
+            }
         }
         .confirmationDialog(closeTitle, isPresented: $confirmClose, titleVisibility: .visible) {
             switch controller.phase {
@@ -111,6 +119,13 @@ struct ScannerView: View {
         } message: {
             Text("Il apparaîtra sous ce nom dans Mes plats.")
         }
+    }
+
+    /// The finished model is shown as its surface alone. The points are what was measured on the way, some of
+    /// them on the table around the dish: next to the final model they look like dust.
+    private func showFinalSurface() {
+        mode = .surface
+        controller.preview.mode = .surface
     }
 
     private func closeTapped() {
@@ -173,7 +188,7 @@ struct ScannerView: View {
                     Label("\(controller.savedFrames)", systemImage: "photo.stack").font(.footnote.weight(.semibold).monospacedDigit())
                 }
             }
-            .padding(.horizontal, 14).frame(height: 44).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14).frame(minHeight: 44).frame(maxWidth: .infinity, alignment: .leading)
             .glass(Capsule())
         }
     }
@@ -256,10 +271,11 @@ struct ScannerView: View {
             }
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(i.title).font(.headline).foregroundStyle(i.color).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(i.title).font(.headline).foregroundStyle(i.color).lineLimit(2).minimumScaleFactor(0.8)
                         .id(i.title)
                         .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
-                    if scanning, i.color == .white, let hint = sideHint {
+                    // Which way to walk is said while scanning only: in pause the card says the scan is kept.
+                    if controller.phase == .scanning, i.color == .white, let hint = sideHint {
                         Text(hint).font(.subheadline.weight(.semibold))
                             .foregroundStyle(controller.tourComplete ? verdict.color : Theme.accent).lineLimit(2).minimumScaleFactor(0.8)
                     } else if let d = i.detail, !d.isEmpty {
@@ -377,6 +393,7 @@ struct ScannerView: View {
                 .contentTransition(.numericText()).animation(.snappy, value: value)
             Text(label).font(.caption).foregroundStyle(.white.opacity(0.7))
         }
+        .lineLimit(1).minimumScaleFactor(0.6)
         .frame(maxWidth: .infinity)
     }
 
@@ -427,10 +444,11 @@ struct ScannerView: View {
                         Text(controller.finishText ?? "Calcul en cours…").font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                     }
                     if let f = controller.finishFraction {
-                        ProgressView(value: f).tint(Theme.accent).padding(.horizontal, 24)
+                        ProgressView(value: f).tint(Theme.accent)
                     }
                 }
-                .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
+                .padding(.horizontal, Spacing.xl).padding(.vertical, Spacing.xs)
+                .frame(maxWidth: .infinity).frame(minHeight: 56).glass(Capsule())
             case .done:
                 GlassIconButton(icon: "square.and.arrow.up", name: "Exporter le dossier du scan") { shareURL = controller.exportZip() }
                 PrimaryButton(title: "Voir dans Mes plats", icon: "square.grid.2x2.fill", tint: Theme.good) {
@@ -474,8 +492,10 @@ struct ScannerView: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(previewTitle).font(.headline)
-                        if let level = controller.lastGeometry?.quality?.level, level != "too_early", controller.phase != .done {
+                        Text(previewTitle).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+                        // The verdict helps while there is still time to act on it: not once the finishing has started.
+                        if let level = controller.lastGeometry?.quality?.level, level != "too_early",
+                           controller.phase == .scanning || controller.phase == .paused {
                             Text(level == "good" ? "Bon" : level == "fair" ? "Correct" : "Insuffisant")
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 8).padding(.vertical, 3)
@@ -529,9 +549,11 @@ struct ScannerView: View {
 
     private var previewSubtitle: String {
         guard let g = controller.lastGeometry, let t = controller.lastGeometryReceivedAt else { return "En direct pendant le scan" }
-        if g.kind == "final" { return "\(g.triangle_count ?? 0) triangles · \(g.point_count ?? 0) points" }
+        let points = (g.point_count ?? 0).formatted()
+        let triangles = (g.triangle_count ?? 0).formatted()
+        if g.kind == "final" { return "\(triangles) triangles · \(points) points" }
         let age = max(0, Int(now.timeIntervalSince(t)))
-        return "\(g.integrated_frames ?? 0) vues · \(g.point_count ?? 0) points · \(g.triangle_count ?? 0) triangles · il y a \(age) s"
+        return "\(g.integrated_frames ?? 0) vues · \(points) points · \(triangles) triangles · il y a \(age) s"
     }
 
     private var emptyPreviewText: String {

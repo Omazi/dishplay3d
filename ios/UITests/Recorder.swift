@@ -28,7 +28,7 @@ struct Recorder {
                 XCTFail("Picture \(name) not written: \(error.localizedDescription)")
             }
         }
-        if audit { self.audit(name, app) }
+        if audit, look.audited { self.audit(name, app) }
     }
 
     /// Findings are written down, not counted as test failures: they are read together with the pictures.
@@ -36,7 +36,10 @@ struct Recorder {
         var findings: [String] = []
         do {
             try app.performAccessibilityAudit { issue in
-                let element = issue.element.map { "\($0.elementType.rawValue) « \($0.label) »" } ?? "-"
+                let element = issue.element.map { element in
+                    let frame = element.frame
+                    return "type \(element.elementType.rawValue) « \(element.label) » \(Int(frame.width))×\(Int(frame.height)) pt"
+                } ?? "-"
                 findings.append([name, Self.kind(issue.auditType), issue.compactDescription, element].joined(separator: "\t"))
                 return true
             }

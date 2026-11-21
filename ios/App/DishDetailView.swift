@@ -93,9 +93,15 @@ struct DishDetailView: View {
             }
         } else if let picture {
             Stage {
-                Image(uiImage: picture).resizable().scaledToFit()
-                    .frame(maxHeight: 420)
-                    .accessibilityLabel(dish.state == .ready ? "Quatre vues du modèle 3D" : "Une des vues prises pendant le scan")
+                // The picture fills the stage. A view taken with the iPhone upright is taller than the stage and
+                // loses a little at the top and bottom, rather than leaving dark bars on its sides.
+                Color.clear
+                    .frame(height: 380)
+                    .overlay {
+                        Image(uiImage: picture).resizable().scaledToFill()
+                            .accessibilityLabel(dish.state == .ready ? "Quatre vues du modèle 3D" : "Une des vues prises pendant le scan")
+                    }
+                    .clipped()
             }
         } else {
             Stage {
@@ -149,21 +155,40 @@ struct DishDetailView: View {
     private var facts: some View {
         VStack(spacing: 0) {
             if let date = dish.date {
-                LabeledContent("Scanné le", value: date.formatted(date: .long, time: .shortened))
+                fact("Scanné le", date.formatted(date: .long, time: .shortened))
                 Divider()
             }
-            LabeledContent("Vues prises", value: "\(dish.frames)")
+            fact("Vues prises", "\(dish.frames)")
         }
         .font(.subheadline)
-        .padding(.horizontal, 14).padding(.vertical, 6)
+        .padding(.horizontal, 14)
         .cardSurface(radius: Radius.field)
+    }
+
+    /// One line of the card. The value goes under its label when both do not fit on a line (very large text).
+    private func fact(_ label: String, _ value: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.s) {
+                Text(label).foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: Spacing.s)
+                Text(value).foregroundStyle(Theme.textSecondary)
+            }
+            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).foregroundStyle(Theme.textPrimary)
+                Text(value).foregroundStyle(Theme.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
     }
 
     private var actions: some View {
         VStack(spacing: Spacing.s) {
             if let arModel = dish.arModel {
                 // iOS shows the textured model itself: turned by hand, or placed on the table at real size.
-                PrimaryButton(title: "Voir sur votre table", icon: "arkit") { arPreview = arModel }
+                PrimaryButton(title: "Voir sur votre table", icon: "arkit") { showOnTable(arModel) }
                     .accessibilityHint("Ouvre le modèle avec ses vraies couleurs, en 3D ou en réalité augmentée.")
             }
             if let model = dish.model {
@@ -191,6 +216,21 @@ struct DishDetailView: View {
         renderer.show(geometry)
         modelShown = true
         return true
+    }
+
+    /// iOS's viewer uses the name of the file as its title: the name of the dish, rather than "model".
+    private func showOnTable(_ model: URL) {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines).replacing("/", with: "-").replacing(":", with: "-")
+        let named = URL.temporaryDirectory.appending(path: "\(clean.isEmpty ? "Plat" : clean).usdz")
+        do {
+            if FileManager.default.fileExists(atPath: named.path(percentEncoded: false)) {
+                try FileManager.default.removeItem(at: named)
+            }
+            try FileManager.default.copyItem(at: model, to: named)
+            arPreview = named
+        } catch {
+            arPreview = model   // the viewer still opens, under the file's own name
+        }
     }
 
     private func save() {

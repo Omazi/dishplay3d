@@ -23,6 +23,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var messageIsError = false
     @Published private(set) var step: String?
     @Published private(set) var healthText: String?
+    /// Whether the linked calculator answered the last time it was asked; nil while that is not known.
+    @Published private(set) var reachable: Bool?
     @Published private(set) var transport: ScanTransport?
     /// A scan interrupted by closing the app: its views are still on the iPhone.
     @Published private(set) var pendingScan: SessionStore.Unfinished?
@@ -231,18 +233,22 @@ final class AppModel: ObservableObject {
     }
 
     func checkHealth() async {
-        guard let t = transport else { healthText = nil; return }
+        guard let t = transport else { healthText = nil; reachable = nil; return }
         do {
             let (h, rtt) = try await t.health()
             healthText = "Calculateur joignable (\(Int(rtt * 1000)) ms) · moteur \(h.engine)"
+            reachable = true
         } catch {
             healthText = Self.explain(error)
+            reachable = false
         }
     }
 
     func forget() {
         transport = nil
         paired = false
+        healthText = nil
+        reachable = nil
         UserDefaults.standard.removeObject(forKey: "calc.url")
         UserDefaults.standard.removeObject(forKey: "calc.fp")
     }

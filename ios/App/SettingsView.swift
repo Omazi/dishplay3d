@@ -36,17 +36,21 @@ struct SettingsView: View {
     private var computerCard: some View {
         card {
             if model.paired {
+                // Linked is not enough to scan: the calculator must also answer.
+                let away = model.reachable == false
+                let colour = away ? Theme.warn : Theme.good
                 HStack(spacing: 14) {
-                    Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(Theme.good).accessibilityHidden(true)
-                        .frame(width: 48, height: 48).background(Theme.good.opacity(0.14), in: Circle())
+                    Image(systemName: away ? "desktopcomputer.trianglebadge.exclamationmark" : "desktopcomputer")
+                        .font(.title2).foregroundStyle(colour).accessibilityHidden(true)
+                        .frame(width: 48, height: 48).background(colour.opacity(0.14), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Ordinateur relié").font(.headline).foregroundStyle(Theme.textPrimary)
+                        Text(away ? "Ordinateur injoignable" : "Ordinateur relié").font(.headline).foregroundStyle(Theme.textPrimary)
                         Text(model.healthText ?? "Vérification…").font(.footnote).foregroundStyle(Theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                 }
-                HStack(spacing: 10) {
+                ActionRow {
                     SmallButton(title: "Tester", icon: "arrow.clockwise") { Task { await model.checkHealth() } }
                     SmallButton(title: "Changer d’ordinateur", icon: "xmark") { model.forget() }
                 }

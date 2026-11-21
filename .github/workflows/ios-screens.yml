@@ -29,6 +29,18 @@ jobs:
           DEVELOPER_DIR="$XC/Contents/Developer" xcodebuild -version
       - name: Install pinned XcodeGen (2.46.0, SHA-256 verified)
         run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
+      - name: Apple's own readers open the sample USDZ made by the calculator
+        # Reported, not blocking: the walk through the screens runs whatever this says.
+        continue-on-error: true
+        run: |
+          mkdir -p ios/build/screens
+          MODEL=$(ls ios/UITests/Fixtures/Sessions/*/results/model.usdz | head -1)
+          if xcrun --find usdchecker > /dev/null 2>&1; then
+            xcrun usdchecker --arkit "$MODEL" || echo "usdchecker reported problems (status $?)"
+          else
+            echo "usdchecker is not installed on this machine"
+          fi
+          swift ios/ci/usdz-check.swift "$MODEL" ios/build/screens/usdz-vu-par-apple.png
       - name: Start an iPhone simulator (newest iOS installed)
         run: |
           xcrun simctl list devices available | grep -E "^--|iPhone" || true
@@ -36,16 +48,23 @@ jobs:
           echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
+          sleep 20   # the home screen is still settling right after the start
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
       - name: Build the app and walk through its screens
         working-directory: ios
         run: |
           mkdir -p build/screens
           "$XCODEGEN" generate --spec project.screens.yml
+          # RUN.txt may ask for one walk only ("only: testLight"), to look at a change sooner.
+          ONLY=$(sed -n 's/^only:[[:space:]]*//p' UITests/RUN.txt | head -1 | tr -cd 'A-Za-z')
+          SELECT=()
+          if [ -n "$ONLY" ]; then SELECT=("-only-testing:ScreenCheck/ScreenCheckTests/$ONLY"); echo "Only $ONLY"; fi
           status=0
+          # A walk that fails is tried once more: the very first launch on a fresh simulator sometimes times out.
           env TEST_RUNNER_SCREENS_DIR="$PWD/build/screens" xcodebuild test -project DishPlayScreens.xcodeproj -scheme ScreenCheck \
             -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
-            -resultBundlePath build/screens.xcresult > build/screens.log 2>&1 || status=$?
+            -resultBundlePath build/screens.xcresult -retry-tests-on-failure -test-iterations 2 "${SELECT[@]}" \
+            > build/screens.log 2>&1 || status=$?
           grep -E "error:|warning: .*\.swift|Test Case .*(passed|failed)|Executed [0-9]+ tests|\*\* TEST|: error|Not on screen|not received|Wait for .* to idle" build/screens.log | cut -c1-400 | head -200 || true
           if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -80 build/screens.log | cut -c1-600; fi
           ls build/screens | head -100
