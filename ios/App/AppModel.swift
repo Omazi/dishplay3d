@@ -149,6 +149,8 @@ final class AppModel: ObservableObject {
 
     /// How many times the missing files of a dish were asked for since the app was opened.
     private var fileRequests: [String: Int] = [:]
+    /// Dishes whose missing files are being fetched right now (several screens ask at the same time).
+    private var fileFetches: Set<String> = []
 
     /// A finished dish can miss some of its files: a download was cut, or the dish was received by an earlier
     /// version of the app that did not know them (the model for augmented reality). Returns true when a file
@@ -158,7 +160,10 @@ final class AppModel: ObservableObject {
         if dish.arModel == nil { wanted.append("model.usdz") }
         if dish.model == nil { wanted.append("model.glb") }
         if dish.geometry == nil { wanted.append("final_preview.dpg") }
-        guard !wanted.isEmpty, fileRequests[dish.id, default: 0] < 2, let t = transport, let sid = dish.serverSessionID else { return false }
+        guard !wanted.isEmpty, !fileFetches.contains(dish.id), fileRequests[dish.id, default: 0] < 2,
+              let t = transport, let sid = dish.serverSessionID else { return false }
+        fileFetches.insert(dish.id)
+        defer { fileFetches.remove(dish.id) }
         let files: [String]
         do {
             files = try await t.artifacts(sessionID: sid)

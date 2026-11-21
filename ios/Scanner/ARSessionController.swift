@@ -16,6 +16,10 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
     @Published private(set) var lidarActive = false
     @Published private(set) var videoFormatText = ""
     @Published private(set) var errorText: String?
+    /// Why the camera or the tracking could not start, in the user's words; nil while they work.
+    @Published private(set) var failure: String?
+    /// The camera is refused to the app in the iPhone's settings: nothing can be scanned until it is allowed.
+    @Published private(set) var cameraDenied = false
 
     /// Called for every ARFrame on the main thread. Must return quickly and must not retain the frame.
     var onFrame: (@MainActor (ARFrame) -> Void)?
@@ -41,8 +45,11 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
     private func run(reset: Bool) {
         guard ARWorldTrackingConfiguration.isSupported else {
             errorText = "Cet appareil ne prend pas en charge le suivi ARKit."
+            failure = "Cet iPhone ne peut pas suivre ses déplacements : le scan n’est pas possible ici."
             return
         }
+        failure = nil
+        cameraDenied = false
         let cfg = ARWorldTrackingConfiguration()
         cfg.planeDetection = [.horizontal]
         cfg.environmentTexturing = .none
@@ -67,8 +74,13 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
     func acknowledgeReset() { worldWasReset = false }
 
     #if DEBUG
-    /// Screen check in the simulator, which has no camera: show the scanner as it is while tracking works.
-    func stageTracking() { tracking = .normal }
+    /// Screen check in the simulator, which has no camera: show the scanner as it is while tracking works,
+    /// or as it is when the camera is refused to the app.
+    func stage(cameraDenied denied: Bool) {
+        tracking = denied ? .notAvailable : .normal
+        cameraDenied = denied
+        failure = denied ? "DishPlay Scan n’a pas accès à la caméra. Autorisez-la dans les réglages de l’iPhone." : nil
+    }
     #endif
 
     // MARK: box anchor (ARKit keeps refining its map; an ARAnchor follows those corrections)
@@ -158,6 +170,13 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
-        MainActor.assumeIsolated { errorText = error.localizedDescription }
+        let denied = (error as? ARError)?.code == .cameraUnauthorized
+        let text = error.localizedDescription
+        MainActor.assumeIsolated {
+            errorText = text
+            cameraDenied = denied
+            failure = denied ? "DishPlay Scan n’a pas accès à la caméra. Autorisez-la dans les réglages de l’iPhone."
+                             : "La caméra ne démarre pas. Fermez le scan et rouvrez-le. (Détail : \(text))"
+        }
     }
 }

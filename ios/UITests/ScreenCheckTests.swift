@@ -95,8 +95,8 @@ final class ScreenCheckTests: XCTestCase {
             record.capture("15-reglages", app)
         }
 
-        // The scanner, at five moments of a scan.
-        for (index, moment) in ["box", "scanning", "paused", "finishing", "done"].enumerated() {
+        // The scanner, at five moments of a scan, then as it is when the camera is refused to the app.
+        for (index, moment) in ["box", "scanning", "paused", "finishing", "done", "denied"].enumerated() {
             app = launch(look, paired: true, sample: true, scan: moment)
             if appears(app.buttons["Quitter le scan"]) {
                 settle(4)

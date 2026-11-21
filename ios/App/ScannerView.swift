@@ -216,6 +216,10 @@ struct ScannerView: View {
     }
 
     private var instruction: (title: String, detail: String?, color: Color) {
+        // Without the camera nothing else on this screen can work: said first, with the way out below.
+        if let failure = ar.failure {
+            return (ar.cameraDenied ? "Caméra non autorisée" : "Caméra indisponible", failure, Theme.bad)
+        }
         if let e = controller.errorText, controller.phase != .scanning { return ("Un problème est survenu", e, Theme.bad) }
         switch controller.phase {
         case .placing:
@@ -279,7 +283,9 @@ struct ScannerView: View {
                         Text(hint).font(.subheadline.weight(.semibold))
                             .foregroundStyle(controller.tourComplete ? verdict.color : Theme.accent).lineLimit(2).minimumScaleFactor(0.8)
                     } else if let d = i.detail, !d.isEmpty {
-                        Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85)).lineLimit(2).minimumScaleFactor(0.85)
+                        // A problem is explained in full; an instruction stays short so as not to hide the dish.
+                        Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(i.color == Theme.bad ? 5 : 2).minimumScaleFactor(0.85)
                     }
                     if scanning {
                         let ring = controller.scheduler.ring
@@ -368,7 +374,7 @@ struct ScannerView: View {
             if showSliders {
                 Button { box.replace() } label: {
                     Label("Replacer la boîte ailleurs", systemImage: "arrow.uturn.backward").font(.footnote.weight(.semibold))
-                        .frame(maxWidth: .infinity).frame(height: 44).background(Color.white.opacity(0.12), in: Capsule()).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(minHeight: 44).background(Color.white.opacity(0.12), in: Capsule()).foregroundStyle(.white)
                 }
             }
             if showSliders {
@@ -412,10 +418,17 @@ struct ScannerView: View {
         HStack(spacing: 10) {
             switch controller.phase {
             case .placing:
-                // Without the calculator the views would stay on the iPhone with no way to finish the dish.
-                PrimaryButton(title: "Démarrer le scan", icon: "record.circle", enabled: box.placed && controller.calculatorOnline) {
-                    showSliders = false
-                    controller.start()
+                if ar.cameraDenied {
+                    PrimaryButton(title: "Ouvrir les réglages", icon: "gear") {
+                        if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
+                    }
+                } else {
+                    // Without the calculator the views would stay on the iPhone with no way to finish the dish.
+                    PrimaryButton(title: "Démarrer le scan", icon: "record.circle",
+                                  enabled: box.placed && controller.calculatorOnline && ar.failure == nil) {
+                        showSliders = false
+                        controller.start()
+                    }
                 }
             case .scanning:
                 GlassIconButton(icon: "pause.fill", name: "Mettre en pause") { Haptics.tap(); controller.pause() }
@@ -436,7 +449,7 @@ struct ScannerView: View {
             case .uploadingRest:
                 GlassIconButton(icon: "xmark", name: "Annuler l'envoi") { controller.cancelFinish() }
                 HStack(spacing: 10) { ProgressView().tint(.white); Text("Envoi des vues…").font(.subheadline.weight(.semibold)) }
-                    .frame(maxWidth: .infinity).frame(height: 56).glass(Capsule())
+                    .frame(maxWidth: .infinity).frame(minHeight: 56).glass(Capsule())
             case .finishing:
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
@@ -520,7 +533,7 @@ struct ScannerView: View {
                     .accessibilityIgnoresInvertColors()
                 if controller.lastGeometry == nil {
                     VStack(spacing: 10) {
-                        Image(systemName: "circle.hexagongrid.fill").font(.system(size: 30)).foregroundStyle(Theme.accent.opacity(0.8))
+                        Image(systemName: "circle.hexagongrid.fill").font(.title).foregroundStyle(Theme.accent.opacity(0.8))
                         Text(emptyPreviewText).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
                     .padding(.horizontal, 36).allowsHitTesting(false)

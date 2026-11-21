@@ -85,7 +85,8 @@ final class ScanController: ObservableObject {
     private func stage(_ moment: String) {
         serverSessionID = "screen-check"   // also keeps the reachability loop from saying the calculator is away
         calculatorOnline = true
-        ar.stageTracking()
+        ar.stage(cameraDenied: moment == "denied")
+        if moment == "denied" { return }   // nothing was placed: the camera never started
         box.stage(locked: moment != "box")
         let results = DishLibrary.all().first { $0.geometry != nil }?.root.appending(path: "results")
         func show(_ file: String) {

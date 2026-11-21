@@ -723,7 +723,15 @@ Parcours exécutés et regardés image par image :
   l'écran de scan, lui, arrête de grossir à 160 % pour ne pas cacher le plat qu'il sert à scanner ;
 - zones tactiles trop petites signalées par l'audit d'Apple (« Passer », « Tout voir », boutons ronds du scan) ;
 - l'app allait chercher les fichiers d'un plat une seule fois : un téléchargement coupé, ou un plat reçu par une
-  version précédente, restait sans modèle pour la réalité augmentée. Elle les redemande maintenant.
+  version précédente, restait sans modèle pour la réalité augmentée. Elle les redemande maintenant ;
+- caméra refusée à l'app : l'écran de scan restait noir, avec « Placez la boîte », sans rien expliquer (trouvé par
+  la revue d'interface, pas par les images). Il dit maintenant « Caméra non autorisée » et propose « Ouvrir les
+  réglages » ; une capture de cet état fait partie du parcours.
+
+Un piège du contrôle lui-même : dans la première série complète, les images du parcours « sombre » étaient
+claires. Demandé depuis le test, le changement d'apparence du simulateur n'avait pas eu lieu, sans erreur. C'est
+maintenant le travail GitHub qui règle l'apparence avant chaque parcours, et le parcours relit l'écran : il échoue
+si l'apparence n'est pas celle que ses images annoncent.
 
 **Audit d'accessibilité d'Apple.** Après corrections, il ne signale plus de zone tactile trop petite sur un
 bouton. Restent des constats de contraste sur des textes passés sous la barre d'onglets au moment de la capture,

@@ -26,6 +26,10 @@ Dépendances d'Open3D (dash, plotly, flask, matplotlib, pandas, scikit-learn, ip
 Outils de build (non distribués) : XcodeGen 2.46.0 (MIT), Xcode (Apple).
 Outils de vérification (ni dans le dépôt ni distribués) : `@google/model-viewer` 4.1.0 (Apache-2.0) et three.js
 0.170.0 (MIT), pour afficher les fichiers GLB et USDZ produits dans un navigateur de test.
+Contrôle des écrans de l'app (non distribué) : XCTest, le simulateur iOS, `usdchecker`, Model I/O, RealityKit et
+SceneKit, tous fournis par Apple avec Xcode et macOS sur les machines de GitHub. Les plats d'exemple
+(`ios/UITests/Fixtures`) sont produits par le moteur à partir de l'assiette de synthèse du projet : aucune
+donnée extérieure.
 Format USDZ : écrit par le code du projet (`backend/reconstruction/exports.py`) d'après la spécification publique
 du format ; aucune bibliothèque USD n'est embarquée.
 
