@@ -5,6 +5,10 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+# The dark stage the iPhone app shows a dish on (ios: colour "Stage", #151613), blue-green-red: the result
+# picture has the same ground, so that it sits on the app's cards and stage without a frame of another dark.
+STAGE_BGR = (19, 22, 21)
+
 
 def view_matrix(az_deg, el_deg, centre, dist):
     az, el = np.radians(az_deg), np.radians(el_deg)
@@ -18,7 +22,7 @@ def view_matrix(az_deg, el_deg, centre, dist):
     return R, -R @ eye
 
 
-def render(g, az, el, size=480, mode="both", provenance=False, fit="content", background=(38, 33, 33)):
+def render(g, az, el, size=480, mode="both", provenance=False, fit="content", background=STAGE_BGR):
     """One view. By default the model is shown as it looks (real colours) and fills the picture, whatever the
     size of the scan box. provenance=True tints what is interpolated (blue) or estimated (magenta) and
     fit="box" frames the whole box: the diagnostic view."""

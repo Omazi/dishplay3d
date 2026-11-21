@@ -6,6 +6,6 @@ Two optional lines, each alone on its line:
   "only:" followed by light, dark or largeText runs that walk alone (all three without it);
   "devices:" followed by all adds an iPhone with iOS 18 and the smallest screen to the reference iPhone.
 
-devices: all
+only: light
 
-run 4
+run 5
