@@ -130,7 +130,7 @@ def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) 
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
                    texture: bool = True, emit: Callable[[dict], None] | None = None, refine: bool = True,
                    remove_table: bool = True, max_frames: int = 140, mono=None, mono_reason: str = "",
-                   close: bool = True, clean: bool = True, web_triangles: int = 60000) -> dict:
+                   close: bool = True, clean: bool = True, web_triangles: int = 60000, texture_size: int = 2048) -> dict:
     emit = emit or (lambda e: None)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -272,7 +272,8 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                     Tw = Tw[ok_t]
                 views = _texture_views(fin, list(fusion.integrated_frames))
                 under = (cw[Tw] == ESTIMATED).all(1) & (Nw[Tw].mean(1)[:, 1] < -0.5)   # the added base, facing down
-                tri_uv, tex, nv, filled = texture_mesh(Vw, Tw, views, colors_bgr=Cw[:, ::-1].astype(np.float64), plain=under)
+                tri_uv, tex, nv, filled = texture_mesh(Vw, Tw, views, tex_size=texture_size, colors_bgr=Cw[:, ::-1].astype(np.float64),
+                                                       plain=under)
                 Vg, Ng, UVg, Pg, Tg = weld_corners(Vw, Nw, cw, Tw, tri_uv)
                 write_glb(out_dir / "model.glb", Vg, Tg, Ng, uv=UVg, texture_bgr=tex, provenance=Pg, extras=glb_extras,
                           texture_jpeg_quality=88)

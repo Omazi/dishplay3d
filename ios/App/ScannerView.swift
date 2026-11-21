@@ -43,6 +43,7 @@ struct ScannerView: View {
                 VStack(spacing: 0) {
                     ZStack {
                         ARViewContainer(arView: controller.ar.arView).ignoresSafeArea(edges: .top)
+                            .accessibilityIgnoresInvertColors()
                         // Everything floating over the camera is glass, and shares one container.
                         GlassGroup {
                             VStack(spacing: Spacing.s) {
@@ -496,6 +497,7 @@ struct ScannerView: View {
             ZStack {
                 PreviewView(renderer: controller.preview)
                     .accessibilityLabel("Aperçu 3D du plat")
+                    .accessibilityIgnoresInvertColors()
                 if controller.lastGeometry == nil {
                     VStack(spacing: 10) {
                         Image(systemName: "circle.hexagongrid.fill").font(.system(size: 30)).foregroundStyle(Theme.accent.opacity(0.8))

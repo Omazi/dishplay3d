@@ -1,0 +1,38 @@
+# The app's project plus the screen check: UI tests that open every screen in the iPhone simulator, take a
+# picture of each and run Apple's accessibility audit (UITests/). Kept apart from project.yml on purpose:
+# nothing here can change the app that is built for TestFlight.
+#   xcodegen generate --spec project.screens.yml   ->   DishPlayScreens.xcodeproj, scheme ScreenCheck
+include:
+  - project.yml
+name: DishPlayScreens
+targets:
+  ScreenCheck:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+        excludes:
+          - "Fixtures"
+          - "Fixtures/**"
+          - "RUN.txt"
+      # The sample dishes, copied as they are (folders and empty marker files included).
+      - path: UITests/Fixtures/Sessions
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: DishPlayScan
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.dishplay.capture.screencheck
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: DishPlayScan
+schemes:
+  ScreenCheck:
+    build:
+      targets:
+        DishPlayScan: all
+        ScreenCheck: [test]
+    test:
+      config: Debug
+      targets:
+        - ScreenCheck

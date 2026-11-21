@@ -66,6 +66,11 @@ final class ARSessionController: NSObject, ObservableObject, ARSessionDelegate {
 
     func acknowledgeReset() { worldWasReset = false }
 
+    #if DEBUG
+    /// Screen check in the simulator, which has no camera: show the scanner as it is while tracking works.
+    func stageTracking() { tracking = .normal }
+    #endif
+
     // MARK: box anchor (ARKit keeps refining its map; an ARAnchor follows those corrections)
 
     private(set) var boxAnchorID: UUID?

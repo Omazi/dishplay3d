@@ -12,6 +12,9 @@ final class SessionStore: @unchecked Sendable {
     private(set) var sentCount = 0
 
     static var sessionsDirectory: URL {
+        #if DEBUG
+        if let folder = UITestMode.sessions { return folder }
+        #endif
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return docs.appendingPathComponent("Sessions", isDirectory: true)
     }

@@ -73,8 +73,56 @@ final class ScanController: ObservableObject {
         transport.onEvent = { [weak self] ev in Task { @MainActor in self?.handle(ev) } }
         transport.onSocketState = { [weak self] up in Task { @MainActor in self?.calculatorOnline = up } }
         ar.start(useLidar: useLidar)
+        #if DEBUG
+        if let moment = UITestMode.scanMoment { stage(moment) }
+        #endif
         startReachabilityLoop()
     }
+
+    #if DEBUG
+    /// Screen check in the iPhone simulator, which has neither camera nor calculator: put the screen at a given
+    /// moment of a scan, with the model files of the newest sample dish. Debug builds only.
+    private func stage(_ moment: String) {
+        serverSessionID = "screen-check"   // also keeps the reachability loop from saying the calculator is away
+        calculatorOnline = true
+        ar.stageTracking()
+        box.stage(locked: moment != "box")
+        let results = DishLibrary.all().first { $0.geometry != nil }?.root.appending(path: "results")
+        func show(_ file: String) {
+            guard let url = results?.appending(path: file), let data = try? Data(contentsOf: url),
+                  let geometry = try? PreviewGeometry.decode(data) else { return }
+            preview.show(geometry)
+            lastGeometry = geometry.header
+            lastGeometryReceivedAt = .now
+        }
+        switch moment {
+        case "scanning", "paused":
+            // Seven of the twelve sides seen so far, from a low angle.
+            for side in 0..<7 {
+                let angle = Double(side) * .pi / 6
+                scheduler.ring.add(cameraInObject: [cos(angle), 0.2, sin(angle)], boxHeight: Double(box.height))
+            }
+            cameraAzimuthDeg = 180
+            savedFrames = 34
+            show("live_preview.dpg")
+            phase = moment == "paused" ? .paused : .scanning
+        case "finishing":
+            savedFrames = 60
+            show("live_preview.dpg")
+            preview.followPhone = false
+            finishText = "Calcul fin des profondeurs : 12/40 · encore ~2 min"
+            finishFraction = 0.3
+            phase = .finishing
+        case "done":
+            savedFrames = 60
+            show("final_preview.dpg")
+            preview.followPhone = false
+            phase = .done
+        default:
+            break   // "box": the box has just been placed, the scan has not started
+        }
+    }
+    #endif
 
     /// Before a session exists there is no event socket: ping the calculator so the status chip is truthful.
     private func startReachabilityLoop() {

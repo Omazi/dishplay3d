@@ -1,0 +1,5 @@
+Changing this file (on main or on a claude/ branch) starts the screen check:
+.github/workflows/ios-screens.yml opens every screen of the app in the iPhone simulator,
+keeps a picture of each and runs Apple's accessibility audit.
+
+run 1

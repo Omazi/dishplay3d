@@ -20,6 +20,7 @@ struct DishCard: View {
                 }
             }
             .frame(height: 148).frame(maxWidth: .infinity).clipped()
+            .accessibilityIgnoresInvertColors()
             VStack(alignment: .leading, spacing: Spacing.xxs) {
                 Text(dish.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary).lineLimit(2)
                     .multilineTextAlignment(.leading)

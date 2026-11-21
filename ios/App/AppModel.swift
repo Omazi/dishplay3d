@@ -34,6 +34,14 @@ final class AppModel: ObservableObject {
             transport = ScanTransport(baseURL: url, fingerprint: fingerprint, token: token)
             paired = true
         }
+        #if DEBUG
+        // Screen check: linked to a calculator that does not answer (nothing listens on that port).
+        if UITestMode.paired, let nowhere = URL(string: "https://127.0.0.1:9") {
+            transport = ScanTransport(baseURL: nowhere, fingerprint: String(repeating: "0", count: 64), token: "screen-check")
+            paired = true
+            if UITestMode.scanMoment != nil { screen = .scan }
+        }
+        #endif
         pendingScan = SessionStore.unfinished()
     }
 
@@ -168,7 +176,12 @@ final class AppModel: ObservableObject {
     }
 
     var lidarSupported: Bool { ARSessionController.lidarSupported }
-    var trackingSupported: Bool { ARSessionController.worldTrackingSupported }
+    var trackingSupported: Bool {
+        #if DEBUG
+        if UITestMode.sessions != nil { return true }
+        #endif
+        return ARSessionController.worldTrackingSupported
+    }
 
     func handle(url: URL) {
         guard let link = PairingLink(url: url) else {

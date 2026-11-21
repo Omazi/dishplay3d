@@ -1,0 +1,74 @@
+name: DishPlay Scan — screens
+
+# Opens every screen of the app in the iPhone simulator and keeps a picture of each, with the findings of
+# Apple's accessibility audit (ios/UITests). Nothing is judged automatically: the pictures are looked at.
+# It costs macOS minutes, so it only runs when asked: change ios/UITests/RUN.txt, or start it by hand.
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['ios/UITests/RUN.txt']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan-screens-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screens:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Select the newest installed Xcode 26
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$XC/Contents/Developer" xcodebuild -version
+      - name: Install pinned XcodeGen (2.46.0, SHA-256 verified)
+        run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
+      - name: Start an iPhone simulator (newest iOS installed)
+        run: |
+          xcrun simctl list devices available | grep -E "^--|iPhone" || true
+          UDID=$(xcrun simctl list devices available -j | python3 ios/ci/pick-simulator.py)
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+      - name: Build the app and walk through its screens
+        working-directory: ios
+        run: |
+          mkdir -p build/screens
+          "$XCODEGEN" generate --spec project.screens.yml
+          status=0
+          env TEST_RUNNER_SCREENS_DIR="$PWD/build/screens" xcodebuild test -project DishPlayScreens.xcodeproj -scheme ScreenCheck \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
+            -resultBundlePath build/screens.xcresult > build/screens.log 2>&1 || status=$?
+          grep -E "error:|warning: .*\.swift|Test Case .*(passed|failed)|Executed [0-9]+ tests|\*\* TEST|: error|Not on screen|not received|Wait for .* to idle" build/screens.log | cut -c1-400 | head -200 || true
+          if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -80 build/screens.log | cut -c1-600; fi
+          ls build/screens | head -100
+          exit "$status"
+      - name: Pictures and audit findings as text (small copies, to be read from this log)
+        if: always()
+        working-directory: ios/build
+        run: |
+          mkdir -p small
+          for f in screens/*.png; do
+            [ -f "$f" ] || continue
+            sips -Z 1300 -s format jpeg -s formatOptions 55 "$f" --out "small/$(basename "${f%.png}").jpg" > /dev/null
+          done
+          cp screens/audit.txt small/ 2>/dev/null || true
+          grep -E "^\s+t = +[0-9.]+s (Wait for|Tap|Open|Launch|Terminate|Checking|Find|Synthesize)|Test Case" screens.log | cut -c1-200 > small/timing.txt 2>/dev/null || true
+          echo "-----BEGIN SCREENS-----"
+          tar -cf - small | base64 -b 76
+          echo "-----END SCREENS-----"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: scan-screens
+          path: |
+            ios/build/screens
+            ios/build/screens.log
+          retention-days: 14

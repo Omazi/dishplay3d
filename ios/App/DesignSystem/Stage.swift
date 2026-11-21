@@ -13,5 +13,7 @@ struct Stage<Content: View>: View {
             .frame(maxWidth: .infinity)
             .background(Theme.stage)
             .clipShape(.rect(cornerRadius: Radius.stage))
+            // A dish, a model or a photograph: never shown as a negative when the iPhone inverts its colours.
+            .accessibilityIgnoresInvertColors()
     }
 }

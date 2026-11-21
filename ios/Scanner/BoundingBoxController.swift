@@ -58,6 +58,14 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         root.children.removeAll()
     }
 
+    #if DEBUG
+    /// Screen check in the simulator, which has no camera to find a table: the box as if it had been placed.
+    func stage(locked: Bool) {
+        placed = true
+        self.locked = locked
+    }
+    #endif
+
     // MARK: gestures
 
     @objc private func onTap(_ g: UITapGestureRecognizer) {
