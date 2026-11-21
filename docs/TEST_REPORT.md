@@ -764,6 +764,14 @@ iOS 18 comme sous iOS 26) : « Voir sur votre table » n'a donc toujours jamais 
 caméra, le suivi AR, la pose de la boîte, le verre des boutons par-dessus une image de caméra claire et
 VoiceOver ne se vérifient que sur appareil.
 
+**Publication.** Version 1.7.0, build 29.1. GitHub a refait tous les contrôles sur le commit publié : 121 tests du
+calculateur passés, 2 sautés (11 min 49 s) ; app compilée en configuration de publication, sans avertissement ;
+les trois parcours d'écrans repassés sur ce même commit. L'archive signée a été validée puis envoyée à Apple sans
+erreur, traitée (`VALID`) et attribuée au groupe « DishPlay - Tests iPhone ». Deux avertissements d'Apple, sans
+effet aujourd'hui : à partir d'avril 2027 les envois devront être compilés avec le SDK d'iOS 27 (Xcode 27) ; la
+capacité `arkit` n'existe pas sur Vision Pro. Le dépôt est resté public : le travail qui le repasse en privé n'a
+pas son jeton (`REPO_ADMIN_TOKEN`), et une session de travail n'a pas le droit de changer ce réglage.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.

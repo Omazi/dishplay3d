@@ -55,6 +55,16 @@ fiche DishPlay Capture (`app.dishplay.capture`). Apple : `VERIFY SUCCEEDED with 
 Corrections nécessaires en chemin : contrat Apple renouvelé (titulaire du compte), orientations iPad déclarées,
 groupes de concurrence CI séparés, puis deux erreurs passagères de checkout GitHub.
 
+## Envoi du 21 nov. 2026 et échéance d'avril 2027
+Run [44857647148](https://github.com/Omazi/dishplay3d/actions/runs/44857647148) : **DishPlay Scan 1.7.0 (build 29.1)**,
+`UPLOAD SUCCEEDED with no errors, 2 warnings`, build traité (`VALID`) et attribué au groupe interne.
+Les deux avertissements d'Apple :
+- **SDK** : l'app est compilée avec le SDK d'iOS 26.2. À partir d'**avril 2027**, Apple n'acceptera que les envois
+  compilés avec le SDK d'iOS 27 (Xcode 27). Les workflows choisissent aujourd'hui « le plus récent Xcode 26 installé »
+  (`ls -d /Applications/Xcode_26*.app`) : avant cette date, les faire pointer sur Xcode 27 (et, si besoin, sur une
+  image de machine GitHub qui le contient), puis relancer le contrôle des écrans (`docs/SCREEN_CHECK.md`).
+- **Vision Pro** : la capacité `arkit` n'y existe pas. Sans effet : l'app n'est pas destinée à cet appareil.
+
 ## Limites honnêtes
 - Ce workflow de distribution **n'a pas été exécuté** dans cette livraison : il tourne avec vos secrets depuis `main`. Le précédent pipeline équivalent (mêmes scripts de signature) avait réussi pour 0.6.0.
 - Un historique du dépôt mentionne un refus de démarrage de job macOS pour plafond de dépenses GitHub ; si cela se
