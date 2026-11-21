@@ -705,8 +705,12 @@ Parcours exécutés et regardés image par image :
 | iPhone simulé | iOS | Parcours |
 |---|---|---|
 | iPhone 17 Pro | 26.2 | clair, sombre, très grand texte (235 %) |
-| iPhone 16e (6,1 pouces, la taille d'un iPhone 13) | 18.6 | clair — l'app sans le verre d'iOS 26 |
+| iPhone 16e (6,1 pouces, la taille d'un iPhone 13) | 18.6 | clair, sombre — l'app sans le verre d'iOS 26 |
 | iPhone SE (3e génération), le plus petit écran | 26.2 | clair |
+
+Images : `docs/evidence/app_1_7_0_ecrans_reels.jpg` (douze écrans, clair et sombre) ; toutes les captures, avec un
+sélecteur clair / sombre / très grand texte / iOS 18 / petit écran : https://claude.ai/artifact/LQtdkGvtddov5SoJcC8xkm
+(lien privé).
 
 **Défauts trouvés sur les images et corrigés** (tous revus sur une nouvelle série d'images) :
 - fiche d'un plat : les deux lignes « Scanné le / Vues prises » étaient collées l'une à l'autre ; la photo d'un
@@ -733,6 +737,15 @@ claires. Demandé depuis le test, le changement d'apparence du simulateur n'avai
 maintenant le travail GitHub qui règle l'apparence avant chaque parcours, et le parcours relit l'écran : il échoue
 si l'apparence n'est pas celle que ses images annoncent.
 
+**Revue d'interface (`ui-review`), sur le code et sur les images.** Conformes : aucune couleur écrite en dur hors
+de l'écran de scan ; toutes les tailles de texte suivent le réglage de l'iPhone (une seule taille fixe restait, sur
+un pictogramme décoratif, retirée) ; les boutons sans texte ont un nom pour VoiceOver ; les suppressions
+demandent confirmation ; les écrans vides proposent l'action suivante (« Relier le calculateur » ou « Scanner un
+plat ») ; les erreurs disent quoi faire. Corrigé à cette occasion : la caméra refusée (ci-dessus) et trois
+hauteurs fixes qui auraient coupé un texte agrandi. Restent, non traités dans cette version : pas de ménage du
+stockage (les vues d'un plat terminé restent sur l'iPhone jusqu'à sa suppression) ; le nom d'un plat long est
+tronqué dans son champ ; aucune de ces deux choses n'empêche de scanner.
+
 **Audit d'accessibilité d'Apple.** Après corrections, il ne signale plus de zone tactile trop petite sur un
 bouton. Restent des constats de contraste sur des textes passés sous la barre d'onglets au moment de la capture,
 et de nombreux « texte coupé » ou « taille de texte partiellement prise en charge » que les images ne confirment
@@ -744,7 +757,7 @@ three.js. Il est maintenant ouvert par les lecteurs d'Apple sur un Mac de GitHub
 - Model I/O : 1 maillage, 4 897 sommets, coordonnées de texture présentes ;
 - RealityKit, le moteur de la réalité augmentée d'iOS : 1 pièce, 1 matériau avec son image ; taille 24,3 × 3,5 ×
   24,3 cm pour une assiette de synthèse de 24 cm — l'échelle réelle est donc bonne ;
-- SceneKit en fait une image, texture à l'endroit.
+- SceneKit en fait une image, texture à l'endroit (`docs/evidence/usdz_dessine_par_scenekit.jpg`).
 
 **Limites.** Le simulateur n'affiche pas la visionneuse 3D d'iOS (elle montre seulement le nom du fichier, sous
 iOS 18 comme sous iOS 26) : « Voir sur votre table » n'a donc toujours jamais été ouvert sur un iPhone. La

@@ -1,8 +1,10 @@
-DishPlay Scan 1.6.0 — savoir si le scan est réussi avant de terminer
-- Verdict du calculateur pendant le scan : « Bon », « Correct » ou « Insuffisant », avec la raison (côtés manquants, zones vides, surface brillante).
-- Le bouton « Terminer » ne devient vert que quand le scan est jugé réussi ; sinon l'app prévient avant de lancer le calcul final.
-- Le X en haut à gauche répond à tout moment (pause, abandon, ou quitter pendant le calcul).
-- Quitter pendant le calcul final ne perd plus le plat : il apparaît dans Mes plats quand son modèle est prêt.
-- Mes plats : chaque plat a une photo, même sans modèle ; un plat en cours affiche sa progression (« Calcul du modèle · 86/140 ») ; un plat interrompu se termine avec « Terminer ce plat ».
-- Réglages ne contient plus rien sur les plats.
-- Nécessite le calculateur à jour (moteur p1-0.4.0 ou plus récent).
+DishPlay Scan 1.7.0 — nouvelle apparence, et le plat posé sur votre table
+- Nouvelle apparence : claire ou sombre selon le réglage de l'iPhone, une seule couleur d'action, boutons en verre sur iOS 26.
+- « Voir sur votre table » : sur la fiche d'un plat terminé, le modèle s'ouvre avec ses vraies couleurs, en 3D ou en réalité augmentée, à sa taille réelle.
+- L'accueil et les réglages disent quand le calculateur ne répond pas.
+- Toucher un plat sur l'accueil ouvre ce plat. Abandonner un scan interrompu demande confirmation.
+- Scan : si le plat dépasse la boîte, l'app le dit ; en pause, elle confirme que le scan est conservé ; le modèle final s'affiche seul, sans les points de mesure.
+- Caméra refusée à l'app : l'écran de scan l'explique et ouvre les réglages, au lieu de rester noir.
+- Très grand texte : les écrans restent lisibles, plus de bouton coupé au milieu d'un mot.
+- Un plat dont un fichier manque (téléchargement coupé) le redemande au calculateur.
+- « Voir sur votre table » nécessite le calculateur à jour (moteur p1-0.10.0) et un plat scanné après cette mise à jour.
