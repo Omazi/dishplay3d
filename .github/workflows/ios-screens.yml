@@ -3,6 +3,7 @@ name: DishPlay Scan — screens
 # Opens every screen of the app in the iPhone simulator and keeps a picture of each, with the findings of
 # Apple's accessibility audit (ios/UITests). Nothing is judged automatically: the pictures are looked at.
 # It costs macOS minutes, so it only runs when asked: change ios/UITests/RUN.txt, or start it by hand.
+# RUN.txt also says how much to do (one walk only, one iPhone or the three of them).
 on:
   push:
     branches: [main, 'claude/**']
@@ -17,9 +18,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: read
+        run: python3 ios/ci/screens-plan.py ios/UITests/RUN.txt >> "$GITHUB_OUTPUT"
+
   screens:
+    needs: plan
+    name: ${{ matrix.label }}
     runs-on: macos-15
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Select the newest installed Xcode 26
@@ -31,6 +48,7 @@ jobs:
         run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
       - name: Apple's own readers open the sample USDZ made by the calculator
         # Reported, not blocking: the walk through the screens runs whatever this says.
+        if: matrix.usdz
         continue-on-error: true
         run: |
           mkdir -p ios/build/screens
@@ -41,10 +59,12 @@ jobs:
             echo "usdchecker is not installed on this machine"
           fi
           swift ios/ci/usdz-check.swift "$MODEL" ios/build/screens/usdz-vu-par-apple.png
-      - name: Start an iPhone simulator (newest iOS installed)
+      - name: Start the iPhone simulator
+        env:
+          DEVICE: ${{ matrix.device }}
+          IOS_MAJOR: ${{ matrix.ios }}
         run: |
-          xcrun simctl list devices available | grep -E "^--|iPhone" || true
-          UDID=$(xcrun simctl list devices available -j | python3 ios/ci/pick-simulator.py)
+          UDID=$(xcrun simctl list devices available -j | python3 ios/ci/pick-simulator.py "$IOS_MAJOR" "$DEVICE")
           echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
@@ -52,20 +72,32 @@ jobs:
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
       - name: Build the app and walk through its screens
         working-directory: ios
+        env:
+          WALKS: ${{ matrix.walks }}
         run: |
           mkdir -p build/screens
           "$XCODEGEN" generate --spec project.screens.yml
-          # RUN.txt may ask for one walk only ("only: testLight"), to look at a change sooner.
-          ONLY=$(sed -n 's/^only:[[:space:]]*//p' UITests/RUN.txt | head -1 | tr -cd 'A-Za-z')
-          SELECT=()
-          if [ -n "$ONLY" ]; then SELECT=("-only-testing:ScreenCheck/ScreenCheckTests/$ONLY"); echo "Only $ONLY"; fi
-          status=0
-          # A walk that fails is tried once more: the very first launch on a fresh simulator sometimes times out.
-          env TEST_RUNNER_SCREENS_DIR="$PWD/build/screens" xcodebuild test -project DishPlayScreens.xcodeproj -scheme ScreenCheck \
+          xcodebuild build-for-testing -project DishPlayScreens.xcodeproj -scheme ScreenCheck \
             -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
+            > build/screens-build.log 2>&1 || { grep -E "error:" build/screens-build.log | head -40; tail -40 build/screens-build.log; exit 1; }
+          grep -E "warning: .*\.swift" build/screens-build.log | sort -u | cut -c1-300 | head -40 || true
+          # The very first launch of an app on a fresh simulator can take a minute and make the first walk fail:
+          # it is done here, outside the walks.
+          APP=$(find build/ScreensData/Build/Products -maxdepth 2 -name "DishPlayScan.app" | head -1)
+          xcrun simctl install "$SIM_UDID" "$APP"
+          xcrun simctl launch "$SIM_UDID" app.dishplay.capture -uitest-sessions "$(mktemp -d)" || true
+          sleep 25
+          xcrun simctl terminate "$SIM_UDID" app.dishplay.capture || true
+          SELECT=()
+          for walk in $WALKS; do SELECT+=("-only-testing:ScreenCheck/ScreenCheckTests/$walk"); done
+          echo "Walks: ${WALKS:-all}"
+          status=0
+          # A walk that fails is tried once more.
+          env TEST_RUNNER_SCREENS_DIR="$PWD/build/screens" xcodebuild test-without-building -project DishPlayScreens.xcodeproj \
+            -scheme ScreenCheck -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
             -resultBundlePath build/screens.xcresult -retry-tests-on-failure -test-iterations 2 "${SELECT[@]}" \
             > build/screens.log 2>&1 || status=$?
-          grep -E "error:|warning: .*\.swift|Test Case .*(passed|failed)|Executed [0-9]+ tests|\*\* TEST|: error|Not on screen|not received|Wait for .* to idle" build/screens.log | cut -c1-400 | head -200 || true
+          grep -E "error:|warning: .*\.swift|Test Case .*(passed|failed)|Executed [0-9]+ tests|\*\* TEST|: error|Not on screen|not received" build/screens.log | cut -c1-400 | head -200 || true
           if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -80 build/screens.log | cut -c1-600; fi
           ls build/screens | head -100
           exit "$status"
@@ -79,15 +111,15 @@ jobs:
             sips -Z 1300 -s format jpeg -s formatOptions 55 "$f" --out "small/$(basename "${f%.png}").jpg" > /dev/null
           done
           cp screens/audit.txt small/ 2>/dev/null || true
-          grep -E "^\s+t = +[0-9.]+s (Wait for|Tap|Open|Launch|Terminate|Checking|Find|Synthesize)|Test Case" screens.log | cut -c1-200 > small/timing.txt 2>/dev/null || true
           echo "-----BEGIN SCREENS-----"
-          tar -cf - small | base64 -b 76
+          COPYFILE_DISABLE=1 tar -cf - small | base64 -b 76
           echo "-----END SCREENS-----"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: scan-screens
+          name: scan-screens-${{ matrix.slug }}
           path: |
             ios/build/screens
             ios/build/screens.log
+            ios/build/screens-build.log
           retention-days: 14

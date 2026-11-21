@@ -14,7 +14,7 @@ struct RootTabView: View {
             HomeView(openSettings: { tab = .settings }, openLibrary: { tab = .library })
                 .tabItem { Label("Scanner", systemImage: "viewfinder") }
                 .tag(AppTab.home)
-            LibraryView()
+            LibraryView(openSettings: { tab = .settings })
                 .tabItem { Label("Mes plats", systemImage: "square.grid.2x2.fill") }
                 .tag(AppTab.library)
             SettingsView()

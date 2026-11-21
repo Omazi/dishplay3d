@@ -1,7 +1,11 @@
 Changing this file (on main or on a claude/ branch) starts the screen check:
 .github/workflows/ios-screens.yml opens every screen of the app in the iPhone simulator,
-keeps a picture of each and runs Apple's accessibility audit.
+keeps a picture of each and runs Apple's accessibility audit. See docs/SCREEN_CHECK.md.
 
-A line "only: testLight" (or testDark, testLargeText) runs that walk alone; without it, all three.
+Two optional lines, each alone on its line:
+  "only:" followed by light, dark or largeText runs that walk alone (all three without it);
+  "devices:" followed by all adds an iPhone with iOS 18 and the smallest screen to the reference iPhone.
 
-run 2
+devices: all
+
+run 3

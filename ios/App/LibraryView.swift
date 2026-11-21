@@ -3,6 +3,7 @@ import SwiftUI
 /// Every dish scanned with this iPhone. Scan as many as needed, one after another: each keeps its own
 /// name, picture and files.
 struct LibraryView: View {
+    let openSettings: () -> Void
     @EnvironmentObject var model: AppModel
     @State private var dishes: [DishRecord] = []
     @Namespace private var zoom
@@ -19,9 +20,11 @@ struct LibraryView: View {
                     } description: {
                         Text("Les plats scannés apparaîtront ici, avec leur modèle 3D.")
                     } actions: {
+                        // The next thing to do: scan, or first link the calculator that computes the models.
                         if model.paired && model.trackingSupported {
-                            Button("Scanner un plat") { model.screen = .scan }
-                                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(Theme.accent)
+                            emptyAction("Scanner un plat") { model.screen = .scan }
+                        } else if !model.paired {
+                            emptyAction("Relier le calculateur", action: openSettings)
                         }
                     }
                 } else {
@@ -64,6 +67,16 @@ struct LibraryView: View {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
         }
+    }
+
+    /// The action of the empty screen, in the app's own action colours (the system's prominent style writes in
+    /// white, which is hard to read on the lighter blue of the dark appearance).
+    private func emptyAction(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.subheadline.weight(.semibold))
+                .padding(.horizontal, Spacing.l).frame(minHeight: 48)
+        }
+        .buttonStyle(PrimaryButtonStyle(tint: Theme.accent, enabled: true))
     }
 
     private func reload() { dishes = DishLibrary.all() }

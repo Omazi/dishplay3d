@@ -6,6 +6,8 @@ struct SettingsView: View {
     @AppStorage("preview.showProvenance") private var showProvenance = false
     @EnvironmentObject var model: AppModel
     @State private var manual = false
+    /// The numbered discs of the steps grow with the text they hold.
+    @ScaledMetric(relativeTo: .footnote) private var stepDisc = 24.0
 
     var body: some View {
         NavigationStack {
@@ -133,7 +135,8 @@ struct SettingsView: View {
 
     private func step(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Text("\(n)").font(.footnote.bold()).frame(minWidth: 24, minHeight: 24).background(Theme.accent, in: Circle()).foregroundStyle(Theme.onAccent)
+            Text("\(n)").font(.footnote.bold()).frame(width: stepDisc, height: stepDisc)
+                .background(Theme.accent, in: .circle).foregroundStyle(Theme.onAccent)
             Text(text).font(.subheadline).foregroundStyle(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)
         }
     }

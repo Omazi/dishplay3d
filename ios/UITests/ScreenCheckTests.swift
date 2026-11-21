@@ -10,9 +10,10 @@ import XCTest
 /// real engine).
 @MainActor
 final class ScreenCheckTests: XCTestCase {
-    func testLight() { walk(.light) }
-    func testDark() { walk(.dark) }
-    func testLargeText() { walk(.largeText) }
+    // Numbered so that they run in this order: the light walk is the one looked at first.
+    func test1Light() { walk(.light) }
+    func test2Dark() { walk(.dark) }
+    func test3LargeText() { walk(.largeText) }
 
     private func walk(_ look: Look) {
         continueAfterFailure = true
@@ -59,6 +60,8 @@ final class ScreenCheckTests: XCTestCase {
             app.swipeUp()
             settle(1)
             record.capture("09-accueil-bas", app, audit: false)
+            // After a scroll down the tab bar of iOS 26 shrinks to the current tab alone: start again from the top.
+            app = launch(look, paired: true, sample: true)
             open(tab: "Mes plats", in: app)
             settle(1.5)
             record.capture("10-plats", app)
@@ -148,12 +151,7 @@ final class ScreenCheckTests: XCTestCase {
 
     private func open(tab name: String, in app: XCUIApplication) {
         let inBar = app.tabBars.buttons[name].firstMatch
-        if !inBar.waitForExistence(timeout: 4) {
-            // After a scroll down the tab bar shrinks to the current tab alone: scrolling back up brings it back.
-            app.swipeDown()
-            settle(1)
-        }
-        let button = inBar.waitForExistence(timeout: 4) ? inBar : app.buttons[name].firstMatch
+        let button = inBar.waitForExistence(timeout: 8) ? inBar : app.buttons[name].firstMatch
         if appears(button, within: 8) { button.tap() }
         settle(1)
     }

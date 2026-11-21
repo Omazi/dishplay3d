@@ -5,6 +5,8 @@
   Son apparence tient dans `ios/App/DesignSystem/` (couleurs par rôle, styles de texte, boutons, verre) ; les valeurs
   des couleurs, clair et sombre, sont dans une seule table : `tools/ios_colors.py` (l'exécuter après modification,
   `--check` pour vérifier). Identité : celle du site (papier, encre, bleu), une seule couleur d'action.
+  Avant une version : le contrôle des écrans (`docs/SCREEN_CHECK.md`) photographie chaque écran dans le simulateur
+  de GitHub ; regarder les images avant de publier.
 - `backend/` : calculateur (FastAPI + moteur de reconstruction Python). Tests : `cd backend && .venv/bin/python -m pytest -q`.
 - `db/` : modèle de base de données (PostgreSQL) et plan de stockage des fichiers. Voir `db/README.md`.
 - `colab/`, `tools/` : essai de reconstruction neuronale et outils.

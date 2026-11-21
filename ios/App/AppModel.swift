@@ -136,7 +136,48 @@ final class AppModel: ObservableObject {
             }
         }
         if next != dishProgress { dishProgress = next }
+        // Finished dishes that miss a file. Only when the calculator is known to answer, and no further than the
+        // first dish it does not answer for: otherwise every dish would wait for its own time-out.
+        if reachable == true {
+            for dish in DishLibrary.all() where dish.state == .ready {
+                guard let arrived = await completeFiles(of: dish) else { break }
+                if arrived { received = true }
+            }
+        }
         return received
+    }
+
+    /// How many times the missing files of a dish were asked for since the app was opened.
+    private var fileRequests: [String: Int] = [:]
+
+    /// A finished dish can miss some of its files: a download was cut, or the dish was received by an earlier
+    /// version of the app that did not know them (the model for augmented reality). Returns true when a file
+    /// arrived, false when there was nothing to do, nil when the calculator did not answer.
+    private func completeFiles(of dish: DishRecord) async -> Bool? {
+        var wanted: [String] = []
+        if dish.arModel == nil { wanted.append("model.usdz") }
+        if dish.model == nil { wanted.append("model.glb") }
+        if dish.geometry == nil { wanted.append("final_preview.dpg") }
+        guard !wanted.isEmpty, fileRequests[dish.id, default: 0] < 2, let t = transport, let sid = dish.serverSessionID else { return false }
+        let files: [String]
+        do {
+            files = try await t.artifacts(sessionID: sid)
+        } catch is TransportError {
+            // The calculator answered, but not with this dish's files (it no longer knows the dish, for example).
+            fileRequests[dish.id, default: 0] += 1
+            return false
+        } catch {
+            return nil
+        }
+        fileRequests[dish.id, default: 0] += 1
+        guard let store = try? SessionStore(resuming: dish.id) else { return false }
+        var arrived = false
+        for name in wanted where files.contains(name) {
+            if let data = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: data)) != nil {
+                arrived = true
+            }
+        }
+        return arrived
     }
 
     /// Send the views still on the iPhone, then start (or restart) the final calculation for this dish.
