@@ -38,7 +38,7 @@ print("Carte graphique visible par PyTorch :", torch.cuda.get_device_name(0))
 """),
         md("## 2. Installer les outils (1 à 3 minutes)"),
         code("""
-!pip -q install gsplat imageio imageio-ffmpeg
+!pip -q install gsplat==1.5.3
 !python -c "import gsplat; print('gsplat', gsplat.__version__)"
 """),
         md("## 3. Le programme de calcul\n\nRien à modifier : cette cellule écrit le programme sur la machine Colab."),
@@ -72,10 +72,10 @@ print({k: v for k, v in rep.items() if k != "log"})
 display(Image("/content/resultat/compare.jpg"))
 display(Image("/content/resultat/preview.jpg"))
 try:
-    b = base64.b64encode(open("/content/resultat/turntable.mp4", "rb").read()).decode()
-    display(HTML(f'<video width="640" controls loop autoplay muted src="data:video/mp4;base64,{b}"></video>'))
+    b = base64.b64encode(open("/content/resultat/turntable.webp", "rb").read()).decode()
+    display(HTML(f'<img width="640" alt="Le modèle qui tourne" src="data:image/webp;base64,{b}">'))
 except FileNotFoundError:
-    print("Pas de vidéo (voir le message plus haut)")
+    print("Pas d'animation (voir le message plus haut)")
 """),
         md("## 7. Télécharger\n\n`splat.ply` s'ouvre dans un visualiseur de splats (par exemple https://superspl.at/editor : glisser le fichier dans la page)."),
         code("""

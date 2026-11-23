@@ -2,12 +2,12 @@
 """Train a Gaussian-splatting model of a scanned dish from a dataset made by export_splat_dataset.py.
 
 Needs an NVIDIA GPU (Google Colab, a cloud machine, or a local card) with PyTorch and gsplat:
-  pip install gsplat imageio imageio-ffmpeg
+  pip install gsplat==1.5.3
   python backend/reconstruction/splat_train.py --data <folder or zip> --out <folder> [--steps 7000]
 
 Outputs in --out:
   splat.ply         the model (standard 3DGS PLY, object frame, metres, +y up), cropped to the scan box
-  turntable.mp4     the model turning, rendered from viewpoints that were never photographed
+  turntable.webp    the model turning (animated picture), rendered from viewpoints that were never photographed
   compare.jpg       held-out real photos (left) next to the model seen from the same camera (right)
   report.json       held-out PSNR inside the box, number of Gaussians, timings
 
@@ -336,14 +336,13 @@ def export(data, params, sh_degree, rasterize, out: Path, device) -> dict:
         colors, _, _ = render(p, vm, K[None], tw, th, sh_degree, rasterize, bg=white)
         frames.append((colors[0].clamp(0, 1) * 255).byte().cpu().numpy())
     video = None
-    try:
-        import imageio.v2 as imageio
-        with imageio.get_writer(str(out / "turntable.mp4"), fps=30, codec="libx264", quality=8, macro_block_size=None) as wr:
-            for f in frames:
-                wr.append_data(f)
-        video = "turntable.mp4"
-    except Exception as exc:   # no ffmpeg: keep still pictures instead of failing the whole run
-        print("video not written:", repr(exc))
+    try:   # an animated picture written by Pillow: every browser shows it, and no video encoder is needed
+        from PIL import Image
+        stills = [Image.fromarray(f) for f in frames]
+        stills[0].save(str(out / "turntable.webp"), save_all=True, append_images=stills[1:], duration=33, loop=0, quality=80, method=4)
+        video = "turntable.webp"
+    except Exception as exc:   # keep the still pictures instead of failing the whole run
+        print("animation not written:", repr(exc))
     cv2.imwrite(str(out / "preview.jpg"), np.concatenate([frames[k] for k in (0, 30, 60, 90)], 1)[:, :, ::-1],
                 [cv2.IMWRITE_JPEG_QUALITY, 90])
     return {"exported_gaussians": int(keep.sum()), "video": video}

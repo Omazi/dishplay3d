@@ -29,7 +29,7 @@ def neural_available() -> tuple[bool, str]:
 
 def run_neural(session_dir: Path, final_dir: Path, emit: Callable[[dict], None] = lambda e: None, steps: int = 7000,
                max_width: int = 1280, device: str = "cuda", rasterize=None) -> dict:
-    """Export the session, train, and put splat.ply / turntable.mp4 / compare.jpg / neural_report.json in final_dir."""
+    """Export the session, train, and put splat.ply / turntable.webp / compare.jpg / neural_report.json in final_dir."""
     from .splat_export import export
     from .splat_train import load_dataset, train
     t0 = time.time()
@@ -42,7 +42,7 @@ def run_neural(session_dir: Path, final_dir: Path, emit: Callable[[dict], None] 
     rep = train(data, work / "out", steps=steps, device=device, rasterize=rasterize,
                 progress=lambda d, t: emit({"type": "finish_progress", "step": "neural", "done": int(d), "total": int(t)}))
     files = []
-    for name in ("splat.ply", "turntable.mp4", "compare.jpg", "preview.jpg"):
+    for name in ("splat.ply", "turntable.webp", "compare.jpg", "preview.jpg"):
         src = work / "out" / name
         if src.exists():
             dst = final_dir / ("neural_" + name if name in ("compare.jpg", "preview.jpg") else name)

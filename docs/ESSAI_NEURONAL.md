@@ -7,8 +7,12 @@ mêmes images que le scan actuel. C'est un essai manuel, pas encore intégré à
 - **Testé** : la préparation du jeu de données (test automatique + vérification sur une vraie capture iPhone) ;
   le programme d'entraînement `backend/reconstruction/splat_train.py` en essai à blanc sur processeur (lecture des données, repère
   des caméras, boucle, évaluation, export du modèle, vidéo), avec un rendu factice à la place de la carte graphique.
+- **Vérifié à la lecture** (23 novembre) : les appels du programme à la bibliothèque gsplat, comparés au code de la
+  version 1.5.3 que le carnet installe désormais (fonctions, paramètres, contenu des résultats).
 - **Jamais exécuté** : le vrai rendu sur carte graphique, donc aucun résultat visuel n'existe encore.
   Le premier sortira chez vous.
+- L'animation du plat qui tourne est maintenant une image animée (`turntable.webp`), écrite sans encodeur vidéo :
+  l'ancien fichier MP4 passait par un encodeur sous GPL, contraire à la règle de licences du projet.
 
 ## A. Préparer le scan (sur le PC)
 
@@ -19,13 +23,15 @@ mêmes images que le scan actuel. C'est un essai manuel, pas encore intégré à
 
 ## B. Calculer dans Google Colab (recommandé)
 
-1. Ouvrir <https://colab.research.google.com> → *Fichier → Importer le notebook* → choisir `colab/essai_neuronal.ipynb`
+1. Ouvrir le carnet dans Colab : tant que le dépôt est public, ce lien suffit :
+   <https://colab.research.google.com/github/Omazi/dishplay3d/blob/main/colab/essai_neuronal.ipynb>.
+   Sinon : <https://colab.research.google.com> → *Fichier → Importer le notebook* → choisir `colab/essai_neuronal.ipynb`
    (dans le dossier du projet après `git pull`).
 2. *Exécution → Modifier le type d'exécution → GPU T4*.
 3. Lancer les cellules de haut en bas. À l'étape « Envoyer le scan », choisir `splat_dataset.zip`.
 4. La première exécution compile la bibliothèque pour la carte graphique : plusieurs minutes sans affichage.
-5. À la fin : une image « vraie photo | modèle », une vidéo du plat qui tourne, et un zip à télécharger.
-6. M'envoyer l'image de comparaison et une capture de la vidéo (ou le zip).
+5. À la fin : une image « vraie photo | modèle », une animation du plat qui tourne, et un zip à télécharger.
+6. M'envoyer l'image de comparaison et une capture de l'animation (ou le zip).
 
 Si une cellule affiche une erreur en rouge : m'envoyer une capture du message, sans rien corriger.
 
