@@ -10,10 +10,17 @@ final class SessionStore: @unchecked Sendable {
     private var pending: [Int] = []
     private(set) var savedCount = 0
     private(set) var sentCount = 0
+    /// The folder was removed from the iPhone (scan abandoned): nothing may be written into it any more.
+    private var removed = false
+
+    #if DEBUG
+    /// The unit tests keep their dishes in a folder of their own. Debug builds only.
+    static var directoryOverride: URL?
+    #endif
 
     static var sessionsDirectory: URL {
         #if DEBUG
-        if let folder = UITestMode.sessions { return folder }
+        if let folder = directoryOverride ?? UITestMode.sessions { return folder }
         #endif
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return docs.appendingPathComponent("Sessions", isDirectory: true)
@@ -59,7 +66,67 @@ final class SessionStore: @unchecked Sendable {
 
     func setServerSession(_ sid: String) { try? Data(sid.utf8).write(to: marker("server_session.txt"), options: .atomic) }
     func markFinishRequested() { FileManager.default.createFile(atPath: marker("finish.requested").path, contents: Data()) }
-    func markAbandoned() { FileManager.default.createFile(atPath: marker("abandoned").path, contents: Data()) }
+
+    // MARK: abandoning a scan
+
+    /// Earlier versions of the app only wrote this empty file in the folder of an abandoned scan and kept its
+    /// views. The app no longer writes it; it still recognises it, to remove those folders (`removeLeftovers`).
+    static let abandonedMarker = "abandoned"
+
+    private var isRemoved: Bool { lock.lock(); defer { lock.unlock() }; return removed }
+
+    /// The person gives this scan up: its views and everything else in its folder leave the iPhone.
+    func delete() {
+        lock.lock()
+        removed = true
+        pending.removeAll()
+        lock.unlock()
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    /// Same, for a scan that is not open (the interrupted scan offered on the home screen).
+    static func delete(localID: String) {
+        guard !localID.isEmpty, !localID.contains("/") else { return }
+        try? FileManager.default.removeItem(at: sessionsDirectory.appendingPathComponent(localID, isDirectory: true))
+    }
+
+    /// Remove the folders the app does not show and never will: scans abandoned with an earlier version of the
+    /// app (marked, but their views kept), and folders in which no view was ever saved. A folder that holds a
+    /// result is always kept. Called once when the app starts. Returns how many folders were removed.
+    @discardableResult
+    static func removeLeftovers() -> Int {
+        let fm = FileManager.default
+        var count = 0
+        for name in (try? fm.contentsOfDirectory(atPath: sessionsDirectory.path)) ?? [] {
+            let root = sessionsDirectory.appendingPathComponent(name, isDirectory: true)
+            var isFolder: ObjCBool = false
+            guard fm.fileExists(atPath: root.path, isDirectory: &isFolder), isFolder.boolValue else { continue }
+            let results = root.appendingPathComponent("results", isDirectory: true)
+            if fm.fileExists(atPath: results.appendingPathComponent("apercu.png").path) { continue }
+            if fm.fileExists(atPath: results.appendingPathComponent("model.glb").path) { continue }
+            let abandoned = fm.fileExists(atPath: root.appendingPathComponent(abandonedMarker).path)
+            let views = (try? fm.contentsOfDirectory(atPath: root.appendingPathComponent("frames").path)) ?? []
+            guard abandoned || views.isEmpty else { continue }
+            if (try? fm.removeItem(at: root)) != nil { count += 1 }
+        }
+        return count
+    }
+
+    // MARK: how the final model came out
+
+    private static func outcomeFile(in root: URL) -> URL { root.appendingPathComponent("outcome.json") }
+
+    /// Keep the calculator's verdict on the final model, and what it had to give up, with the dish.
+    func saveOutcome(_ outcome: FinalOutcome) {
+        guard !outcome.isEmpty, !isRemoved, let data = try? outcome.jsonData() else { return }
+        try? data.write(to: SessionStore.outcomeFile(in: root), options: .atomic)
+    }
+
+    /// What was kept by `saveOutcome` for the dish in this folder; nil when the calculator said nothing.
+    static func outcome(in root: URL) -> FinalOutcome? {
+        guard let data = try? Data(contentsOf: outcomeFile(in: root)) else { return nil }
+        return FinalOutcome.read(data)
+    }
 
     /// Most recent session that reached the calculator but was neither finished nor abandoned on purpose.
     static func unfinished() -> Unfinished? {
@@ -68,7 +135,7 @@ final class SessionStore: @unchecked Sendable {
         for d in dirs.prefix(5) {
             let root = sessionsDirectory.appendingPathComponent(d, isDirectory: true)
             if fm.fileExists(atPath: root.appendingPathComponent("finish.requested").path) { continue }
-            if fm.fileExists(atPath: root.appendingPathComponent("abandoned").path) { continue }
+            if fm.fileExists(atPath: root.appendingPathComponent(abandonedMarker).path) { continue }
             guard let sidData = try? Data(contentsOf: root.appendingPathComponent("server_session.txt")),
                   let sid = String(data: sidData, encoding: .utf8), !sid.isEmpty else { continue }
             let (all, sent) = frameIDs(in: root)
@@ -89,6 +156,8 @@ final class SessionStore: @unchecked Sendable {
     }
 
     func save(frameID: Int, jpeg: Data, meta: Data, depth: Data?, confidence: Data?) throws {
+        // A view still being prepared when the scan was abandoned must not bring its folder back.
+        guard !isRemoved else { throw CocoaError(.fileNoSuchFile) }
         try jpeg.write(to: url(frameID, "jpg"), options: .atomic)
         if let depth { try depth.write(to: url(frameID, "depth"), options: .atomic) }
         if let confidence { try confidence.write(to: url(frameID, "conf"), options: .atomic) }
@@ -122,6 +191,7 @@ final class SessionStore: @unchecked Sendable {
     }
 
     func saveArtifact(name: String, data: Data) throws -> URL {
+        guard !isRemoved else { throw CocoaError(.fileNoSuchFile) }
         let dir = root.appendingPathComponent("results", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let safe = name.replacingOccurrences(of: "/", with: "_")

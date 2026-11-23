@@ -27,15 +27,29 @@ final class CaptureScheduler {
     private let maxInFlight = 3
     private let encodeQueue = DispatchQueue(label: "app.dishplay.scan.encode", qos: .userInitiated)
     private var inFlight = 0
+    /// Changes at each `reset`: a view prepared for the previous tour is not counted in the new one.
+    private var tour = 0
+
+    /// Why a view chosen by the scheduler is not on the iPhone.
+    enum Failure: Equatable {
+        /// The iPhone has no room left.
+        case noSpace
+        /// The view could not be written for another reason.
+        case storage
+        /// The picture could not be prepared.
+        case encoding
+    }
 
     var onSaved: (@MainActor (Int) -> Void)?   // frame id saved on disk
-    var onError: (@MainActor (String) -> Void)?
+    /// A view could not be kept. It is not counted in the coverage ring: the person is told instead.
+    var onError: (@MainActor (Failure) -> Void)?
 
     func reset() {
         selector.reset()
         ring = CoverageRing()
         status = Status()
         lastEval = 0
+        tour += 1
     }
 
     /// `worldFromCam` is the camera pose expressed in the frozen box world (see ScanController.cameraPose).
@@ -81,7 +95,10 @@ final class CaptureScheduler {
             if let cm = sd.confidenceMap { conf = FrameEncoder.packed(cm, bytesPerPixel: 1) }
             dsize = (CVPixelBufferGetWidth(sd.depthMap), CVPixelBufferGetHeight(sd.depthMap))
         }
-        ring.add(cameraInObject: camInObj, boxHeight: Double(box.height))
+        // The view enters the coverage ring only once it is really on the iPhone (see the end of this function):
+        // a ring that fills while nothing is kept would tell the person the tour is done.
+        let boxHeight = Double(box.height)
+        let currentTour = tour
         let fid = nextFrameID
         nextFrameID += 1
         let captured = CapturedFrame(frameID: fid, epoch: epoch, timestamp: frame.timestamp, pixelBuffer: copy, intrinsics: K,
@@ -98,19 +115,27 @@ final class CaptureScheduler {
         selector.minInterval = ProcessInfo.processInfo.thermalState == .serious ? 0.6 : 0.25
         encodeQueue.async { [weak self] in
             let result = Result { try FrameEncoder.encode(captured, sessionID: store.localID) }
-            var errorText: String?
+            var problem: Failure?
             if case .success(let enc) = result {
-                do { try store.save(frameID: fid, jpeg: enc.jpeg, meta: enc.meta, depth: captured.depth, confidence: captured.confidence) }
-                catch { errorText = "Stockage impossible : \(error.localizedDescription)" }
-            } else if case .failure(let e) = result {
-                errorText = "Encodage impossible : \(e.localizedDescription)"
+                do {
+                    try store.save(frameID: fid, jpeg: enc.jpeg, meta: enc.meta, depth: captured.depth, confidence: captured.confidence)
+                } catch {
+                    problem = (error as? CocoaError)?.code == .fileWriteOutOfSpace ? .noSpace : .storage
+                }
+            } else {
+                problem = .encoding
             }
-            let failure = errorText
+            let failure = problem
             Task { @MainActor in
                 guard let self else { return }
                 self.inFlight -= 1
                 self.status.inFlight = self.inFlight
-                if let failure { self.onError?(failure) } else { self.onSaved?(fid) }
+                if let failure {
+                    self.onError?(failure)
+                } else {
+                    if currentTour == self.tour { self.ring.add(cameraInObject: camInObj, boxHeight: boxHeight) }
+                    self.onSaved?(fid)
+                }
             }
         }
     }

@@ -56,5 +56,9 @@ struct ScannerHost: View {
         _controller = StateObject(wrappedValue: ScanController(transport: transport, useLidar: useLidar, referenceWidthCm: referenceWidthCm))
     }
 
-    var body: some View { ScannerView(controller: controller) }
+    var body: some View {
+        ScannerView(controller: controller)
+            // Whatever way the screen is left, the scan stops with it: camera, sending and events.
+            .onDisappear { controller.stop() }
+    }
 }

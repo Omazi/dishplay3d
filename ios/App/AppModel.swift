@@ -25,6 +25,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var healthText: String?
     /// Whether the linked calculator answered the last time it was asked; nil while that is not known.
     @Published private(set) var reachable: Bool?
+    /// The linked calculator answered and is older than this app expects (engine before p1-0.11.0): it cannot
+    /// take a new scan while it finishes a dish. False while nothing is known.
+    @Published private(set) var calculatorOutdated = false
     @Published private(set) var transport: ScanTransport?
     /// A scan interrupted by closing the app: its views are still on the iPhone.
     @Published private(set) var pendingScan: SessionStore.Unfinished?
@@ -44,26 +47,31 @@ final class AppModel: ObservableObject {
             if UITestMode.scanMoment != nil { screen = .scan }
         }
         #endif
+        // Scans abandoned with an earlier version of the app were only hidden: their views leave the iPhone now.
+        SessionStore.removeLeftovers()
         pendingScan = SessionStore.unfinished()
     }
 
     func refreshPending() { pendingScan = SessionStore.unfinished() }
 
+    /// The person gives the interrupted scan up: its views are removed from the iPhone, as the card says.
     func discardPending() {
-        if let p = pendingScan, let store = try? SessionStore(resuming: p.localID) { store.markAbandoned() }
+        if let p = pendingScan { SessionStore.delete(localID: p.localID) }
         pendingText = nil
         refreshPending()
     }
 
-    /// Send the views that never reached the calculator, then start the finishing there.
+    /// Send the views that never reached the calculator, then ask it for the final model.
     func resumePending() async {
         guard let p = pendingScan, let t = transport, !pendingBusy else { return }
         pendingBusy = true
         defer { pendingBusy = false }
         do {
             let store = try SessionStore(resuming: p.localID)
-            pendingText = "Réouverture de la session sur le PC…"
-            try await t.post("sessions/\(p.serverSessionID)/resume_worker")
+            pendingText = "Réouverture du scan sur le calculateur…"
+            // Needed by a calculator older than the queue, which answers 409 here while it finishes another dish;
+            // harmless with a newer one, which keeps the views and the request whatever it is doing.
+            _ = try await t.resumeWorker(sessionID: p.serverSessionID)
             var sent = 0
             let total = store.pendingCount
             while let fid = store.nextPending() {
@@ -73,28 +81,53 @@ final class AppModel: ObservableObject {
                 sent += 1
                 pendingText = "Envoi des vues \(sent)/\(total)…"
             }
-            try await t.post("sessions/\(p.serverSessionID)/finish")
+            let answer = try await t.finish(sessionID: p.serverSessionID)
             store.markFinishRequested()
-            pendingText = "Finition lancée sur le calculateur. Le plat apparaîtra dans Mes plats quand son modèle sera prêt."
+            pendingText = answer.queued
+                ? "Le calculateur termine un autre plat : celui-ci passera ensuite, tout seul. Il apparaîtra dans Mes plats quand son modèle sera prêt."
+                : "Finition lancée sur le calculateur. Le plat apparaîtra dans Mes plats quand son modèle sera prêt."
             pendingScan = nil
+        } catch let TransportError.http(code, _) where code == 404 {
+            pendingText = "Le calculateur ne connaît plus ce scan. Vous pouvez l’abandonner."
+        } catch let TransportError.http(code, _) where code == 409 {
+            pendingText = Self.busyText
         } catch {
-            if let te = error as? TransportError, case .http(404, _) = te {
-                pendingText = "Le PC ne connaît plus cette session (données déplacées ?). Vous pouvez l’ignorer."
-            } else {
-                pendingText = Self.explain(error)
-            }
+            pendingText = Self.explain(error)
         }
     }
+
+    /// Said when a calculator without a queue refuses a dish because it is finishing another one.
+    static let busyText = "Le calculateur termine un autre plat. Réessayez quand il aura fini."
 
     /// Where an unfinished dish stands, in words for the library.
     struct DishProgress: Equatable {
         var text: String
         var fraction: Double?
+        /// The dish screen shows its button.
         var canComplete: Bool
+        /// The final calculation failed: the button asks for it again (nothing is left to send).
+        var restart = false
+
+        init(text: String, fraction: Double?, canComplete: Bool, restart: Bool = false) {
+            self.text = text
+            self.fraction = fraction
+            self.canComplete = canComplete
+            self.restart = restart
+        }
+
+        /// From what the calculator answers about the dish (`DishStanding`, in ScanCore, where it is tested).
+        init(_ standing: DishStanding) {
+            text = standing.text
+            fraction = standing.fraction
+            canComplete = standing.action != nil
+            restart = standing.action == .restart
+        }
     }
 
     @Published private(set) var dishProgress: [String: DishProgress] = [:]
     @Published private(set) var completingDish: String?
+    /// Goes up each time a file of a dish arrives on the iPhone: the screens that show a dish read it again.
+    @Published private(set) var libraryRevision = 0
 
     /// Ask the calculator about every dish without a model. Returns true when a model was downloaded.
     func refreshDishProgress() async -> Bool {
@@ -113,21 +146,11 @@ final class AppModel: ObservableObject {
             do {
                 let info = try await t.sessionInfo(sessionID: sid)
                 if info.ready {
-                    if await download(dish: dish, sessionID: sid, transport: t) { received = true }
-                } else if let done = info.done, let total = info.total, total > 1 {
-                    let names = ["poses": "Recalage des vues", "depth": "Calcul du modèle", "neural": "Rendu neuronal"]
-                    let stepKey = info.step ?? "depth"
-                    let stepName = names[stepKey] ?? "Calcul du modèle"
-                    next[dish.id] = DishProgress(text: "\(stepName) · \(done)/\(total)",
-                                                 fraction: min(1, Double(done) / Double(total)), canComplete: false)
-                } else if info.active && info.state == "finishing" {
-                    next[dish.id] = DishProgress(text: "Calcul du modèle en cours…", fraction: nil, canComplete: false)
-                } else if info.busyWithOther {
-                    next[dish.id] = DishProgress(text: "En attente : un autre plat est en cours de calcul", fraction: nil, canComplete: false)
-                } else if dish.pendingViews > 0 {
-                    next[dish.id] = DishProgress(text: "\(dish.pendingViews) vues à envoyer", fraction: nil, canComplete: true)
+                    if await download(dish: dish, sessionID: sid, transport: t, outcome: info.outcome) { received = true }
                 } else {
-                    next[dish.id] = DishProgress(text: "Calcul arrêté", fraction: nil, canComplete: true)
+                    // Waiting its turn (with its place), being calculated, failed (with the calculator's sentence
+                    // and a button to ask again), views to send, or stopped.
+                    next[dish.id] = DishProgress(DishStanding(info, pendingViews: dish.pendingViews))
                 }
             } catch let TransportError.http(code, _) where code == 404 {
                 next[dish.id] = DishProgress(text: "Inconnu du calculateur", fraction: nil, canComplete: false)
@@ -144,6 +167,7 @@ final class AppModel: ObservableObject {
                 if arrived { received = true }
             }
         }
+        if received { libraryRevision += 1 }
         return received
     }
 
@@ -185,7 +209,7 @@ final class AppModel: ObservableObject {
         return arrived
     }
 
-    /// Send the views still on the iPhone, then start (or restart) the final calculation for this dish.
+    /// Send the views still on the iPhone, then ask for the final model of this dish (again, after a failure).
     func complete(_ dish: DishRecord) async {
         guard completingDish == nil, let t = transport, let sid = dish.serverSessionID else { return }
         completingDish = dish.id
@@ -194,7 +218,8 @@ final class AppModel: ObservableObject {
         do {
             let store = try SessionStore(resuming: dish.id)
             say("Réouverture du scan sur le calculateur…")
-            try await t.post("sessions/\(sid)/resume_worker")
+            // See `resumePending`: an older calculator needs this, and refuses it (409) while it finishes another dish.
+            _ = try await t.resumeWorker(sessionID: sid)
             let total = store.pendingCount
             var sent = 0
             while let fid = store.nextPending() {
@@ -204,18 +229,20 @@ final class AppModel: ObservableObject {
                 sent += 1
                 say("Envoi des vues \(sent)/\(total)", Double(sent) / Double(max(total, 1)))
             }
-            try await t.post("sessions/\(sid)/finish")
+            let answer = try await t.finish(sessionID: sid)
             store.markFinishRequested()
-            say("Calcul du modèle lancé…")
+            say(answer.queued ? QueueWording.waiting(answer.position) : "Calcul du modèle lancé…")
         } catch let TransportError.http(code, _) where code == 409 {
-            dishProgress[dish.id] = DishProgress(text: "Un autre plat est en cours de calcul. Réessayez quand il sera terminé.", fraction: nil, canComplete: true)
+            dishProgress[dish.id] = DishProgress(text: Self.busyText, fraction: nil, canComplete: true)
         } catch {
             dishProgress[dish.id] = DishProgress(text: Self.explain(error), fraction: nil, canComplete: true)
         }
     }
 
-    private func download(dish: DishRecord, sessionID sid: String, transport t: ScanTransport) async -> Bool {
+    private func download(dish: DishRecord, sessionID sid: String, transport t: ScanTransport, outcome: FinalOutcome?) async -> Bool {
         guard let files = try? await t.artifacts(sessionID: sid), let store = try? SessionStore(resuming: dish.id) else { return false }
+        // What the calculator says of the final model is kept with the dish, for the screens to show.
+        if let outcome { store.saveOutcome(outcome) }
         var got = false
         for name in ["final_preview.dpg", "apercu.png", "model.glb", "model.usdz", "report.json"] where files.contains(name) {
             if let d = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: d)) != nil { got = true }
@@ -279,22 +306,28 @@ final class AppModel: ObservableObject {
     }
 
     func checkHealth() async {
-        guard let t = transport else { healthText = nil; reachable = nil; return }
+        guard let t = transport else { healthText = nil; reachable = nil; calculatorOutdated = false; return }
         do {
             let (h, rtt) = try await t.health()
             healthText = "Calculateur joignable (\(Int(rtt * 1000)) ms) · moteur \(h.engine)"
             reachable = true
+            calculatorOutdated = !EngineVersion.hasQueue(h.engine)
         } catch {
             healthText = Self.explain(error)
             reachable = false
         }
     }
 
+    /// Stop using the linked calculator. Its token leaves the iPhone's keychain too: it used to stay there.
     func forget() {
+        if let t = transport { Keychain.delete(account: t.baseURL.absoluteString) }
+        if let saved = UserDefaults.standard.string(forKey: "calc.url") { Keychain.delete(account: saved) }
+        transport?.disconnectEvents()
         transport = nil
         paired = false
         healthText = nil
         reachable = nil
+        calculatorOutdated = false
         UserDefaults.standard.removeObject(forKey: "calc.url")
         UserDefaults.standard.removeObject(forKey: "calc.fp")
     }
@@ -316,10 +349,15 @@ final class AppModel: ObservableObject {
             default: break
             }
         }
-        if let t = error as? TransportError, case .http(let status, let detail) = t {
+        // The calculator's own words for a refusal are in English and technical: they are not shown.
+        if let t = error as? TransportError, case .http(let status, _) = t {
             if status == 403 { return "Code de jumelage refusé : utilisez le code affiché actuellement par le calculateur (il change à chaque démarrage)." }
             if status == 429 { return "Trop d’essais : redémarrez le calculateur pour obtenir un nouveau code." }
-            return "Le calculateur a refusé la demande (erreur \(status)). Relancez-le si le problème persiste. (Détail : \(detail))"
+            // Never "restart the calculator" here: it may be in the middle of another dish, which that would stop.
+            if status == 401 { return "Le calculateur ne reconnaît plus cet iPhone. Reliez-le de nouveau dans Réglages." }
+            if status == 404 { return "Le calculateur ne connaît plus ce scan." }
+            if status == 409 { return busyText }
+            return "Le calculateur n’a pas accepté la demande. Réessayez dans un instant."
         }
         return error.localizedDescription + code
     }

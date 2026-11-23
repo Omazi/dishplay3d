@@ -91,8 +91,9 @@ struct ScannerView: View {
                 Button("Mettre en pause") { controller.pause() }
                 Button("Abandonner le scan", role: .destructive) { leave(abandon: true) }
                 Button("Continuer le scan", role: .cancel) {}
-            case .paused:
-                // The pause card says the scan is kept: leaving must not drop it without a word.
+            case .paused, .needsNewBox:
+                // The pause card says the scan is kept: leaving must not drop it without a word. Same when the
+                // tracking restarted in the middle of a scan: the views taken before are still on the iPhone.
                 Button("Garder le scan pour plus tard") { leave(abandon: false) }
                 Button("Abandonner le scan", role: .destructive) { leave(abandon: true) }
                 Button("Rester", role: .cancel) {}
@@ -132,15 +133,20 @@ struct ScannerView: View {
         Haptics.tap()
         switch controller.phase {
         case .scanning, .paused, .uploadingRest, .finishing: confirmClose = true
-        case .placing, .needsNewBox, .done: leave(abandon: true)
+        case .needsNewBox:
+            // Views exist (the tracking restarted during a scan): ask, as in pause. Without any, nothing to keep.
+            if controller.savedFrames > 0 { confirmClose = true } else { leave(abandon: true) }
+        case .placing, .done: leave(abandon: true)
         }
     }
 
-    /// Back to the home screen. `abandon` marks an unfinished scan as dropped; without it the views
-    /// stay on the iPhone and the scan can be sent later from the home screen.
+    /// Back to the home screen. `abandon` removes an unfinished scan from the iPhone; without it the views
+    /// stay on the iPhone and the scan can be sent later from the home screen. Either way the scan stops
+    /// here: camera, sending and events (`ScanController.stop`).
     private func leave(abandon: Bool) {
-        if abandon { controller.abandonIfUnfinished() }
         if controller.phase == .scanning { controller.pause() }
+        if abandon { controller.abandonIfUnfinished() }
+        controller.stop()
         model.refreshPending()
         if controller.phase == .finishing || controller.phase == .done { model.nextTab = .library }
         model.screen = .connect
@@ -149,7 +155,7 @@ struct ScannerView: View {
     private var closeTitle: String {
         switch controller.phase {
         case .scanning: return "Arrêter ce scan ?"
-        case .paused: return "Quitter ce scan ?"
+        case .paused, .needsNewBox: return "Quitter ce scan ?"
         case .uploadingRest: return "Quitter pendant l’envoi ?"
         default: return "Quitter pendant le calcul ?"
         }
@@ -158,7 +164,7 @@ struct ScannerView: View {
     private var closeMessage: String {
         switch controller.phase {
         case .scanning: return "Vous pouvez le mettre en pause pour le reprendre, ou l’abandonner."
-        case .paused: return "Gardé, le scan reste sur l’iPhone et vous pourrez l’envoyer depuis l’accueil. Abandonné, il est retiré."
+        case .paused, .needsNewBox: return "Gardé, le scan reste sur l’iPhone et vous pourrez l’envoyer depuis l’accueil. Abandonné, ses vues sont effacées de l’iPhone."
         case .uploadingRest: return "Les vues restantes sont gardées sur l’iPhone. Vous pourrez les envoyer depuis l’accueil."
         default: return "Le calcul continue sur le calculateur. Le plat apparaîtra dans Mes plats quand son modèle sera prêt."
         }
@@ -220,9 +226,15 @@ struct ScannerView: View {
         if let failure = ar.failure {
             return (ar.cameraDenied ? "Caméra non autorisée" : "Caméra indisponible", failure, Theme.bad)
         }
+        // Views that cannot be kept on the iPhone: said at once, during the scan too (the ring no longer counts them).
+        if let problem = controller.storageProblem { return ("Vues non enregistrées", problem, Theme.bad) }
         if let e = controller.errorText, controller.phase != .scanning { return ("Un problème est survenu", e, Theme.bad) }
         switch controller.phase {
         case .placing:
+            // An older calculator stops the dish it is finishing when a scan starts: the scan waits for it.
+            if controller.olderCalculatorBusy {
+                return ("Le calculateur termine un autre plat", Self.olderCalculatorAdvice, Theme.warn)
+            }
             // Not in the first seconds: the calculator has not answered the first ping yet.
             if !controller.calculatorOnline && now.timeIntervalSince(openedAt) > 3 {
                 return ("Calculateur injoignable", "Allumez le calculateur sur le PC et gardez l’iPhone sur le même Wi‑Fi : le scan pourra alors démarrer.", Theme.warn)
@@ -239,6 +251,9 @@ struct ScannerView: View {
         case .uploadingRest:
             return ("Envoi des dernières vues", "\(controller.store?.pendingCount ?? 0) restantes…", .white)
         case .finishing:
+            if controller.finishQueued {
+                return ("En attente du calculateur", "Il termine un autre plat, puis calculera celui-ci tout seul. Vous pouvez quitter cet écran : le plat arrivera dans Mes plats.", .white)
+            }
             return ("Finition du modèle", "Le calculateur assemble le modèle final.", .white)
         case .done:
             if let g = controller.lastGeometry, g.kind == "final", (g.triangle_count ?? 0) == 0 {
@@ -246,6 +261,10 @@ struct ScannerView: View {
             }
             return ("Modèle prêt", "Faites-le tourner du doigt, puis retrouvez-le dans Mes plats.", Theme.good)
         case .scanning:
+            if controller.olderCalculatorBusy {
+                // The scan started just as the calculator began finishing another dish.
+                return ("Le calculateur termine un autre plat", "Continuez : vos vues restent sur l’iPhone et partiront dès qu’il aura fini.", Theme.warn)
+            }
             if !controller.calculatorOnline {
                 return ("PC injoignable", "Les vues restent sur l’iPhone ; l’aperçu est figé.", Theme.bad)
             }
@@ -262,6 +281,9 @@ struct ScannerView: View {
             }
         }
     }
+
+    /// Why the scan cannot start yet with a calculator older than the app expects, and what changes that.
+    private static let olderCalculatorAdvice = "Le scan pourra démarrer dès qu’il aura fini. En mettant le calculateur à jour sur le PC, vous pourrez scanner pendant un calcul."
 
     /// Compact on purpose: it sits on top of the camera image and must not hide the dish.
     private var instructionCard: some View {
@@ -340,7 +362,10 @@ struct ScannerView: View {
         case "good": return ("Scan réussi : vous pouvez terminer", Theme.good, true)
         case "fair": return ("Scan correct : " + advice, Theme.warn, false)
         case "poor": return ("Scan insuffisant : " + advice, Theme.bad, false)
-        default: return ("Analyse du modèle en cours…", .white, false)
+        default:
+            // No verdict can come while the calculator finishes another dish: said, rather than "in progress".
+            if controller.waitingForCalculator { return ("Le calculateur termine un autre plat, l’aperçu viendra ensuite", .white, false) }
+            return ("Analyse du modèle en cours…", .white, false)
         }
     }
 
@@ -425,7 +450,7 @@ struct ScannerView: View {
                 } else {
                     // Without the calculator the views would stay on the iPhone with no way to finish the dish.
                     PrimaryButton(title: "Démarrer le scan", icon: "record.circle",
-                                  enabled: box.placed && controller.calculatorOnline && ar.failure == nil) {
+                                  enabled: box.placed && controller.calculatorOnline && !controller.olderCalculatorBusy && ar.failure == nil) {
                         showSliders = false
                         controller.start()
                     }
@@ -466,6 +491,7 @@ struct ScannerView: View {
                 GlassIconButton(icon: "square.and.arrow.up", name: "Exporter le dossier du scan") { shareURL = controller.exportZip() }
                 PrimaryButton(title: "Voir dans Mes plats", icon: "square.grid.2x2.fill", tint: Theme.good) {
                     saveDishName()
+                    controller.stop()
                     model.nextTab = .library
                     model.screen = .connect
                 }
@@ -572,8 +598,12 @@ struct ScannerView: View {
     private var emptyPreviewText: String {
         switch controller.phase {
         case .placing, .needsNewBox: return "Le nuage de points du plat apparaîtra ici, puis sa surface, pendant que vous tournez autour."
-        default: return controller.calculatorOnline ? "Calcul des premières vues… continuez de tourner lentement."
-            : "Calculateur injoignable : l’aperçu reprendra au retour du réseau."
+        default:
+            if controller.waitingForCalculator || controller.olderCalculatorBusy {
+                return "Le calculateur termine un autre plat. Continuez de tourner : vos vues sont gardées et l’aperçu démarrera ensuite."
+            }
+            return controller.calculatorOnline ? "Calcul des premières vues… continuez de tourner lentement."
+                : "Calculateur injoignable : l’aperçu reprendra au retour du réseau."
         }
     }
 }

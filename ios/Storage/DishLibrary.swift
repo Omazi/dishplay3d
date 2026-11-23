@@ -1,4 +1,5 @@
 import Foundation
+import ScanCore
 import UIKit
 
 /// One scanned dish kept on the iPhone (a session folder).
@@ -24,6 +25,10 @@ struct DishRecord: Identifiable, Hashable {
     let pendingViews: Int
     /// The calculator's name for this scan; nil when the scan never reached it.
     let serverSessionID: String?
+    /// How the final model came out, when the calculator said so: its verdict (`verdict.level` is good, fair
+    /// or poor) and what the calculation had to give up (`fallbacks`, each with a French sentence to show as it
+    /// is). nil for a dish without a model, and for one finished by a calculator that gave no verdict.
+    let outcome: FinalOutcome?
 }
 
 /// Reads the dishes from the session folders. Several dishes can be scanned one after another; each keeps
@@ -50,7 +55,7 @@ enum DishLibrary {
             let photo = jpegs.isEmpty ? nil : root.appendingPathComponent("frames").appendingPathComponent(jpegs[jpegs.count / 3])
             let sid = (try? String(contentsOf: root.appendingPathComponent("server_session.txt"), encoding: .utf8))?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let abandoned = fm.fileExists(atPath: root.appendingPathComponent("abandoned").path)
+            let abandoned = fm.fileExists(atPath: root.appendingPathComponent(SessionStore.abandonedMarker).path)
             let ready = hasPicture || hasModel
             if !ready && (abandoned || frames == 0) { continue }
             let state: DishRecord.State
@@ -69,7 +74,8 @@ enum DishLibrary {
                                   picture: hasPicture ? picture : nil, model: hasModel ? model : nil,
                                   arModel: fm.fileExists(atPath: arModel.path) ? arModel : nil,
                                   geometry: hasGeometry ? geometry : nil, photo: photo, pendingViews: max(0, frames - sent),
-                                  serverSessionID: (sid?.isEmpty == false) ? sid : nil))
+                                  serverSessionID: (sid?.isEmpty == false) ? sid : nil,
+                                  outcome: ready ? SessionStore.outcome(in: root) : nil))
         }
         return out
     }

@@ -1,7 +1,12 @@
-# The app's project plus the screen check: UI tests that open every screen in the iPhone simulator, take a
-# picture of each and run Apple's accessibility audit (UITests/). Kept apart from project.yml on purpose:
-# nothing here can change the app that is built for TestFlight.
-#   xcodegen generate --spec project.screens.yml   ->   DishPlayScreens.xcodeproj, scheme ScreenCheck
+# The app's project plus its two kinds of tests, both run in the iPhone simulator:
+#  - the screen check: UI tests that open every screen, take a picture of each and run Apple's accessibility
+#    audit (UITests/), scheme ScreenCheck;
+#  - the unit tests of the app's own logic: what is kept on the iPhone, resumed after a cut, really deleted
+#    when a scan is abandoned (AppTests/), scheme AppTests. They run inside the app (debug build) and work in
+#    temporary folders.
+# Kept apart from project.yml on purpose: nothing here can change the app that is built for TestFlight.
+#   xcodegen generate --spec project.screens.yml   ->   DishPlayScreens.xcodeproj, schemes ScreenCheck and AppTests
+#   xcodebuild test -project DishPlayScreens.xcodeproj -scheme AppTests -destination "platform=iOS Simulator,id=<simulator>"
 include:
   - project.yml
 name: DishPlayScreens
@@ -26,6 +31,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.dishplay.capture.screencheck
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: DishPlayScan
+  AppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AppTests
+    dependencies:
+      - target: DishPlayScan
+      # The tests build values of ScanCore themselves (view descriptions, verdicts).
+      - package: ScanCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.dishplay.capture.apptests
+        GENERATE_INFOPLIST_FILE: YES
+        # Loaded into the running app, so that `@testable import DishPlayScan` reaches its code.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DishPlayScan.app/DishPlayScan"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
   ScreenCheck:
     build:
@@ -36,3 +57,12 @@ schemes:
       config: Debug
       targets:
         - ScreenCheck
+  AppTests:
+    build:
+      targets:
+        DishPlayScan: all
+        AppTests: [test]
+    test:
+      config: Debug
+      targets:
+        - AppTests

@@ -119,6 +119,18 @@ final class WireFormatTests: XCTestCase {
         XCTAssertNil(PairingLink(url: URL(string: "dishplayscan://pair?u=https%3A%2F%2F1.2.3.4%3A1&c=12&fp=\(fp)")!))
     }
 
+    /// A link that repeats a parameter used to stop the app (a dictionary built from unique keys). It is refused.
+    func testPairingLinkWithARepeatedParameterIsRefused() throws {
+        let fp = String(repeating: "ab", count: 32)
+        let twice = try XCTUnwrap(URL(string: "dishplayscan://pair?u=https%3A%2F%2F192.168.1.20%3A8765&c=123456&c=654321&fp=\(fp)"))
+        XCTAssertNil(PairingLink(url: twice))
+        XCTAssertNil(PairingLink(url: try XCTUnwrap(URL(string: "dishplayscan://pair?c=1&c=2"))))
+        // Doubled "&": whether the system reads empty names there or drops them, the app must not stop.
+        _ = PairingLink(url: try XCTUnwrap(URL(string: "dishplayscan://pair?u=https%3A%2F%2F1.2.3.4%3A1&&c=123456&&fp=\(fp)&&")))
+        // The same link written once is still accepted.
+        XCTAssertNotNil(PairingLink(url: try XCTUnwrap(URL(string: "dishplayscan://pair?u=https%3A%2F%2F192.168.1.20%3A8765&c=123456&fp=\(fp)"))))
+    }
+
     func testServerEventDecodingIgnoresUnknownFields() {
         let e = ServerEvent.decode(#"{"type":"geometry","url":"/sessions/x/preview/3","header":{"version":3,"kind":"points","extra":1},"metrics":{"a":1}}"#)
         XCTAssertEqual(e?.header?.version, 3)

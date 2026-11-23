@@ -125,7 +125,9 @@ public struct FrameMeta: Codable, Sendable {
     }
 }
 
-/// Event received on WS /sessions/{id}/events. Unknown fields are ignored.
+/// Event received on WS /sessions/{id}/events. Unknown fields are ignored, and a known field that is not of
+/// the expected kind is read as absent: one odd value must not make the app miss an event (the end of a
+/// calculation, for example). Only `type` is required.
 public struct ServerEvent: Codable, Sendable {
     public var type: String
     public var session_id: String?
@@ -143,10 +145,53 @@ public struct ServerEvent: Codable, Sendable {
     public var files: [String]?
     public var code: String?
     public var message: String?
+    /// With a status "failed": one short French sentence from the calculator.
+    public var error: String?
+    /// With "artifacts": the calculator's verdict on the final model and what the calculation gave up.
+    public var report: FinalOutcome?
     public var server_time: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case type, session_id, state, queue, frame_id, status, reason, points, url, header, step, done, total
+        case files, code, message, error, report, server_time
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decode(String.self, forKey: .type)
+        session_id = c.lenient(String.self, .session_id)
+        state = c.lenient(String.self, .state)
+        queue = c.lenientInt(.queue)
+        frame_id = c.lenientInt(.frame_id)
+        status = c.lenient(String.self, .status)
+        reason = c.lenient(String.self, .reason)
+        points = c.lenientInt(.points)
+        url = c.lenient(String.self, .url)
+        header = c.lenient(GeometryHeader.self, .header)
+        step = c.lenient(String.self, .step)
+        done = c.lenientInt(.done)
+        total = c.lenientInt(.total)
+        files = c.lenient([String].self, .files)
+        code = c.lenient(String.self, .code)
+        message = c.lenient(String.self, .message)
+        error = c.lenient(String.self, .error)
+        let outcome = c.lenient(FinalOutcome.self, .report)
+        report = (outcome?.isEmpty == false) ? outcome : nil
+        server_time = c.lenient(Double.self, .server_time)
+    }
 
     public static func decode(_ text: String) -> ServerEvent? {
         try? JSONDecoder().decode(ServerEvent.self, from: Data(text.utf8))
+    }
+
+    /// Whether this event is about the scan `sessionID`. The app keeps one connection for events and scans
+    /// several dishes one after another: an event of the previous dish must never be taken for the current one.
+    /// Before a scan exists on the calculator (`sessionID` nil) no event can be about it. An event that names
+    /// no scan is accepted: the connection it came through is opened for one scan only.
+    public func isAbout(_ sessionID: String?) -> Bool {
+        guard let sessionID, !sessionID.isEmpty else { return false }
+        guard let named = session_id, !named.isEmpty else { return true }
+        return named == sessionID
     }
 }
 
@@ -159,7 +204,13 @@ public struct PairingLink: Equatable, Sendable {
     public init?(url: URL) {
         guard url.scheme == "dishplayscan", url.host == "pair",
               let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-        let q = Dictionary(uniqueKeysWithValues: (comps.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        // Not `Dictionary(uniqueKeysWithValues:)`: it stops the program on a repeated name. A link that says the
+        // same thing twice is damaged or forged, and is refused like any other bad link.
+        var q: [String: String] = [:]
+        for item in comps.queryItems ?? [] {
+            guard q[item.name] == nil else { return nil }
+            q[item.name] = item.value ?? ""
+        }
         guard let u = q["u"], let base = URL(string: u), base.scheme == "https",
               let c = q["c"], c.count == 6, c.allSatisfy(\.isNumber),
               let fp = q["fp"]?.lowercased(), fp.count == 64, fp.allSatisfy(\.isHexDigit) else { return nil }

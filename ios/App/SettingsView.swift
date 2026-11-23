@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("preview.showProvenance") private var showProvenance = false
     @EnvironmentObject var model: AppModel
     @State private var manual = false
+    @State private var confirmForget = false
     /// The numbered discs of the steps grow with the text they hold.
     @ScaledMetric(relativeTo: .footnote) private var stepDisc = 24.0
 
@@ -52,9 +53,17 @@ struct SettingsView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                if model.calculatorOutdated {
+                    // The calculator answers, but it is older than this app expects.
+                    Label("Ce calculateur est plus ancien que l’app. Mettez-le à jour sur le PC : vous pourrez alors scanner un plat pendant qu’un autre se calcule.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.footnote).foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ActionRow {
                     SmallButton(title: "Tester", icon: "arrow.clockwise") { Task { await model.checkHealth() } }
-                    SmallButton(title: "Changer d’ordinateur", icon: "xmark") { model.forget() }
+                    // Asked first: the link cannot be found again without the calculator's QR code.
+                    SmallButton(title: "Changer d’ordinateur", icon: "xmark") { confirmForget = true }
                 }
             } else {
                 Text("Relier l’ordinateur").font(.headline).foregroundStyle(Theme.textPrimary)
@@ -84,6 +93,12 @@ struct SettingsView: View {
                 }
                 .font(.subheadline).foregroundStyle(Theme.textPrimary).tint(Theme.textSecondary)
             }
+        }
+        .confirmationDialog("Ne plus utiliser ce calculateur ?", isPresented: $confirmForget, titleVisibility: .visible) {
+            Button("Changer d’ordinateur", role: .destructive) { model.forget() }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Pour scanner de nouveau, il faudra relier l’iPhone avec le QR code d’un calculateur. Les plats déjà sur l’iPhone sont gardés.")
         }
     }
 

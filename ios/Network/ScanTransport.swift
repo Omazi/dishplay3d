@@ -30,6 +30,9 @@ final class ScanTransport: NSObject, @unchecked Sendable {
     let fingerprint: String
     var token: String?
     private let session: URLSession
+    /// Guards the three properties below: they are used from the main thread, from URLSession's own queue and
+    /// from the timer that reconnects.
+    private let socketLock = NSLock()
     private var socket: URLSessionWebSocketTask?
     private var socketSessionID: String?
     private var reconnectWork: DispatchWorkItem?
@@ -84,20 +87,45 @@ final class ScanTransport: NSObject, @unchecked Sendable {
         return t
     }
 
-    func createSession(_ body: SessionCreate) async throws -> String {
+    /// Create the scan on the calculator. `waiting` in the answer: it is finishing another dish, the views are
+    /// kept and the live preview starts by itself afterwards.
+    func createSession(_ body: SessionCreate) async throws -> SessionCreated {
         guard token != nil else { throw TransportError.notPaired }
         let d = try await send(request("sessions", method: "POST", body: try JSONEncoder().encode(body)))
-        guard let sid = (try JSONSerialization.jsonObject(with: d) as? [String: Any])?["session_id"] as? String else { throw TransportError.badResponse }
-        return sid
+        guard let created = SessionCreated.decode(d) else { throw TransportError.badResponse }
+        return created
     }
 
-    func putFrame(sessionID: String, frameID: Int, envelope: Data) async throws {
-        _ = try await send(request("sessions/\(sessionID)/frames/\(frameID)", method: "PUT", body: envelope,
-                                   contentType: "application/octet-stream"))
+    /// Send one view. The answer says whether a live calculation took it at once (see `FrameAnswer`).
+    @discardableResult
+    func putFrame(sessionID: String, frameID: Int, envelope: Data) async throws -> FrameAnswer {
+        let d = try await send(request("sessions/\(sessionID)/frames/\(frameID)", method: "PUT", body: envelope,
+                                       contentType: "application/octet-stream"))
+        return FrameAnswer.decode(d)
+    }
+
+    private func postJSON(_ path: String, json: [String: Any]) async throws -> Data {
+        try await send(request(path, method: "POST", body: try JSONSerialization.data(withJSONObject: json)))
     }
 
     func post(_ path: String, json: [String: Any] = [:]) async throws {
-        _ = try await send(request(path, method: "POST", body: try JSONSerialization.data(withJSONObject: json)))
+        _ = try await postJSON(path, json: json)
+    }
+
+    /// Ask for the final model of a scan. A calculator that keeps a queue accepts this at any time (the answer
+    /// says whether the dish waits its turn); an older one answers 409 when it is not working on this scan.
+    func finish(sessionID: String, referenceWidth: Double? = nil) async throws -> FinishAnswer {
+        var body: [String: Any] = [:]
+        if let referenceWidth { body["reference_width_m"] = referenceWidth }
+        let d = try await postJSON("sessions/\(sessionID)/finish", json: body)
+        return FinishAnswer.decode(d)
+    }
+
+    /// Ask the calculator to work on this scan again (after it was restarted, or to finish a dish later).
+    /// An older calculator answers 409 while it is finishing another dish.
+    func resumeWorker(sessionID: String) async throws -> WorkerAnswer {
+        let d = try await postJSON("sessions/\(sessionID)/resume_worker", json: [:])
+        return WorkerAnswer.decode(d)
     }
 
     func postBox(sessionID: String, box: BoxSpec) async throws {
@@ -108,24 +136,12 @@ final class ScanTransport: NSObject, @unchecked Sendable {
         try await send(request(path.hasPrefix("/") ? String(path.dropFirst()) : path))
     }
 
-    /// What the calculator says about one session: finished, being calculated (and how far), or stopped.
-    struct SessionInfo {
-        var state: String
-        var active: Bool
-        var ready: Bool
-        var busyWithOther: Bool
-        var step: String?
-        var done: Int?
-        var total: Int?
-    }
-
-    func sessionInfo(sessionID: String) async throws -> SessionInfo {
+    /// What the calculator says about one scan: finished, waiting its turn, being calculated (and how far),
+    /// failed or stopped.
+    func sessionInfo(sessionID: String) async throws -> SessionStatus {
         let d = try await send(request("sessions/\(sessionID)"))
-        let o = (try JSONSerialization.jsonObject(with: d) as? [String: Any]) ?? [:]
-        let p = o["progress"] as? [String: Any]
-        return SessionInfo(state: o["state"] as? String ?? "", active: o["active"] as? Bool ?? false,
-                           ready: o["ready"] as? Bool ?? false, busyWithOther: o["busy_with_other"] as? Bool ?? false,
-                           step: p?["step"] as? String, done: p?["done"] as? Int, total: p?["total"] as? Int)
+        guard let status = try? SessionStatus.decode(d) else { throw TransportError.badResponse }
+        return status
     }
 
     func artifacts(sessionID: String) async throws -> [String] {
@@ -135,31 +151,48 @@ final class ScanTransport: NSObject, @unchecked Sendable {
 
     // MARK: events
 
+    /// Listen to the events of one scan. Replaces the connection to any other scan.
     func connectEvents(sessionID: String) {
-        socketSessionID = sessionID
-        reconnectWork?.cancel()
-        socket?.cancel(with: .goingAway, reason: nil)
         var comps = URLComponents(url: baseURL.appendingPathComponent("sessions/\(sessionID)/events"), resolvingAgainstBaseURL: false)!
         comps.scheme = "wss"
         var r = URLRequest(url: comps.url!)
         if let token { r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let ws = session.webSocketTask(with: r)
+        socketLock.lock()
+        socketSessionID = sessionID
+        reconnectWork?.cancel()
+        reconnectWork = nil
+        let previous = socket
         socket = ws
+        socketLock.unlock()
+        previous?.cancel(with: .goingAway, reason: nil)
         ws.resume()
         receive(ws)
         ping(ws)
     }
 
+    /// Stop listening: no event of the scan that was listened to arrives after this, and nothing reconnects.
     func disconnectEvents() {
+        socketLock.lock()
         socketSessionID = nil
         reconnectWork?.cancel()
-        socket?.cancel(with: .normalClosure, reason: nil)
+        reconnectWork = nil
+        let previous = socket
         socket = nil
+        socketLock.unlock()
+        previous?.cancel(with: .normalClosure, reason: nil)
+    }
+
+    /// Whether `ws` is still the connection in use (an older one may still deliver a last message or an error).
+    private func isCurrent(_ ws: URLSessionWebSocketTask) -> Bool {
+        socketLock.lock()
+        defer { socketLock.unlock() }
+        return ws === socket
     }
 
     private func receive(_ ws: URLSessionWebSocketTask) {
         ws.receive { [weak self] result in
-            guard let self, ws === self.socket else { return }
+            guard let self, self.isCurrent(ws) else { return }
             switch result {
             case .success(let msg):
                 self.onSocketState?(true)
@@ -174,7 +207,7 @@ final class ScanTransport: NSObject, @unchecked Sendable {
 
     private func ping(_ ws: URLSessionWebSocketTask) {
         DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
-            guard let self, ws === self.socket else { return }
+            guard let self, self.isCurrent(ws) else { return }
             ws.sendPing { error in
                 if error != nil { self.onSocketState?(false) } else { self.onSocketState?(true) }
             }
@@ -183,9 +216,24 @@ final class ScanTransport: NSObject, @unchecked Sendable {
     }
 
     private func scheduleReconnect() {
-        guard let sid = socketSessionID else { return }
-        let work = DispatchWorkItem { [weak self] in self?.connectEvents(sessionID: sid) }
+        socketLock.lock()
+        guard let sid = socketSessionID else {
+            socketLock.unlock()
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in self?.reconnect(sessionID: sid) }
+        reconnectWork?.cancel()
         reconnectWork = work
+        socketLock.unlock()
         DispatchQueue.global().asyncAfter(deadline: .now() + 2, execute: work)
+    }
+
+    /// The reconnection planned two seconds earlier, unless the events were disconnected or pointed at
+    /// another scan in the meantime.
+    private func reconnect(sessionID: String) {
+        socketLock.lock()
+        let stillWanted = socketSessionID == sessionID
+        socketLock.unlock()
+        if stillWanted { connectEvents(sessionID: sessionID) }
     }
 }
