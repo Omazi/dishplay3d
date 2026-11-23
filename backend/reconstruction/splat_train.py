@@ -7,6 +7,7 @@ Needs an NVIDIA GPU (Google Colab, a cloud machine, or a local card) with PyTorc
 
 Outputs in --out:
   splat.ply         the model (standard 3DGS PLY, object frame, metres, +y up), cropped to the scan box
+  splat.compressed.ply   the same model, about four times lighter (read by SuperSplat)
   turntable.webp    the model turning (animated picture), rendered from viewpoints that were never photographed
   compare.jpg       held-out real photos (left) next to the model seen from the same camera (right)
   report.json       held-out PSNR inside the box, number of Gaussians, timings
@@ -20,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 import time
 import zipfile
 from pathlib import Path
@@ -38,6 +40,8 @@ def load_dataset(path: Path, work: Path):
     """Returns dict(images uint8 [N,H,W,3] RGB, masks bool [N,H,W], Ks [N,3,3], c2w [N,4,4] OpenCV, names, box, init)."""
     if path.is_file() and path.suffix == ".zip":
         root = work / "dataset"
+        if root.exists():           # a second scan in the same session must not inherit files of the first
+            shutil.rmtree(root)
         root.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(path) as zf:
             zf.extractall(root)
@@ -196,6 +200,7 @@ def train(data, out: Path, steps: int = 7000, sh_degree: int = 3, pose_opt: bool
           device: str = "cuda", rasterize=None, log_every: int = 250, seed: int = 0, max_gaussians: int = 1_500_000,
           progress=None) -> dict:
     from gsplat.strategy import DefaultStrategy
+    from gsplat.strategy.ops import reset_opa
     if rasterize is None:
         from gsplat import rasterization as rasterize
     torch.manual_seed(seed)
@@ -241,6 +246,11 @@ def train(data, out: Path, steps: int = 7000, sh_degree: int = 3, pose_opt: bool
         loss = 0.8 * l1 + 0.2 * (1 - s)
         loss.backward()
         strategy.step_post_backward(params, optimizers, state, step, info, packed=False)
+        # gsplat 1.5.3 never resets the opacities: its test reads `step % reset_every == 0 & step > 0`, which
+        # Python evaluates as always false (corrected upstream after that release). Done here, as the method
+        # intends; with a corrected gsplat the second reset changes nothing.
+        if 0 < step < strategy.refine_stop_iter and step % strategy.reset_every == 0:
+            reset_opa(params=params, optimizers=optimizers, state=state, value=strategy.prune_opa * 2.0)
         for o in optimizers.values():
             o.step()
             o.zero_grad(set_to_none=True)
@@ -261,8 +271,10 @@ def train(data, out: Path, steps: int = 7000, sh_degree: int = 3, pose_opt: bool
               "test_views": int(len(test_idx)), "width": int(w), "height": int(h), "gaussians": int(len(params["means"])),
               "pose_opt": pose_opt, "log": log}
     with torch.no_grad():
-        report.update(evaluate(data, params, c2w, Ks, poses, test_idx, sh_degree, rasterize, out, device))
-        report.update(export(data, params, sh_degree, rasterize, out, device))
+        kept, dropped = delivered(data, params)     # the score and the pictures describe what is delivered
+        report.update(evaluate(data, kept, c2w, Ks, poses, test_idx, sh_degree, rasterize, out, device))
+        report.update(export(data, kept, sh_degree, rasterize, out, device))
+        report["dropped_non_finite"] = dropped
     (out / "report.json").write_text(json.dumps(report, indent=1))
     return report
 
@@ -272,6 +284,7 @@ def evaluate(data, params, c2w, Ks, poses, test_idx, sh_degree, rasterize, out: 
     n, h, w = data["images"].shape[:3]
     psnrs, tiles = [], []
     black = torch.zeros(1, 3, device=device)
+    turns = quarter_turns_to_upright(data["c2w"][int(test_idx[0])]) if len(test_idx) else 0
     for j in test_idx:
         idx = torch.tensor([int(j)], device=device)
         colors, _, _ = render(params, torch.linalg.inv(c2w[idx]), Ks[idx], w, h, sh_degree, rasterize, bg=black)
@@ -283,7 +296,7 @@ def evaluate(data, params, c2w, Ks, poses, test_idx, sh_degree, rasterize, out: 
         if len(tiles) < 4:
             a = (gt * m[..., None]).cpu().numpy()
             b = (pred * m[..., None]).cpu().numpy()
-            tiles.append(np.concatenate([a, b], 1))
+            tiles.append(np.concatenate([np.rot90(a, turns), np.rot90(b, turns)], 1))
     res = {"heldout_psnr_db": round(float(np.mean(psnrs)), 2) if psnrs else None,
            "heldout_psnr_min_db": round(float(np.min(psnrs)), 2) if psnrs else None}
     if tiles:
@@ -293,6 +306,25 @@ def evaluate(data, params, c2w, Ks, poses, test_idx, sh_degree, rasterize, out: 
             sheet = cv2.resize(sheet, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
         cv2.imwrite(str(out / "compare.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 90])
     return res
+
+
+def quarter_turns_to_upright(c2w: np.ndarray) -> int:
+    """How many quarter turns (counter-clockwise, as np.rot90 counts them) put the dish upright in a stored
+    photograph. A phone held upright stores its pictures lying on their side: without this the comparison
+    picture shows the dish sideways."""
+    up = np.linalg.inv(np.asarray(c2w, np.float64))[:3, :3] @ np.array([0.0, 1.0, 0.0])   # OpenCV camera: x right, y down
+    if abs(up[0]) > abs(up[1]):
+        return 1 if up[0] > 0 else -1       # the dish's "up" points right (resp. left) in the picture
+    return 2 if up[1] > 0 else 0            # "up" points down: upside down
+
+
+def delivered(data, params):
+    """The Gaussians of the delivered model: inside the scan box (and over the dish's footprint), and with
+    finite values. gsplat's exporter writes an EMPTY file as soon as one opacity is not a number."""
+    keep = box_keep(params["means"], data["box"], footprint=data.get("footprint"))
+    finite = (torch.isfinite(params["means"]).all(1) & torch.isfinite(params["scales"]).all(1)
+              & torch.isfinite(params["quats"]).all(1) & torch.isfinite(params["opacities"]))
+    return {k: v[keep & finite] for k, v in params.items()}, int((keep & ~finite).sum())
 
 
 def box_keep(means: torch.Tensor, box, margin: float = 0.01, footprint=None) -> torch.Tensor:
@@ -316,11 +348,15 @@ def box_keep(means: torch.Tensor, box, margin: float = 0.01, footprint=None) -> 
     return keep
 
 
-def export(data, params, sh_degree, rasterize, out: Path, device) -> dict:
+def export(data, p, sh_degree, rasterize, out: Path, device) -> dict:
+    """Files of the delivered model; `p` are the Gaussians kept by delivered()."""
     from gsplat import export_splats
-    keep = box_keep(params["means"], data["box"], footprint=data.get("footprint"))
-    p = {k: v[keep] for k, v in params.items()}
     export_splats(p["means"], p["scales"], p["quats"], p["opacities"], p["sh0"], p["shN"], format="ply", save_to=str(out / "splat.ply"))
+    try:    # the same model about four times lighter, for viewers that read this format (SuperSplat)
+        export_splats(p["means"], p["scales"], p["quats"], p["opacities"], p["sh0"], p["shN"], format="ply_compressed",
+                      save_to=str(out / "splat.compressed.ply"))
+    except Exception as exc:
+        print("compressed model not written:", repr(exc))
     box = data["box"] or [0.3, 0.12, 0.3]
     centre = np.array([0.0, box[1] * 0.45, 0.0])
     cams = turntable_cameras(data["c2w"], centre)
@@ -345,7 +381,7 @@ def export(data, params, sh_degree, rasterize, out: Path, device) -> dict:
         print("animation not written:", repr(exc))
     cv2.imwrite(str(out / "preview.jpg"), np.concatenate([frames[k] for k in (0, 30, 60, 90)], 1)[:, :, ::-1],
                 [cv2.IMWRITE_JPEG_QUALITY, 90])
-    return {"exported_gaussians": int(keep.sum()), "video": video}
+    return {"exported_gaussians": int(len(p["means"])), "video": video}
 
 
 def main():

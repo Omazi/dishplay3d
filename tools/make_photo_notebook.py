@@ -11,9 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "colab" / "photo_express.ipynb"
 sys.path.insert(0, str(ROOT / "tools"))
 
-# The versions whose interfaces were read when this notebook was written (23 Nov 2026). TripoSR's own
-# requirements.txt is deliberately not installed: see the header of tools/photo_express.py.
-PACKAGES = "omegaconf==2.4.0 einops==0.8.2 trimesh==5.2.2 rembg==2.0.87 onnxruntime scikit-image imageio"
+# Chosen to fit what Colab has installed on 23 Nov 2026 (Python 3.13, torch 2.14, transformers 5.23, numpy 2.4,
+# Pillow 11.3, scikit-image 0.25, omegaconf 2.4.0, einops 0.8.2) without upgrading any of it: rembg 2.0.69 is the
+# last version that does not ask for a newer numpy, Pillow and scikit-image. TripoSR's own requirements.txt is
+# deliberately not installed: see the header of tools/photo_express.py.
+PACKAGES = "trimesh==5.2.2 rembg==2.0.69 onnxruntime omegaconf==2.4.0 einops==0.8.2 scikit-image imageio"
 
 
 def md(s):
@@ -44,12 +46,20 @@ Ce carnet prend **une seule photo** d'un plat et fabrique un modèle 3D complet 
 """),
         md("## 1. Vérifier la carte graphique"),
         code("""
-import subprocess
-gpu = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
-print(gpu.stdout.strip() or "Pas de carte graphique : le calcul marchera quand même, en plusieurs minutes au lieu de quelques secondes. "
+import shutil, subprocess
+gpu = ""
+if shutil.which("nvidia-smi"):
+    gpu = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True).stdout.strip()
+print(gpu or "Pas de carte graphique : le calcul marchera quand même, en plusieurs minutes au lieu de quelques secondes. "
       "Pour en avoir une : menu Exécution > Modifier le type d'exécution > GPU T4.")
 """),
-        md("## 2. Installer les outils (1 à 2 minutes)\n\nLe code du modèle est pris à une version précise, et seuls les outils nécessaires sont installés."),
+        md("""
+## 2. Installer les outils (1 à 2 minutes)
+
+Le code du modèle est pris à une version précise, et seuls les outils nécessaires sont installés. Si des lignes de
+`pip` parlent de conflits entre d'autres paquets, ignorez-les : elles ne concernent pas ce carnet, et il n'y a pas
+besoin de redémarrer la session.
+"""),
         code(f"""
 !rm -rf /content/TripoSR && git clone -q https://github.com/VAST-AI-Research/TripoSR.git /content/TripoSR
 !cd /content/TripoSR && git checkout -q {TRIPOSR_COMMIT} && git log --oneline -1
@@ -58,26 +68,37 @@ print(gpu.stdout.strip() or "Pas de carte graphique : le calcul marchera quand m
 """),
         md("## 3. Le programme de calcul\n\nRien à modifier : cette cellule écrit le programme sur la machine Colab, puis la suivante le vérifie."),
         code("%%writefile /content/photo_express.py\n" + program),
-        code("!python /content/photo_express.py --self-test"),
+        code("""
+!python /content/photo_express.py --self-test
+assert _exit_code == 0, "La vérification du programme a échoué : envoyez une capture de cette cellule."
+"""),
         md("## 4. Envoyer la photo du plat"),
         code("""
+import os
 from google.colab import files
 up = files.upload()
-PHOTO = "/content/" + next(iter(up))
-print("Reçu :", PHOTO)
+if not up:
+    raise SystemExit("Aucune photo reçue : relancez cette cellule et choisissez une photo.")
+name = next(iter(up))
+PHOTO = "/content/photo_du_plat" + (os.path.splitext(name)[1].lower() or ".jpg")
+with open(PHOTO, "wb") as f:
+    f.write(up[name])
+print("Reçu :", name)
 """),
         md("""
 ## 5. Fabriquer le modèle
 
-La première fois, le modèle (1,7 Go) et l'outil de détourage se téléchargent : une à deux minutes. Le calcul lui-même prend quelques secondes avec la carte graphique.
+À chaque nouvelle session Colab, le modèle (1,7 Go) et l'outil de détourage se téléchargent d'abord : une à deux minutes. Le calcul lui-même prend quelques secondes avec la carte graphique.
 """),
         code("""
+!rm -rf /content/resultat
 !python /content/photo_express.py "$PHOTO" --triposr /content/TripoSR --out /content/resultat
+assert _exit_code == 0, "Le calcul a échoué : envoyez une capture de CETTE cellule (le message est juste au-dessus)."
 """),
         md("""
 ## 6. Voir le résultat
 
-D'abord une image : à gauche le plat détouré (ce que le modèle a vu), puis le modèle vu de quatre côtés et du dessus. Ensuite le modèle en 3D : faites-le tourner avec le doigt ou la souris.
+D'abord une image : à gauche le plat détouré (ce que le modèle a vu), puis le modèle vu de cinq endroits. « photo » est le côté photographié et doit ressembler à l'image de gauche ; « dos » est le côté opposé, entièrement inventé ; « dessus » est la vue de haut. Ensuite le modèle en 3D : faites-le tourner avec le doigt ou la souris.
 """),
         code("""
 import base64, json, os

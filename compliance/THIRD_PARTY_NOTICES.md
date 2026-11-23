@@ -56,6 +56,7 @@ du format ; aucune bibliothèque USD n'est embarquée.
 Deux carnets que le propriétaire lance lui-même sur Colab ; ils téléchargent leurs outils sur la machine de Colab.
 
 **Essai neuronal** (`colab/essai_neuronal.ipynb`) : gsplat 1.5.3 (Apache-2.0), PyTorch (BSD-3), Pillow (MIT-CMU).
+Visualiseur conseillé pour le résultat, non intégré : SuperSplat (superspl.at), ouvert dans le navigateur.
 
 **Photo express** (`colab/photo_express.ipynb`, détail dans `docs/PHOTO_EXPRESS.md`), licences lues sur les sources
 officielles le 23 novembre 2026 :
@@ -64,15 +65,15 @@ officielles le 23 novembre 2026 :
 | TripoSR, code | commit 107cefd | MIT | une photo → forme et couleurs |
 | TripoSR, poids (stabilityai/TripoSR) | révision 5b52193 | MIT | données d'entraînement annoncées sur la fiche : Objaverse |
 | DINO ViT-B/16 | configuration seule | Apache-2.0 | encodeur d'image (ses poids sont dans le fichier de TripoSR) |
-| rembg | 2.0.87 | MIT | détourage du plat |
+| rembg | 2.0.69 | MIT | détourage du plat |
 | U2-Net (poids de détourage) | fichier de rembg | Apache-2.0 | demandé par son nom |
 | transformers / huggingface_hub | celles de Colab | Apache-2.0 | chargement du modèle |
-| scikit-image / trimesh / einops / omegaconf | 0.26 / 5.2.2 / 0.8.2 / 2.4.0 | BSD-3 / MIT / MIT / BSD-3 | surface, fichier GLB, calcul, configuration |
+| scikit-image / trimesh / einops / omegaconf | celle de Colab / 5.2.2 / 0.8.2 / 2.4.0 | BSD-3 / MIT / MIT / BSD-3 | surface, maillage, calcul, configuration |
 | model-viewer | 4.0.0 | Apache-2.0 | affichage 3D dans le carnet (chargé par le navigateur) |
 
 Écartés de cet essai alors que TripoSR les demande : torchmcubes (MPL-2.0, remplacé par scikit-image),
-imageio-ffmpeg (FFmpeg compilé sous GPL), le modèle de détourage par défaut de rembg (BRIA RMBG, non commercial).
-Toléré comme ailleurs : tqdm (MPL-2.0), tiré par rembg.
+imageio-ffmpeg (FFmpeg compilé sous GPL), le modèle de détourage par défaut des versions récentes de rembg (BRIA
+RMBG, non commercial). Tolérés comme ailleurs : tqdm et certifi (MPL-2.0), tirés par rembg et ses dépendances.
 Modèles génératifs plus récents écartés à ce stade : TRELLIS.2 et Pixal3D (encodeur DINOv3 sous licence propre à
 Meta ; export GLB par nvdiffrast, « Nvidia Source Code License », recherche et évaluation seulement), Step1X-3D,
 Hunyuan3D, Stable Fast 3D / SPAR3D, SAM 3D (licences à conditions). Lecture des dépôts officiels ; la contre-
