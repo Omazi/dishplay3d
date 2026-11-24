@@ -16,7 +16,10 @@ import sys
 
 BACKEND = ("backend/", "tools/", "contracts/", "colab/", "compliance/", "ios/ci/", "ios/ScanCore/Tests/ScanCoreTests/Vectors/")
 IOS = ("ios/", ".github/workflows/")
-NOT_THE_APP = ("ios/RELEASE_NOTES.txt", "ios/UITests/RUN.txt", "ios/UITests/audit-baseline.txt")
+# Neither the app nor its build: the release notes and the screen check have their own workflows, and the Windows
+# check of the calculator starts itself.
+NOT_THE_APP = ("ios/RELEASE_NOTES.txt", "ios/UITests/RUN.txt", "ios/UITests/audit-baseline.txt",
+               ".github/workflows/calculator-windows.yml")
 
 
 def plan(changed, release_call: bool, event: str, known: bool) -> dict:

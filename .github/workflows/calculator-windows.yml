@@ -87,7 +87,11 @@ jobs:
         shell: powershell
         run: |
           $env:DISHPLAY_DATA = Join-Path $env:RUNNER_TEMP "empty-data"
-          $out = powershell -NoProfile -ExecutionPolicy Bypass -File .\preparer-essai-neuronal.ps1 -NoPause 2>&1 | Out-String
+          # Through cmd: read from here with "2>&1", Windows PowerShell turns the tool's message (written on the
+          # error stream) into an error of this step, before anything can be checked.
+          $out = cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File .\preparer-essai-neuronal.ps1 -NoPause 2>&1" | Out-String
+          $code = $LASTEXITCODE
           $out
-          if ($LASTEXITCODE -eq 0) { throw "it must fail when there is no scan" }
+          if ($code -eq 0) { throw "it must fail when there is no scan" }
+          if ($out -notmatch "Aucun scan") { throw "the reason is not said" }
           if ($out -notmatch "La preparation a echoue") { throw "the failure is not announced" }
