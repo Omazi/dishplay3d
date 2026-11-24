@@ -7,6 +7,29 @@ import shutil
 import sys
 from pathlib import Path
 
+MIN_FREE_BYTES = 500 * 1024 ** 2    # below this the calculator refuses new views and new scans (HTTP 507)
+LOW_FREE_BYTES = 5 * 1024 ** 3      # below this it warns: a scan takes 100 to 300 MB
+
+
+def free_bytes(path) -> int | None:
+    """Free space on the disk that holds `path`, or that will hold it when the folder does not exist yet
+    (None when it cannot be read)."""
+    p = Path(path)
+    while not p.exists() and p.parent != p:
+        p = p.parent
+    try:
+        return int(shutil.disk_usage(p).free)
+    except OSError:
+        return None
+
+
+def human_size(n: float) -> str:
+    """A size as a person writes it in French: 212,4 Mo ; 50 Go."""
+    for unit, size in (("Go", 1024 ** 3), ("Mo", 1024 ** 2), ("ko", 1024)):
+        if n >= size:
+            return f"{n / size:.1f}".replace(".0", "").replace(".", ",") + f" {unit}"
+    return f"{int(n)} octets"
+
 
 def _mem_total_bytes():
     try:
@@ -62,9 +85,10 @@ def capabilities(data_dir: str | None = None) -> dict:
     out["nvidia_smi"] = bool(gpu)
     out["gpu_required"] = False
     if data_dir:
-        try:
-            du = shutil.disk_usage(data_dir)
-            out["disk_free_bytes"] = du.free
-        except OSError:
-            pass
+        free = free_bytes(data_dir)
+        if free is not None:
+            out["disk_free_bytes"] = free
+            out["disk_low"] = free < LOW_FREE_BYTES          # worth making room (tools/clean_sessions.py)
+            out["disk_full"] = free < MIN_FREE_BYTES         # new views are refused until room is made
+            out["disk_min_free_bytes"] = MIN_FREE_BYTES
     return out

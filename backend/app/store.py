@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS frames (
 );
 CREATE TABLE IF NOT EXISTS tokens (token TEXT PRIMARY KEY, device TEXT, created_at REAL);
 CREATE TABLE IF NOT EXISTS events (session_id TEXT, t REAL, type TEXT, body TEXT);
+CREATE TABLE IF NOT EXISTS finish_requests (
+  session_id TEXT PRIMARY KEY, requested_at REAL, reference_width_m REAL, started INTEGER, restarts INTEGER
+);
+CREATE TABLE IF NOT EXISTS failures (session_id TEXT PRIMARY KEY, t REAL, message TEXT);
 """
 
 SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
@@ -84,9 +88,48 @@ class Store:
     def log_event(self, sid, ev):
         self.x("INSERT INTO events VALUES (?,?,?,?)", (sid, time.time(), ev.get("type", ""), json.dumps(ev)[:20000]))
 
+    # Final calculations asked for and not over yet: one row from the request until the model is delivered or
+    # the calculation fails. This is what lets a restarted calculator take them up again, in their order.
+    def add_finish_request(self, sid, reference_width_m):
+        self.x("INSERT OR REPLACE INTO finish_requests VALUES (?,?,?,0,0)", (sid, time.time(), reference_width_m))
+
+    def finish_request(self, sid):
+        rows = self.x("SELECT reference_width_m, started, restarts FROM finish_requests WHERE session_id=?", (sid,))
+        return rows[0] if rows else None
+
+    def finish_requests(self):
+        """(session, started, restarts), the one that was being calculated first, then the oldest request first."""
+        return self.x("SELECT session_id, started, restarts FROM finish_requests ORDER BY started DESC, requested_at, rowid")
+
+    def start_finish_request(self, sid):
+        self.x("UPDATE finish_requests SET started=1 WHERE session_id=?", (sid,))
+
+    def requeue_finish_request(self, sid):
+        self.x("UPDATE finish_requests SET started=0, restarts=restarts+1 WHERE session_id=?", (sid,))
+
+    def end_finish_request(self, sid):
+        self.x("DELETE FROM finish_requests WHERE session_id=?", (sid,))
+
+    # Why the last final calculation of a session failed: one sentence for the person.
+    def set_failure(self, sid, message):
+        self.x("INSERT OR REPLACE INTO failures VALUES (?,?,?)", (sid, time.time(), message))
+
+    def failure(self, sid):
+        rows = self.x("SELECT message FROM failures WHERE session_id=?", (sid,))
+        return rows[0][0] if rows else None
+
+    def clear_failure(self, sid):
+        self.x("DELETE FROM failures WHERE session_id=?", (sid,))
+
     # tokens
     def add_token(self, token, device):
         self.x("INSERT INTO tokens VALUES (?,?,?)", (token, device, time.time()))
+
+    def forget_tokens(self) -> int:
+        """Forget every paired device; how many there were."""
+        n = self.x("SELECT COUNT(*) FROM tokens")[0][0]
+        self.x("DELETE FROM tokens")
+        return n
 
     def token_ok(self, token) -> bool:
         return bool(token) and bool(self.x("SELECT 1 FROM tokens WHERE token=?", (token,)))
