@@ -49,6 +49,8 @@ final class AppModel: ObservableObject {
         #endif
         // Scans abandoned with an earlier version of the app were only hidden: their views leave the iPhone now.
         SessionStore.removeLeftovers()
+        // The views of the scans already on the iPhone leave its backups (the new ones never enter them).
+        SessionStore.keepViewsOutOfBackups()
         pendingScan = SessionStore.unfinished()
     }
 
@@ -92,7 +94,7 @@ final class AppModel: ObservableObject {
         } catch let TransportError.http(code, _) where code == 409 {
             pendingText = Self.busyText
         } catch {
-            pendingText = Self.explain(error)
+            pendingText = Self.explain(error, brief: true)
         }
     }
 
@@ -102,14 +104,18 @@ final class AppModel: ObservableObject {
     /// Where an unfinished dish stands, in words for the library.
     struct DishProgress: Equatable {
         var text: String
+        /// What the person can do about it, when the first line alone would leave them without a next step
+        /// (calculator switched off, scan unknown to it). Shown on the dish screen, under the first line.
+        var advice: String?
         var fraction: Double?
         /// The dish screen shows its button.
         var canComplete: Bool
         /// The final calculation failed: the button asks for it again (nothing is left to send).
         var restart = false
 
-        init(text: String, fraction: Double?, canComplete: Bool, restart: Bool = false) {
+        init(text: String, advice: String? = nil, fraction: Double?, canComplete: Bool, restart: Bool = false) {
             self.text = text
+            self.advice = advice
             self.fraction = fraction
             self.canComplete = canComplete
             self.restart = restart
@@ -118,9 +124,30 @@ final class AppModel: ObservableObject {
         /// From what the calculator answers about the dish (`DishStanding`, in ScanCore, where it is tested).
         init(_ standing: DishStanding) {
             text = standing.text
+            advice = nil
             fraction = standing.fraction
             canComplete = standing.action != nil
             restart = standing.action == .restart
+        }
+
+        /// The calculator cannot be asked: the dish keeps the state the iPhone knows, and one line says what
+        /// brings its model.
+        static func withoutCalculator(_ dish: DishRecord, linked: Bool) -> DishProgress {
+            let advice: String
+            if !linked {
+                advice = "Reliez le calculateur dans Réglages pour terminer ce plat."
+            } else if dish.state == .processing {
+                advice = "Calculateur injoignable. Allumez-le : le modèle arrivera tout seul."
+            } else {
+                advice = "Calculateur injoignable. Allumez-le pour terminer ce plat."
+            }
+            return DishProgress(text: dish.ownStateText, advice: advice, fraction: nil, canComplete: false)
+        }
+
+        /// The calculator answers, and does not have this scan (or never had it): only the iPhone's copy is left.
+        static func lost(_ text: String) -> DishProgress {
+            DishProgress(text: text, advice: "Ce scan ne peut plus être terminé. Supprimez-le, puis scannez le plat de nouveau.",
+                         fraction: nil, canComplete: false)
         }
     }
 
@@ -136,11 +163,11 @@ final class AppModel: ObservableObject {
         for dish in DishLibrary.all() where dish.state != .ready {
             if completingDish == dish.id, let current = dishProgress[dish.id] { next[dish.id] = current; continue }
             guard let sid = dish.serverSessionID else {
-                next[dish.id] = DishProgress(text: "Jamais envoyé au calculateur", fraction: nil, canComplete: false)
+                next[dish.id] = .lost("Jamais envoyé au calculateur")
                 continue
             }
             guard let t = transport else {
-                next[dish.id] = DishProgress(text: "Calculateur non relié", fraction: nil, canComplete: false)
+                next[dish.id] = .withoutCalculator(dish, linked: false)
                 continue
             }
             do {
@@ -153,9 +180,11 @@ final class AppModel: ObservableObject {
                     next[dish.id] = DishProgress(DishStanding(info, pendingViews: dish.pendingViews))
                 }
             } catch let TransportError.http(code, _) where code == 404 {
-                next[dish.id] = DishProgress(text: "Inconnu du calculateur", fraction: nil, canComplete: false)
+                next[dish.id] = .lost("Inconnu du calculateur")
             } catch {
-                next[dish.id] = DishProgress(text: "Calculateur injoignable", fraction: nil, canComplete: false)
+                // Its own state stays in view: with the calculator off, every dish used to read "Calculateur
+                // injoignable" and nothing told which one still had views to send.
+                next[dish.id] = .withoutCalculator(dish, linked: true)
             }
         }
         if next != dishProgress { dishProgress = next }
@@ -235,7 +264,7 @@ final class AppModel: ObservableObject {
         } catch let TransportError.http(code, _) where code == 409 {
             dishProgress[dish.id] = DishProgress(text: Self.busyText, fraction: nil, canComplete: true)
         } catch {
-            dishProgress[dish.id] = DishProgress(text: Self.explain(error), fraction: nil, canComplete: true)
+            dishProgress[dish.id] = DishProgress(text: Self.explain(error, brief: true), fraction: nil, canComplete: true)
         }
     }
 
@@ -244,11 +273,17 @@ final class AppModel: ObservableObject {
         // What the calculator says of the final model is kept with the dish, for the screens to show.
         if let outcome { store.saveOutcome(outcome) }
         var got = false
-        for name in ["final_preview.dpg", "apercu.png", "model.glb", "model.usdz", "report.json"] where files.contains(name) {
+        for name in Self.keptFiles where files.contains(name) {
             if let d = try? await t.download("sessions/\(sid)/artifacts/\(name)"), (try? store.saveArtifact(name: name, data: d)) != nil { got = true }
         }
         return got
     }
+
+    /// The files of a finished dish the app fetches and keeps: the model in the app's own format, its picture,
+    /// the two files that are shared or opened by iOS, and the report (verdict, check of the real width). The
+    /// calculator makes others (point cloud, untextured surface): nothing in the app reads them, so they stay
+    /// on the PC instead of filling the iPhone.
+    static let keptFiles = ["final_preview.dpg", "apercu.png", "model.glb", "model.usdz", "report.json"]
 
     var lidarSupported: Bool { ARSessionController.lidarSupported }
     var trackingSupported: Bool {
@@ -260,7 +295,7 @@ final class AppModel: ObservableObject {
 
     func handle(url: URL) {
         guard let link = PairingLink(url: url) else {
-            fail("Lien de jumelage invalide (HTTPS, code à 6 chiffres et empreinte attendus).")
+            fail("Ce QR code n’est pas celui d’un calculateur DishPlay. Scannez celui que le calculateur affiche sur le PC.")
             return
         }
         baseURLText = link.baseURL.absoluteString
@@ -272,20 +307,20 @@ final class AppModel: ObservableObject {
     func pair() async {
         guard !busy else { return }
         guard let url = URL(string: baseURLText.trimmingCharacters(in: .whitespaces)), url.scheme == "https", url.host != nil else {
-            fail("Adresse attendue : https://adresse-du-pc:8765")
+            fail("Adresse attendue, comme l’affiche le calculateur : https://adresse-du-pc:8765")
             return
         }
         let fp = fingerprint.lowercased().filter(\.isHexDigit)
-        guard fp.count == 64 else { fail("Empreinte TLS : 64 caractères hexadécimaux, affichée par le calculateur."); return }
-        guard code.count == 6 else { fail("Code de jumelage : 6 chiffres, affiché par le calculateur."); return }
+        guard fp.count == 64 else { fail("Empreinte : les 64 caractères affichés par le calculateur."); return }
+        guard code.count == 6 else { fail("Code : les 6 chiffres affichés par le calculateur."); return }
         busy = true
         message = nil
         defer { busy = false; step = nil }
         let t = ScanTransport(baseURL: url, fingerprint: fp, token: nil, requestTimeout: 8)
         do {
-            step = "1/2 · Contact du calculateur \(url.host ?? "")… (8 s max)"
+            step = "1/2 · Recherche du calculateur \(url.host ?? "")…"
             _ = try await t.health()
-            step = "2/2 · Envoi du code de jumelage…"
+            step = "2/2 · Envoi du code…"
             let token = try await t.pair(code: code, device: UIDevice.current.model)
             Keychain.save(token, account: url.absoluteString)
             UserDefaults.standard.set(url.absoluteString, forKey: "calc.url")
@@ -293,7 +328,7 @@ final class AppModel: ObservableObject {
             transport = t
             paired = true
             messageIsError = false
-            message = "Jumelé au calculateur. Vous pouvez ouvrir le scanner."
+            message = "Calculateur relié. Vous pouvez scanner un plat."
             await checkHealth()
         } catch {
             fail(Self.explain(error))
@@ -309,7 +344,7 @@ final class AppModel: ObservableObject {
         guard let t = transport else { healthText = nil; reachable = nil; calculatorOutdated = false; return }
         do {
             let (h, rtt) = try await t.health()
-            healthText = "Calculateur joignable (\(Int(rtt * 1000)) ms) · moteur \(h.engine)"
+            healthText = "Il répond en \(Int(rtt * 1000)) ms · moteur \(h.engine)"
             reachable = true
             calculatorOutdated = !EngineVersion.hasQueue(h.engine)
         } catch {
@@ -332,33 +367,53 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "calc.fp")
     }
 
-    static func explain(_ error: Error) -> String {
+    /// One sentence, in French, for what went wrong when talking to the calculator. `brief`: for a card or the
+    /// scan screen, where there is room for one line; otherwise with what to check (settings, linking).
+    static func explain(_ error: Error, brief: Bool = false) -> String {
         let ns = error as NSError
-        let code = " (code \(ns.code))"
         if ns.domain == NSURLErrorDomain {
             switch ns.code {
             case NSURLErrorCancelled, NSURLErrorServerCertificateUntrusted, NSURLErrorSecureConnectionFailed,
                  NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorClientCertificateRejected:
-                return "Le PC répond, mais son certificat ne correspond pas à l’empreinte du QR. Rescannez le QR affiché actuellement par le calculateur." + code
+                // The calculator at this address does not show the key the iPhone was linked with.
+                return brief ? "Le calculateur a changé : reliez-le de nouveau dans Réglages."
+                    : "Le calculateur répond, mais sa clé de sécurité n’est plus celle du QR code scanné. Reliez-le de nouveau avec le QR code qu’il affiche en ce moment."
             case NSURLErrorTimedOut:
-                return "Aucune réponse du PC en 8 s. Vérifiez : Réglages › DishPlay Scan › Réseau local activé ; Wi‑Fi du PC en profil « Privé » (pare‑feu Windows, port 8765) ; pas de réseau invité ; l’adresse du QR est bien celle du PC." + code
+                return brief ? "Le calculateur ne répond pas."
+                    : "Le calculateur ne répond pas. À vérifier : le PC est allumé et le calculateur lancé ; l’iPhone est sur le même Wi‑Fi que le PC (pas un réseau invité) ; « Réseau local » est activé pour DishPlay Scan dans les Réglages de l’iPhone ; sur le PC, ce Wi‑Fi est un réseau « privé »."
             case NSURLErrorCannotConnectToHost:
-                return "Le PC refuse la connexion : le calculateur n’est pas lancé ou n’écoute pas sur ce port." + code
+                return brief ? "Le calculateur n’est pas lancé sur le PC."
+                    : "Le PC répond, mais le calculateur n’y est pas lancé. Lancez-le sur le PC, puis touchez « Tester »."
             case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorCannotFindHost:
-                return "iPhone non connecté au réseau du PC (Wi‑Fi coupé, 4G, ou autorisation Réseau local refusée)." + code
+                return brief ? "L’iPhone n’est pas sur le réseau du PC."
+                    : "L’iPhone n’est pas sur le réseau du PC : vérifiez le Wi‑Fi et, dans les Réglages de l’iPhone, l’autorisation « Réseau local » de DishPlay Scan."
             default: break
             }
         }
-        // The calculator's own words for a refusal are in English and technical: they are not shown.
-        if let t = error as? TransportError, case .http(let status, _) = t {
-            if status == 403 { return "Code de jumelage refusé : utilisez le code affiché actuellement par le calculateur (il change à chaque démarrage)." }
-            if status == 429 { return "Trop d’essais : redémarrez le calculateur pour obtenir un nouveau code." }
+        guard let refusal = error as? TransportError else {
+            // Not a case the app knows: the system's own words, with its code for whoever helps.
+            return "\(error.localizedDescription) (code \(ns.code))"
+        }
+        guard case .http(let status, let detail) = refusal else { return refusal.localizedDescription }
+        switch status {
+        case 403:
+            return "Code refusé : utilisez celui que le calculateur affiche en ce moment (il change à chaque démarrage)."
+        case 429:
+            // A calculator that keeps a queue says how long to wait, in French; an older one stays closed.
+            return detail.hasPrefix("Trop d") ? detail : "Trop d’essais : redémarrez le calculateur pour obtenir un nouveau code."
+        case 401:
             // Never "restart the calculator" here: it may be in the middle of another dish, which that would stop.
-            if status == 401 { return "Le calculateur ne reconnaît plus cet iPhone. Reliez-le de nouveau dans Réglages." }
-            if status == 404 { return "Le calculateur ne connaît plus ce scan." }
-            if status == 409 { return busyText }
+            return "Le calculateur ne reconnaît plus cet iPhone. Reliez-le de nouveau dans Réglages."
+        case 404:
+            return "Le calculateur ne connaît plus ce scan."
+        case 409:
+            return busyText
+        case 507:
+            // The PC has no room left: the calculator's own sentence says so and what to do.
+            return detail.isEmpty ? "Le PC n’a plus de place pour enregistrer ce scan : libérez de la place sur son disque." : detail
+        default:
+            // Its other refusals are written in English for developers: they are not shown.
             return "Le calculateur n’a pas accepté la demande. Réessayez dans un instant."
         }
-        return error.localizedDescription + code
     }
 }

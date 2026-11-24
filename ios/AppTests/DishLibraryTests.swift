@@ -39,6 +39,17 @@ final class DishLibraryTests: StorageTestCase {
         XCTAssertNotNil(ready.arModel)
         XCTAssertNotNil(ready.geometry)
         XCTAssertNil(ready.outcome, "this calculator gave no verdict")
+        XCTAssertNil(ready.scaleCheck, "no real width was typed for this dish")
+    }
+
+    /// The width typed in Réglages before a scan: the calculator's report says what the model measures.
+    func testTheCheckOfTheRealWidthComesWithAReadyDish() throws {
+        let root = try makeScan("2026-11-18T12-30-00Z", views: 3, sent: 3, finishRequested: true, results: ["model.glb"])
+        let report = #"{"schema":"dishplay.report/1","mesh":{"triangles":9000},"scale_check":{"reference_width_m":0.26,"measured_width_m":0.2631,"error_pct":1.19}}"#
+        try Data(report.utf8).write(to: root.appendingPathComponent("results/report.json"))
+        let dish = try XCTUnwrap(DishLibrary.all().first)
+        XCTAssertEqual(dish.scaleCheck?.text, "26,3 cm pour 26 cm saisis")
+        XCTAssertEqual(dish.scaleCheck?.matches, true)
     }
 
     /// Before any view left for the calculator, the dish has no name there.

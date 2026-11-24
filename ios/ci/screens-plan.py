@@ -11,9 +11,10 @@ prints `skip=true` when the same commit was already walked with success: a commi
 and then pushed to main is photographed once. (A walk still in progress does not count: if it failed, the
 commit would be left without pictures while the release gate saw a "successful" run.)
 
-The reference is a current iPhone with the newest iOS: every walk, plus Apple's readers on the sample USDZ.
-With `devices: all`, two more machines: a 6.1-inch iPhone with iOS 18 (how the app looks without the glass of
-iOS 26; light and dark walks) and the smallest screen the app runs on (light walk).
+The reference is a current iPhone with the newest iOS: every walk, the tests of the app's logic, plus Apple's
+readers on the sample USDZ. With `devices: all`, three more machines: a 6.1-inch iPhone with iOS 18 (how the app
+looks without the glass of iOS 26; light and dark walks), the smallest screen the app runs on (light walk) and
+an iPad (light walk): the app is declared for iPad, so its screens are looked at there too.
 """
 import json
 import re
@@ -40,13 +41,16 @@ def main() -> None:
     devices = asked.get("devices", "reference")
     if devices not in ("reference", "all"):
         sys.exit(f"unknown devices {devices!r}: expected reference or all")
-    matrix = [{"label": "iPhone 17 Pro, newest iOS", "slug": "reference", "device": "", "ios": "", "walks": only, "usdz": True}]
+    matrix = [{"label": "iPhone 17 Pro, newest iOS", "slug": "reference", "device": "", "ios": "", "walks": only, "usdz": True,
+               "logic": True}]
     if devices == "all":
         matrix += [
             {"label": "iPhone 16e, iOS 18", "slug": "ios18", "device": "iPhone 16e", "ios": "18",
-             "walks": only or f"{WALKS['light']} {WALKS['dark']}", "usdz": False},
+             "walks": only or f"{WALKS['light']} {WALKS['dark']}", "usdz": False, "logic": False},
             {"label": "iPhone SE, newest iOS", "slug": "small", "device": "iPhone SE (3rd generation)", "ios": "",
-             "walks": only or WALKS["light"], "usdz": False},
+             "walks": only or WALKS["light"], "usdz": False, "logic": False},
+            {"label": "iPad, newest iOS", "slug": "ipad", "device": "iPad*", "ios": "",
+             "walks": only or WALKS["light"], "usdz": False, "logic": False},
         ]
     print("matrix=" + json.dumps(matrix, separators=(",", ":")))
 

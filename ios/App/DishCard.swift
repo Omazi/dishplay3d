@@ -22,11 +22,14 @@ struct DishCard: View {
             .frame(height: 148).frame(maxWidth: .infinity).clipped()
             .accessibilityIgnoresInvertColors()
             VStack(alignment: .leading, spacing: Spacing.xxs) {
-                Text(dish.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary).lineLimit(2)
+                // Two lines are kept for the name even when it fills one: the cards of a row, or of the carousel
+                // of the home screen, then have the same height and a long name is not cut after one line.
+                Text(dish.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Circle().fill(stateColour).frame(width: 7, height: 7)
-                    Text(progress?.text ?? stateText).font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text(stateText).font(.caption).foregroundStyle(Theme.textSecondary)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
                 if let fraction = progress?.fraction {
@@ -44,16 +47,11 @@ struct DishCard: View {
             picture = await Task.detached(priority: .utility) { DishLibrary.thumbnail(for: d) }.value
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(dish.name), \(progress?.text ?? stateText)")
+        .accessibilityLabel("\(dish.name), \(stateText)")
     }
 
-    private var stateText: String {
-        switch dish.state {
-        case .ready: return "Modèle prêt"
-        case .processing: return "Calcul lancé"
-        case .interrupted: return "Scan interrompu"
-        }
-    }
+    /// What the calculator last said of the dish; until it answers, what the iPhone itself knows.
+    private var stateText: String { progress?.text ?? dish.ownStateText }
 
     private var stateColour: Color {
         switch dish.state {

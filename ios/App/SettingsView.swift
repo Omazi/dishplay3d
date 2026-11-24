@@ -24,6 +24,7 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .padding(.horizontal, Spacing.m).padding(.top, Spacing.xs).padding(.bottom, Spacing.xl)
+                    .readableColumn()
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
@@ -47,7 +48,7 @@ struct SettingsView: View {
                         .font(.title2).foregroundStyle(colour).accessibilityHidden(true)
                         .frame(width: 48, height: 48).background(colour.opacity(0.14), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(away ? "Ordinateur injoignable" : "Ordinateur relié").font(.headline).foregroundStyle(Theme.textPrimary)
+                        Text(away ? "Calculateur injoignable" : "Calculateur relié").font(.headline).foregroundStyle(Theme.textPrimary)
                         Text(model.healthText ?? "Vérification…").font(.footnote).foregroundStyle(Theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -63,10 +64,11 @@ struct SettingsView: View {
                 ActionRow {
                     SmallButton(title: "Tester", icon: "arrow.clockwise") { Task { await model.checkHealth() } }
                     // Asked first: the link cannot be found again without the calculator's QR code.
-                    SmallButton(title: "Changer d’ordinateur", icon: "xmark") { confirmForget = true }
+                    SmallButton(title: "Changer de calculateur", icon: "xmark") { confirmForget = true }
                 }
             } else {
-                Text("Relier l’ordinateur").font(.headline).foregroundStyle(Theme.textPrimary)
+                Text("Relier le calculateur").font(.headline).foregroundStyle(Theme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
                 step(1, "Lancez le calculateur sur votre PC.")
                 step(2, "Scannez son QR code avec l’appareil photo de l’iPhone.")
                 if let st = model.step {
@@ -86,7 +88,7 @@ struct SettingsView: View {
                         field("https://192.168.1.20:8765", text: $model.baseURLText, keyboard: .URL)
                         field("Code à 6 chiffres", text: $model.code, keyboard: .numberPad)
                         field("Empreinte (64 caractères)", text: $model.fingerprint, keyboard: .asciiCapable)
-                        SmallButton(title: model.busy ? "Jumelage…" : "Jumeler", icon: "link") { Task { await model.pair() } }
+                        SmallButton(title: model.busy ? "Liaison…" : "Relier", icon: "link") { Task { await model.pair() } }
                             .disabled(model.busy)
                     }
                     .padding(.top, 10)
@@ -95,7 +97,7 @@ struct SettingsView: View {
             }
         }
         .confirmationDialog("Ne plus utiliser ce calculateur ?", isPresented: $confirmForget, titleVisibility: .visible) {
-            Button("Changer d’ordinateur", role: .destructive) { model.forget() }
+            Button("Oublier ce calculateur", role: .destructive) { model.forget() }
             Button("Annuler", role: .cancel) {}
         } message: {
             Text("Pour scanner de nouveau, il faudra relier l’iPhone avec le QR code d’un calculateur. Les plats déjà sur l’iPhone sont gardés.")
@@ -130,13 +132,17 @@ struct SettingsView: View {
     private var measureCard: some View {
         card {
             Text("Largeur réelle du contenant").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
+                .accessibilityAddTraits(.isHeader)
             HStack {
                 TextField("facultatif", text: $model.referenceWidthCm).keyboardType(.decimalPad)
                     .foregroundStyle(Theme.textPrimary)
+                    .accessibilityLabel("Largeur réelle du contenant, en centimètres, facultatif")
                 Text("cm").foregroundStyle(Theme.textSecondary)
             }
             .padding(Spacing.s).background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Radius.field))
-            Text("Sert à vérifier l’échelle du modèle final.").font(.footnote).foregroundStyle(Theme.textSecondary)
+            Text("Pour le prochain scan seulement : mesurez le plat ou l’assiette et saisissez sa largeur avant de scanner. La fiche du plat dira ensuite si le modèle a la bonne taille.")
+                .font(.footnote).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

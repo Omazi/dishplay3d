@@ -15,7 +15,9 @@ DEVICES = {"devices": {
                                                     {"name": "iPhone 17 Pro", "udid": "PRO", "isAvailable": True},
                                                     {"name": "iPhone 17", "udid": "OFF", "isAvailable": False},
                                                     {"name": "iPhone SE (3rd generation)", "udid": "SE", "isAvailable": True},
-                                                    {"name": "iPad Pro", "udid": "PAD", "isAvailable": True}],
+                                                    {"name": "iPad Pro 13-inch (M5)", "udid": "PAD13", "isAvailable": True},
+                                                    {"name": "iPad (A16)", "udid": "PAD", "isAvailable": True},
+                                                    {"name": "iPad mini (A17 Pro)", "udid": "MINI", "isAvailable": True}],
     "com.apple.CoreSimulator.SimRuntime.watchOS-26-2": [{"name": "iPhone 17 Pro", "udid": "WATCH", "isAvailable": True}],
 }}
 
@@ -38,6 +40,10 @@ def test_the_simulator_is_the_newest_ios_and_a_current_iphone_unless_asked_other
     assert pick("18").stdout.strip() == "S6"                                # newest iOS 18
     assert pick("18", "iPhone 16e").stdout.strip() == "E6"                  # that model, newest iOS 18
     assert pick("", "iPhone SE (3rd generation)").stdout.strip() == "SE"
+    assert pick("", "iPad*").stdout.strip() == "PAD"                        # any iPad, one of the usual size first
+    assert pick("", "iPad Pro*").stdout.strip() == "PAD13"
+    assert pick("", "iPad mini (A17 Pro)").stdout.strip() == "MINI"         # an exact name need not be an iPhone
+    assert pick("18", "iPad*").returncode != 0                              # no iPad with iOS 18 on this machine
     missing = pick("17", "iPhone 13")
     assert missing.returncode != 0 and "iPhone 13" in missing.stderr
 
@@ -46,14 +52,17 @@ def test_the_plan_is_one_machine_and_every_walk_unless_the_file_asks_for_more_or
     r, m = plan(tmp_path, 'An explanation that mentions "only: light" and "devices: all" inside a sentence.\n\nrun 7\n')
     assert r.returncode == 0 and len(m) == 1
     assert m[0]["walks"] == "" and m[0]["usdz"] is True and m[0]["device"] == "" and m[0]["ios"] == ""
+    assert m[0]["logic"] is True                                            # the tests of the app's logic run once, on the reference
 
     r, m = plan(tmp_path, "devices: all\n")
-    assert [x["slug"] for x in m] == ["reference", "ios18", "small"]
+    assert [x["slug"] for x in m] == ["reference", "ios18", "small", "ipad"]
     assert m[1]["device"] == "iPhone 16e" and m[1]["ios"] == "18" and m[1]["walks"] == "test1Light test2Dark"
     assert m[2]["walks"] == "test1Light" and not m[1]["usdz"] and not m[2]["usdz"]
+    assert m[3]["device"] == "iPad*" and m[3]["walks"] == "test1Light"
+    assert [x["logic"] for x in m] == [True, False, False, False]
 
     r, m = plan(tmp_path, "only: dark\ndevices: all\n")
-    assert [x["walks"] for x in m] == ["test2Dark"] * 3
+    assert [x["walks"] for x in m] == ["test2Dark"] * 4
 
     r, m = plan(tmp_path, "only: night\n")
     assert r.returncode != 0 and "night" in r.stderr

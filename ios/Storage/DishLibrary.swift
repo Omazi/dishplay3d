@@ -29,6 +29,20 @@ struct DishRecord: Identifiable, Hashable {
     /// or poor) and what the calculation had to give up (`fallbacks`, each with a French sentence to show as it
     /// is). nil for a dish without a model, and for one finished by a calculator that gave no verdict.
     let outcome: FinalOutcome?
+    /// The check of the model's size, when a real width was typed before this scan and the dish is finished.
+    let scaleCheck: ScaleCheck?
+
+    /// Where the dish stands from what the iPhone alone knows: said on its card until the calculator answers,
+    /// and whenever it does not.
+    var ownStateText: String {
+        switch state {
+        case .ready: return "Modèle prêt"
+        case .processing: return "Calcul demandé"
+        case .interrupted:
+            if pendingViews == 0 { return "Calcul à lancer" }
+            return pendingViews == 1 ? "1 vue à envoyer" : "\(pendingViews) vues à envoyer"
+        }
+    }
 }
 
 /// Reads the dishes from the session folders. Several dishes can be scanned one after another; each keeps
@@ -75,9 +89,16 @@ enum DishLibrary {
                                   arModel: fm.fileExists(atPath: arModel.path) ? arModel : nil,
                                   geometry: hasGeometry ? geometry : nil, photo: photo, pendingViews: max(0, frames - sent),
                                   serverSessionID: (sid?.isEmpty == false) ? sid : nil,
-                                  outcome: ready ? SessionStore.outcome(in: root) : nil))
+                                  outcome: ready ? SessionStore.outcome(in: root) : nil,
+                                  scaleCheck: ready ? scaleCheck(in: results) : nil))
         }
         return out
+    }
+
+    /// What the calculator's report says of the model's size (`report.json`, kept with the results).
+    private static func scaleCheck(in results: URL) -> ScaleCheck? {
+        guard let report = try? Data(contentsOf: results.appendingPathComponent("report.json")) else { return nil }
+        return ScaleCheck.read(report)
     }
 
     static func rename(_ dish: DishRecord, to name: String) { rename(id: dish.id, to: name) }

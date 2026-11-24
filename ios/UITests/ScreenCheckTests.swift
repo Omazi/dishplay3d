@@ -89,18 +89,30 @@ final class ScreenCheckTests: XCTestCase {
                 settle(2.5)
                 record.capture("14-plat-en-cours", app)
             }
+            // The interrupted scan has no name of its own: it is called after its date.
+            app = launch(look, paired: true, sample: true)
+            open(tab: "Mes plats", in: app)
+            let interrupted = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Plat du")).firstMatch
+            if appears(interrupted) {
+                interrupted.tap()
+                settle(2.5)
+                record.capture("15-plat-interrompu", app)
+            }
             app = launch(look, paired: true, sample: true)
             open(tab: "Réglages", in: app)
             settle(1.5)
-            record.capture("15-reglages", app)
+            record.capture("16-reglages", app)
         }
 
-        // The scanner, at five moments of a scan, then as it is when the camera is refused to the app.
-        for (index, moment) in ["box", "scanning", "paused", "finishing", "done", "denied"].enumerated() {
+        // The scanner at the moments of a scan (among them: scanning while the calculator finishes another dish,
+        // a model that waits its turn, a model the calculator judges fair), then as it is when the camera is
+        // refused to the app.
+        let moments = ["box", "scanning", "waiting", "paused", "finishing", "queued", "done", "done-partial", "denied"]
+        for (index, moment) in moments.enumerated() {
             app = launch(look, paired: true, sample: true, scan: moment)
             if appears(app.buttons["Quitter le scan"]) {
                 settle(4)
-                record.capture("\(16 + index)-scan-\(moment)", app)
+                record.capture("\(17 + index)-scan-\(moment)", app)
             }
         }
         app.terminate()

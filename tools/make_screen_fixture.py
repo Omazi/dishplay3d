@@ -5,7 +5,8 @@ calculator: the dishes it shows are written here, once, by the real engine from 
 plate (backend/tests/synthetic.py). No photograph and no outside data are involved.
 
 Three dishes, laid out exactly like the folders the app keeps on the iPhone:
-  - one finished (result picture, final model, textured GLB and USDZ, and the preview of the middle of its scan);
+  - one finished (result picture, final model, textured GLB and USDZ, the preview of the middle of its scan,
+    the calculator's report with the check of the real width, and its verdict as the app keeps it);
   - one being computed (views only, all sent, finishing requested);
   - one interrupted (views only, most of them not sent).
 
@@ -36,6 +37,7 @@ VIEWS = 60
 LIVE_AFTER = 20          # the "middle of the scan" preview is the one made after this many views
 FINAL_TRIANGLES = 9000   # final model shown by the app (a real one has up to 150 000)
 FINAL_POINTS = 6000
+REAL_WIDTH_M = 0.24      # the synthetic plate is 24 cm wide: what its owner would type as "largeur réelle"
 
 
 def lighter_final(blob: bytes) -> bytes:
@@ -85,15 +87,18 @@ def main() -> None:
             if i < LIVE_AFTER or live is None:
                 live = snapshot
     engine.flush()
-    report = finish_session(engine, work / "final", web_triangles=8000, texture_size=1024)
+    report = finish_session(engine, work / "final", web_triangles=8000, texture_size=1024, reference_width_m=REAL_WIDTH_M)
     assert report["texture"]["status"] == "ok" and report["texture"]["usdz"]["status"] == "ok", report["texture"]
 
     if OUT.exists():
         shutil.rmtree(OUT)
     done = OUT / "2026-11-18T12-30-00Z"
     (done / "results").mkdir(parents=True)
-    for name in ("apercu.png", "model.glb", "model.usdz"):
+    for name in ("apercu.png", "model.glb", "model.usdz", "report.json"):
         shutil.copy(work / "final" / name, done / "results" / name)
+    # What the app keeps of the final verdict (SessionStore.saveOutcome): the two fields, keys sorted.
+    outcome = {"fallbacks": report.get("fallbacks") or [], "verdict": report.get("verdict")}
+    (done / "outcome.json").write_text(json.dumps(outcome, ensure_ascii=False, sort_keys=True))
     (done / "results" / "final_preview.dpg").write_bytes(lighter_final((work / "final" / "final_preview.dpg").read_bytes()))
     (done / "results" / "live_preview.dpg").write_bytes(live[1])
     (done / "name.txt").write_text("Assiette d’essai")

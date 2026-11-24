@@ -17,7 +17,7 @@ enum TransportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .http(let code, let msg): return "Calculateur : erreur \(code) \(msg)"
-        case .notPaired: return "Téléphone non jumelé au calculateur."
+        case .notPaired: return "L’iPhone n’est pas relié au calculateur."
         case .badResponse: return "Réponse inattendue du calculateur."
         }
     }

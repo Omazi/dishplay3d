@@ -1,3 +1,4 @@
+import Accessibility
 import RealityKit
 import ScanCore
 import SwiftUI
@@ -26,6 +27,8 @@ struct ScannerView: View {
     @State private var confirmClose = false
     @State private var confirmFinish = false
     @State private var dishName = ""
+    /// The folder of the scan is being zipped for sharing.
+    @State private var exporting = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -44,6 +47,10 @@ struct ScannerView: View {
                     ZStack {
                         ARViewContainer(arView: controller.ar.arView).ignoresSafeArea(edges: .top)
                             .accessibilityIgnoresInvertColors()
+                            .accessibilityElement()
+                            .accessibilityLabel("Image de la caméra")
+                            .accessibilityHint(canPlaceBox ? "Touchez deux fois pour placer la boîte au centre de l’image." : "")
+                            .accessibilityAction { placeBoxAtCentre() }
                         // Everything floating over the camera is glass, and shares one container.
                         GlassGroup {
                             VStack(spacing: Spacing.s) {
@@ -54,6 +61,7 @@ struct ScannerView: View {
                                 actionBar
                             }
                         }
+                        .frame(maxWidth: 560)
                         .padding(.horizontal, Spacing.m).padding(.top, 6).padding(.bottom, Spacing.xxl)
                     }
                     Color.clear.frame(height: previewHeight - 28)
@@ -84,6 +92,14 @@ struct ScannerView: View {
                 askName = true
                 showFinalSurface()
             }
+        }
+        // VoiceOver says each new instruction: during a scan the person looks at the dish, not at the screen.
+        .onChange(of: instruction.title) { _, _ in
+            let i = instruction
+            announce([i.title, i.detail ?? ""].filter { !$0.isEmpty }.joined(separator: ". "))
+        }
+        .onChange(of: controller.tourComplete) { _, complete in
+            if complete { announce(verdict.text) }
         }
         .confirmationDialog(closeTitle, isPresented: $confirmClose, titleVisibility: .visible) {
             switch controller.phase {
@@ -147,9 +163,15 @@ struct ScannerView: View {
         if controller.phase == .scanning { controller.pause() }
         if abandon { controller.abandonIfUnfinished() }
         controller.stop()
+        forgetRealWidth()
         model.refreshPending()
         if controller.phase == .finishing || controller.phase == .done { model.nextTab = .library }
         model.screen = .connect
+    }
+
+    /// The real width typed in Réglages was the one of this dish's container: the next dish has its own.
+    private func forgetRealWidth() {
+        if controller.phase != .placing { model.referenceWidthCm = "" }
     }
 
     private var closeTitle: String {
@@ -174,6 +196,22 @@ struct ScannerView: View {
         if let id = controller.store?.localID { DishLibrary.rename(id: id, to: dishName) }
     }
 
+    private func announce(_ text: String) {
+        guard UIAccessibility.isVoiceOverRunning, !text.isEmpty else { return }
+        AccessibilityNotification.Announcement(text).post()
+    }
+
+    /// The box can be placed now: nothing is placed yet and the scan has not started.
+    private var canPlaceBox: Bool { placing && !box.placed && ar.failure == nil }
+
+    /// VoiceOver's way to place the box, since a point of the table cannot be chosen by eye.
+    private func placeBoxAtCentre() {
+        guard canPlaceBox else { return }
+        if !box.placeAtCentre() {
+            announce("Aucune table trouvée au centre de l’image. Visez la table au pied du plat, puis réessayez.")
+        }
+    }
+
     private var placing: Bool { controller.phase == .placing || controller.phase == .needsNewBox }
 
     // MARK: top bar
@@ -186,29 +224,49 @@ struct ScannerView: View {
                     .frame(width: 44, height: 44).glass(Circle(), interactive: true)
             }
             .accessibilityLabel("Quitter le scan")
-            HStack(spacing: 14) {
-                StatusDot(text: trackingText.0, color: trackingText.1)
-                StatusDot(text: computerText.0, color: computerText.1)
-                if controller.phase != .placing {
-                    Spacer(minLength: 0)
-                    Label("\(controller.savedFrames)", systemImage: "photo.stack").font(.footnote.weight(.semibold).monospacedDigit())
+            // On one line when it fits; with large text, or when a state needs more words, the two states go
+            // one under the other rather than being cut in the middle of a word.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    statusDots
+                    viewCounter
+                }
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) { statusDots }
+                    viewCounter
                 }
             }
-            .padding(.horizontal, 14).frame(minHeight: 44).frame(maxWidth: .infinity, alignment: .leading)
-            .glass(Capsule())
+            .padding(.horizontal, 14).padding(.vertical, 6).frame(minHeight: 44).frame(maxWidth: .infinity, alignment: .leading)
+            .glass(RoundedRectangle(cornerRadius: 22))
         }
     }
 
-    private var trackingText: (String, Color) {
+    @ViewBuilder private var statusDots: some View {
+        StatusDot(text: trackingText.0, color: trackingText.1, spoken: trackingText.2)
+        StatusDot(text: calculatorText.0, color: calculatorText.1, spoken: calculatorText.2)
+    }
+
+    @ViewBuilder private var viewCounter: some View {
+        if controller.phase != .placing {
+            Spacer(minLength: 0)
+            Label("\(controller.savedFrames)", systemImage: "photo.stack").font(.footnote.weight(.semibold).monospacedDigit())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(controller.savedFrames == 1 ? "1 vue prise" : "\(controller.savedFrames) vues prises")
+        }
+    }
+
+    /// What is shown, its colour, and what VoiceOver says (the colour is not heard).
+    private var trackingText: (String, Color, String) {
         switch ar.tracking {
-        case .normal: return ("Suivi", Theme.good)
-        case .limited: return ("Suivi limité", Theme.warn)
-        case .notAvailable: return ("Suivi perdu", Theme.bad)
+        case .normal: return ("Suivi", Theme.good, "Suivi du mouvement : bon")
+        case .limited: return ("Suivi limité", Theme.warn, "Suivi du mouvement : limité")
+        case .notAvailable: return ("Suivi perdu", Theme.bad, "Suivi du mouvement : perdu")
         }
     }
 
-    private var computerText: (String, Color) {
-        controller.calculatorOnline ? ("PC", Theme.good) : ("PC injoignable", Theme.bad)
+    private var calculatorText: (String, Color, String) {
+        controller.calculatorOnline ? ("Calculateur", Theme.good, "Calculateur : joignable")
+            : ("Calculateur injoignable", Theme.bad, "Calculateur injoignable")
     }
 
     // MARK: instruction
@@ -228,6 +286,8 @@ struct ScannerView: View {
         }
         // Views that cannot be kept on the iPhone: said at once, during the scan too (the ring no longer counts them).
         if let problem = controller.storageProblem { return ("Vues non enregistrées", problem, Theme.bad) }
+        // The calculator answers and refuses the views (its disk is full, most often): its own sentence.
+        if let refusal = controller.calculatorRefusal { return ("Envoi des vues arrêté", refusal, Theme.bad) }
         if let e = controller.errorText, controller.phase != .scanning { return ("Un problème est survenu", e, Theme.bad) }
         switch controller.phase {
         case .placing:
@@ -259,14 +319,14 @@ struct ScannerView: View {
             if let g = controller.lastGeometry, g.kind == "final", (g.triangle_count ?? 0) == 0 {
                 return ("Aucun modèle obtenu", "Ce scan n’a pas donné de surface. Refaites-le en tournant lentement tout autour du plat.", Theme.bad)
             }
-            return ("Modèle prêt", "Faites-le tourner du doigt, puis retrouvez-le dans Mes plats.", Theme.good)
+            return doneInstruction
         case .scanning:
             if controller.olderCalculatorBusy {
                 // The scan started just as the calculator began finishing another dish.
                 return ("Le calculateur termine un autre plat", "Continuez : vos vues restent sur l’iPhone et partiront dès qu’il aura fini.", Theme.warn)
             }
             if !controller.calculatorOnline {
-                return ("PC injoignable", "Les vues restent sur l’iPhone ; l’aperçu est figé.", Theme.bad)
+                return ("Calculateur injoignable", "Les vues restent sur l’iPhone ; l’aperçu est figé.", Theme.bad)
             }
             switch controller.status.guidance {
             case .trackingLost?: return ("Suivi perdu", "Revenez lentement vers le plat.", Theme.bad)
@@ -280,6 +340,37 @@ struct ScannerView: View {
             default: return ("Tournez autour du plat", "Lentement, en gardant le plat dans l’image.", .white)
             }
         }
+    }
+
+    /// The model is ready: said with the calculator's verdict on it and with the first thing its calculation
+    /// could not do as planned. Everything it gave up is listed on the dish's page.
+    private var doneInstruction: (title: String, detail: String?, color: Color) {
+        let outcome = controller.finalOutcome
+        let weakness = Self.weakness(outcome?.verdict?.issues ?? [])
+        let gaveUp = outcome?.fallbacks.first?.message
+        let next = "Faites-le tourner du doigt, puis retrouvez-le dans Mes plats."
+        switch outcome?.verdict?.level {
+        case "poor":
+            return ("Modèle prêt, mais incomplet",
+                    "\(weakness ?? "Il manque des parties du plat"). Pour un meilleur modèle, rescannez le plat en tournant lentement tout autour.", Theme.bad)
+        case "fair":
+            let said = [weakness.map { $0 + "." }, gaveUp].compactMap { $0 }
+            return ("Modèle prêt, qualité correcte", said.isEmpty ? next : said.joined(separator: " "), Theme.warn)
+        default:
+            // A good model, or a calculator that gives no verdict.
+            if let gaveUp { return ("Modèle prêt", gaveUp, Theme.warn) }
+            return ("Modèle prêt", next, Theme.good)
+        }
+    }
+
+    /// What a verdict's issues mean for the dish, as one short sentence without its full stop.
+    private static func weakness(_ issues: [String]) -> String? {
+        if issues.contains("box_too_low") { return "Le haut du plat dépassait de la boîte" }
+        if issues.contains("sides_missing") { return "Il manque des côtés du plat" }
+        if issues.contains("holes") || issues.contains("fragmented") { return "Des zones du plat sont restées vides" }
+        if issues.contains("few_views") { return "Trop peu de vues nettes" }
+        if issues.contains("uniform_or_shiny") { return "La surface, unie ou brillante, a été difficile à mesurer" }
+        return nil
     }
 
     /// Why the scan cannot start yet with a calculator older than the app expects, and what changes that.
@@ -303,16 +394,19 @@ struct ScannerView: View {
                     // Which way to walk is said while scanning only: in pause the card says the scan is kept.
                     if controller.phase == .scanning, i.color == .white, let hint = sideHint {
                         Text(hint).font(.subheadline.weight(.semibold))
-                            .foregroundStyle(controller.tourComplete ? verdict.color : Theme.accent).lineLimit(2).minimumScaleFactor(0.8)
+                            .foregroundStyle(controller.tourComplete ? verdict.color : Theme.accent).lineLimit(3).minimumScaleFactor(0.8)
                     } else if let d = i.detail, !d.isEmpty {
-                        // A problem is explained in full; an instruction stays short so as not to hide the dish.
+                        // A problem or a warning is explained in full; an instruction stays short so as not to
+                        // hide the dish (three lines, which large text needs for one sentence).
                         Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85))
-                            .lineLimit(i.color == Theme.bad ? 5 : 2).minimumScaleFactor(0.85)
+                            .lineLimit(i.color == .white ? 3 : 7).minimumScaleFactor(0.85)
                     }
                     if scanning {
                         let ring = controller.scheduler.ring
-                        Text("Tour \(ring.visitedAzimuths)/12 · vues hautes \(min(ring.highViews, 6))/6")
+                        let sides = ring.visitedAzimuths, above = min(ring.highViews, 6)
+                        Text("Côtés vus \(sides)/12 · dessus \(above)/6")
                             .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.7))
+                            .accessibilityLabel("\(sides) côtés vus sur 12, \(above) vues de dessus sur 6")
                     }
                 }
                 Spacer(minLength: 0)
@@ -479,19 +573,36 @@ struct ScannerView: View {
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
                         if controller.finishFraction == nil { ProgressView().tint(.white) }
-                        Text(controller.finishText ?? "Calcul en cours…").font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                        // The step, and under it the time left: each on its own line, never cut.
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(controller.finishText ?? "Calcul en cours…").font(.subheadline.weight(.semibold))
+                            if let detail = controller.finishDetail {
+                                Text(detail).font(.footnote).foregroundStyle(.white.opacity(0.8))
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                     if let f = controller.finishFraction {
                         ProgressView(value: f).tint(Theme.accent)
                     }
                 }
-                .padding(.horizontal, Spacing.xl).padding(.vertical, Spacing.xs)
-                .frame(maxWidth: .infinity).frame(minHeight: 56).glass(Capsule())
+                .padding(.horizontal, Spacing.l).padding(.vertical, Spacing.s)
+                .frame(maxWidth: .infinity).frame(minHeight: 56).glass(RoundedRectangle(cornerRadius: 28))
+                .accessibilityElement(children: .combine)
             case .done:
-                GlassIconButton(icon: "square.and.arrow.up", name: "Exporter le dossier du scan") { shareURL = controller.exportZip() }
+                GlassIconButton(icon: exporting ? "hourglass" : "square.and.arrow.up",
+                                name: exporting ? "Préparation du dossier du scan" : "Exporter le dossier du scan") {
+                    guard !exporting else { return }
+                    exporting = true
+                    Task {
+                        shareURL = await controller.exportZip()
+                        exporting = false
+                    }
+                }
                 PrimaryButton(title: "Voir dans Mes plats", icon: "square.grid.2x2.fill", tint: Theme.good) {
                     saveDishName()
                     controller.stop()
+                    forgetRealWidth()
                     model.nextTab = .library
                     model.screen = .connect
                 }
@@ -532,6 +643,7 @@ struct ScannerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Text(previewTitle).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+                            .accessibilityAddTraits(.isHeader)
                         // The verdict helps while there is still time to act on it: not once the finishing has started.
                         if let level = controller.lastGeometry?.quality?.level, level != "too_early",
                            controller.phase == .scanning || controller.phase == .paused {
@@ -543,7 +655,7 @@ struct ScannerView: View {
                                 .accessibilityLabel("Qualité du scan : \(level == "good" ? "bonne" : level == "fair" ? "correcte" : "insuffisante")")
                         }
                     }
-                    Text(previewSubtitle).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(previewSubtitle).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(2).minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 4)
                 Button { expanded.toggle() } label: {
@@ -568,7 +680,7 @@ struct ScannerView: View {
             .clipShape(.rect(cornerRadius: Radius.card))
             .padding(.horizontal, Spacing.s)
             if controller.lastGeometry != nil {
-                Picker("", selection: $mode) { ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) } }
+                Picker("Affichage", selection: $mode) { ForEach(PreviewMode.allCases) { Text($0.rawValue).tag($0) } }
                     .pickerStyle(.segmented).padding(.horizontal, 18)
                     .onChange(of: mode) { _, m in controller.preview.mode = m }
             }
@@ -578,26 +690,21 @@ struct ScannerView: View {
 
     private var previewTitle: String {
         guard let g = controller.lastGeometry else { return "Aperçu 3D" }
-        switch g.kind {
-        case "points": return "Nuage de points"
-        case "points+mesh": return "Nuage + surface"
-        case "final": return "Modèle final"
-        default: return g.kind
-        }
+        return g.kind == "final" ? "Modèle final" : "Aperçu en direct"
     }
 
+    /// How fresh the live preview is, in words; the counts of points and triangles told the person nothing.
     private var previewSubtitle: String {
         guard let g = controller.lastGeometry, let t = controller.lastGeometryReceivedAt else { return "En direct pendant le scan" }
-        let points = (g.point_count ?? 0).formatted()
-        let triangles = (g.triangle_count ?? 0).formatted()
-        if g.kind == "final" { return "\(triangles) triangles · \(points) points" }
+        if g.kind == "final" { return "Tournez-le du doigt, pincez pour zoomer" }
+        let views = g.integrated_frames ?? 0
         let age = max(0, Int(now.timeIntervalSince(t)))
-        return "\(g.integrated_frames ?? 0) vues · \(points) points · \(triangles) triangles · il y a \(age) s"
+        return "\(views) \(views == 1 ? "vue utilisée" : "vues utilisées") · mis à jour il y a \(age) s"
     }
 
     private var emptyPreviewText: String {
         switch controller.phase {
-        case .placing, .needsNewBox: return "Le nuage de points du plat apparaîtra ici, puis sa surface, pendant que vous tournez autour."
+        case .placing, .needsNewBox: return "Le plat apparaîtra ici, d’abord en points puis en surface, pendant que vous tournez autour."
         default:
             if controller.waitingForCalculator || controller.olderCalculatorBusy {
                 return "Le calculateur termine un autre plat. Continuez de tourner : vos vues sont gardées et l’aperçu démarrera ensuite."

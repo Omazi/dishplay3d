@@ -9,6 +9,8 @@ struct HomeView: View {
     @State private var dishes: [DishRecord] = []
     @Namespace private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The cards of the carousel grow with the text they hold.
+    @ScaledMetric(relativeTo: .subheadline) private var carouselCard: CGFloat = 196
 
     var body: some View {
         NavigationStack {
@@ -19,7 +21,16 @@ struct HomeView: View {
                         .modifier(ZoomDestination(id: dish.id, namespace: zoom))
                 }
         }
-        .task { await model.checkHealth() }
+        .task {
+            await model.checkHealth()
+            // The dishes shown here stand where "Mes plats" says they stand: asked the same way, for as long
+            // as one of them has no model yet.
+            while !Task.isCancelled {
+                if await model.refreshDishProgress() { reload() }
+                guard dishes.contains(where: { $0.state != .ready }) else { break }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+            }
+        }
         .onAppear {
             reload()
             model.refreshPending()
@@ -53,6 +64,7 @@ struct HomeView: View {
                     }
                     .appText(.display)
                     .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
                     .padding(.horizontal, Spacing.l).padding(.top, Spacing.xl)
                     .staged(appeared, order: 0, reduceMotion: reduceMotion)
 
@@ -78,6 +90,7 @@ struct HomeView: View {
                     }
                 }
                 .padding(.bottom, Spacing.xl)
+                .readableColumn()
             }
             .scrollIndicators(.hidden)
         }
@@ -132,6 +145,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: Spacing.s) {
             HStack {
                 Text("Derniers plats").appText(.section).foregroundStyle(Theme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button(action: openLibrary) {
                     Text("Tout voir")
@@ -146,7 +160,7 @@ struct HomeView: View {
                     ForEach(dishes) { dish in
                         NavigationLink(value: dish) {
                             DishCard(dish: dish, progress: model.dishProgress[dish.id])
-                                .frame(width: 196)
+                                .frame(width: min(carouselCard, 300))
                         }
                         .buttonStyle(PressableStyle())
                         .modifier(ZoomSource(id: dish.id, namespace: zoom))

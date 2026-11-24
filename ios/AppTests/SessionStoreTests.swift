@@ -146,6 +146,25 @@ final class SessionStoreTests: StorageTestCase {
         XCTAssertEqual(SessionStore.removeLeftovers(), 0)
     }
 
+    /// The views weigh hundreds of megabytes and can be taken again; the model cannot. Only the views stay out
+    /// of the iPhone's backups.
+    func testTheViewsStayOutOfBackupsAndTheModelDoesNot() throws {
+        func leftOut(_ url: URL) throws -> Bool {
+            try URL(fileURLWithPath: url.path).resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup ?? false
+        }
+        let store = try SessionStore(localID: "2026-11-21T10-00-00Z")
+        XCTAssertTrue(try leftOut(store.root.appendingPathComponent("frames")))
+        let model = try store.saveArtifact(name: "model.glb", data: Data("x".utf8))
+        XCTAssertFalse(try leftOut(model))
+        XCTAssertFalse(try leftOut(store.root), "the folder of the dish itself stays in the backup")
+
+        // A scan made with an earlier version of the app: its views leave the backups when the app starts.
+        let earlier = try makeScan("2026-11-20T10-00-00Z", views: 2)
+        XCTAssertFalse(try leftOut(earlier.appendingPathComponent("frames")))
+        SessionStore.keepViewsOutOfBackups()
+        XCTAssertTrue(try leftOut(earlier.appendingPathComponent("frames")))
+    }
+
     func testTheFinalOutcomeIsKeptWithTheDish() throws {
         let store = try SessionStore(localID: "2026-11-21T10-00-00Z")
         XCTAssertNil(SessionStore.outcome(in: store.root))

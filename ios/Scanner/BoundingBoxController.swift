@@ -69,11 +69,25 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
     // MARK: gestures
 
     @objc private func onTap(_ g: UITapGestureRecognizer) {
-        guard !locked, !placed, let view = arView else { return }
-        let p = g.location(in: view)
+        guard let view = arView else { return }
+        place(at: g.location(in: view))
+    }
+
+    /// For VoiceOver, where a point of the table cannot be chosen by eye: the box goes where the middle of the
+    /// image meets the table. False when no table is seen there yet.
+    @discardableResult
+    func placeAtCentre() -> Bool {
+        guard let view = arView else { return false }
+        return place(at: CGPoint(x: view.bounds.midX, y: view.bounds.midY))
+    }
+
+    /// Put the box on the table under this point of the camera image. False when there is no table there.
+    @discardableResult
+    private func place(at p: CGPoint) -> Bool {
+        guard !locked, !placed, let view = arView else { return false }
         let results = view.raycast(from: p, allowing: .existingPlaneGeometry, alignment: .horizontal)
         let hit = results.first ?? view.raycast(from: p, allowing: .estimatedPlane, alignment: .horizontal).first
-        guard let hit else { return }
+        guard let hit else { return false }
         planeSource = results.first != nil ? "arkit_horizontal_plane" : "arkit_estimated_plane"
         let t = hit.worldTransform.columns.3
         centre = SIMD3(t.x, t.y, t.z)
@@ -88,6 +102,7 @@ final class BoundingBoxController: NSObject, ObservableObject, UIGestureRecogniz
         placed = true
         rebuild()
         Haptics.tap(.medium)
+        return true
     }
 
     /// Two-finger pinch: grow or shrink width and depth together.

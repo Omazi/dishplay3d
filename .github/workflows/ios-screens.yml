@@ -2,8 +2,10 @@ name: DishPlay Scan — screens
 
 # Opens every screen of the app in the iPhone simulator and keeps a picture of each, with the findings of
 # Apple's accessibility audit (ios/UITests). Nothing is judged automatically: the pictures are looked at.
+# On the reference iPhone it also runs the tests of the app's logic (ScanCore, then ios/AppTests inside the
+# app): a release needs a successful run of this workflow, so it needs them too.
 # It costs macOS minutes, so it only runs when asked: change ios/UITests/RUN.txt, or start it by hand.
-# RUN.txt also says how much to do (one walk only, one iPhone or the three of them).
+# RUN.txt also says how much to do (one walk only, one iPhone or the four machines).
 on:
   push:
     branches: [main, 'claude/**']
@@ -56,6 +58,16 @@ jobs:
           DEVELOPER_DIR="$XC/Contents/Developer" xcodebuild -version
       - name: Install pinned XcodeGen (2.46.0, SHA-256 verified)
         run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
+      # The two steps of tests do not stop the job: the walk runs whatever they say, and the last step of the
+      # job fails when one of them failed.
+      - name: The logic shared with the calculator's formats (ScanCore tests)
+        id: scancore
+        if: matrix.logic
+        continue-on-error: true
+        working-directory: ios/ScanCore
+        run: |
+          swift test > "$RUNNER_TEMP/scancore.log" 2>&1 || { grep -E "error:|XCTAssert|failed" "$RUNNER_TEMP/scancore.log" | cut -c1-400 | head -60; tail -15 "$RUNNER_TEMP/scancore.log"; exit 1; }
+          grep -E "Executed [0-9]+ tests" "$RUNNER_TEMP/scancore.log" | tail -1
       - name: Apple's own readers open the sample USDZ made by the calculator
         # Reported, not blocking: the walk through the screens runs whatever this says.
         if: matrix.usdz
@@ -117,6 +129,17 @@ jobs:
           if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -60 build/screens.log | cut -c1-600; fi
           ls build/screens | head -100
           exit "$status"
+      - name: The app's own logic, tested inside the app (what is kept, resumed and deleted on the iPhone)
+        id: apptests
+        if: always() && matrix.logic
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          xcodebuild test -project DishPlayScreens.xcodeproj -scheme AppTests \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" -derivedDataPath build/ScreensData \
+            > build/app-tests.log 2>&1 || { grep -E "error:|XCTAssert|Test Case .* failed|\*\* TEST" build/app-tests.log | cut -c1-400 | head -60; tail -25 build/app-tests.log | cut -c1-400; exit 1; }
+          grep -E "Test Case .* (passed|failed)" build/app-tests.log | cut -c1-200 | tail -40
+          grep -E "Executed [0-9]+ tests" build/app-tests.log | tail -1
       - name: Pictures and audit findings as text (small copies, to be read from this log)
         if: always()
         working-directory: ios/build
@@ -138,4 +161,13 @@ jobs:
             ios/build/screens
             ios/build/screens.log
             ios/build/screens-build.log
+            ios/build/app-tests.log
           retention-days: 14
+      - name: The tests of the app's logic passed
+        if: always() && matrix.logic
+        env:
+          SCANCORE: ${{ steps.scancore.outcome }}
+          APPTESTS: ${{ steps.apptests.outcome }}
+        run: |
+          echo "ScanCore tests: $SCANCORE · app tests: $APPTESTS"
+          [ "$SCANCORE" = "success" ] && [ "$APPTESTS" = "success" ]

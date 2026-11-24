@@ -17,6 +17,8 @@ final class ScanController: ObservableObject {
     @Published private(set) var lastGeometryReceivedAt: Date?
     @Published private(set) var serverFrames: [String: Int] = [:]
     @Published private(set) var finishText: String?
+    /// Under `finishText`: how long the current step still needs, once that can be estimated.
+    @Published private(set) var finishDetail: String?
     @Published private(set) var errorText: String?
     @Published private(set) var savedFrames = 0
     @Published private(set) var sentFrames = 0
@@ -37,6 +39,9 @@ final class ScanController: ObservableObject {
     /// The views being taken cannot be kept on the iPhone (no room left, most often): one sentence for the
     /// person. Shown during the scan too, and not erased by a view that reaches the calculator.
     @Published private(set) var storageProblem: String?
+    /// The calculator answers and refuses the views (its disk is full, it no longer knows this iPhone or this
+    /// scan): its sentence, shown during the scan too. Gone as soon as it accepts a request again.
+    @Published private(set) var calculatorRefusal: String?
     /// The calculator's verdict on the final model and what its calculation had to give up. nil until the
     /// model is ready, and when the calculator says nothing (engine before p1-0.11.0).
     @Published private(set) var finalOutcome: FinalOutcome?
@@ -45,13 +50,11 @@ final class ScanController: ObservableObject {
     /// First progress report of the current finishing step: lets the app estimate the time left.
     private var finishStep: (name: String, since: Date, done: Int)?
 
-    /// " · encore ~4 min", once enough of the step has run for the estimate to mean something.
-    private func remainingText(done: Int, total: Int) -> String {
-        guard let s = finishStep, done - s.done >= 5, done < total else { return "" }
+    /// "encore 4 min environ", once enough of the step has run for the estimate to mean something.
+    private func remainingText(done: Int, total: Int) -> String? {
+        guard let s = finishStep, done - s.done >= 5, done < total else { return nil }
         let perItem = Date().timeIntervalSince(s.since) / Double(done - s.done)
-        let left = perItem * Double(total - done)
-        if left < 50 { return " · moins d’une minute" }
-        return " · encore ~\(Int((left / 60).rounded(.up))) min"
+        return FinishWording.remaining(seconds: perItem * Double(total - done))
     }
 
     let ar = ARSessionController()
@@ -131,6 +134,16 @@ final class ScanController: ObservableObject {
             lastGeometryReceivedAt = .now
         }
         switch moment {
+        case "waiting":
+            // Scanning while the calculator finishes another dish: the views are kept, no preview yet.
+            for side in 0..<4 {
+                let angle = (Double(side) + 0.5) * .pi / 6
+                scheduler.ring.add(cameraInObject: [cos(angle), 0.2, sin(angle)], boxHeight: Double(box.height))
+            }
+            cameraAzimuthDeg = 180
+            savedFrames = 18
+            waitingForCalculator = true
+            phase = .scanning
         case "scanning", "paused":
             // Seven of the twelve sides seen so far, from a low angle.
             for side in 0..<7 {
@@ -145,13 +158,31 @@ final class ScanController: ObservableObject {
             savedFrames = 60
             show("live_preview.dpg")
             preview.followPhone = false
-            finishText = "Calcul fin des profondeurs : 12/40 · encore ~2 min"
+            finishText = FinishWording.step("depth")
+            finishDetail = FinishWording.remaining(seconds: 110)
             finishFraction = 0.3
             phase = .finishing
-        case "done":
+        case "queued":
+            // The model was asked for while the calculator finishes another dish: it waits its turn.
+            savedFrames = 60
+            show("live_preview.dpg")
+            preview.followPhone = false
+            finishQueued = true
+            finishText = QueueWording.waiting(1)
+            phase = .finishing
+        case "done", "done-partial":
             savedFrames = 60
             show("final_preview.dpg")
             preview.followPhone = false
+            if moment == "done-partial" {
+                // A model the calculator judges fair, with one thing its calculation could not do.
+                finalOutcome = FinalOutcome(
+                    verdict: ScanVerdict(level: "fair", score: 62, issues: ["holes"]),
+                    fallbacks: [Fallback(code: "texture_partly_missing",
+                                         message: "Une partie du plat n’a pas reçu les couleurs des photos : elle garde une couleur simple.")])
+            } else {
+                finalOutcome = FinalOutcome(verdict: ScanVerdict(level: "good", score: 88))
+            }
             phase = .done
         default:
             break   // "box": the box has just been placed, the scan has not started
@@ -255,11 +286,13 @@ final class ScanController: ObservableObject {
         resultFiles = []
         finalOutcome = nil
         finishText = nil
+        finishDetail = nil
         finishFraction = nil
         finishStep = nil
         finishQueued = false
         pendingBox = nil
         waitingForCalculator = false
+        calculatorRefusal = nil
         storageProblem = nil
         storageFailures = 0
         clearError()
@@ -422,6 +455,7 @@ final class ScanController: ObservableObject {
             clearError()
             finishFraction = nil
             finishStep = nil
+            finishDetail = nil
             finishQueued = answer.queued
             finishText = answer.queued ? QueueWording.waiting(answer.position) : "Finition lancée sur le calculateur…"
             phase = .finishing
@@ -433,7 +467,7 @@ final class ScanController: ObservableObject {
             backToPause()
         } catch {
             if Task.isCancelled || stopped { return }
-            say(AppModel.explain(error), lasting: true)
+            say(AppModel.explain(error, brief: true), lasting: true)
             backToPause()
         }
     }
@@ -468,8 +502,16 @@ final class ScanController: ObservableObject {
         transport.disconnectEvents()
     }
 
-    func exportZip() -> URL? {
-        do { return try store?.exportZip() } catch { say(error.localizedDescription, lasting: true); return nil }
+    /// The whole folder of the scan as one file to share. Made away from the main thread: a scan weighs a few
+    /// hundred megabytes, and the screen would not answer meanwhile.
+    func exportZip() async -> URL? {
+        guard let store else { return nil }
+        do {
+            return try await Task.detached(priority: .userInitiated) { try store.exportZip() }.value
+        } catch {
+            say("Le dossier du scan n’a pas pu être préparé : \(error.localizedDescription)", lasting: true)
+            return nil
+        }
     }
 
     // MARK: frames
@@ -570,8 +612,7 @@ final class ScanController: ObservableObject {
             store.markSent(fid)
             if stopped { return }
             sentFrames = store.sentCount
-            calculatorOnline = true
-            if !errorIsLasting { clearError() }
+            requestAccepted()
             if answer.queued == true {
                 waitingForCalculator = false
             } else if answer.queued == false {
@@ -579,9 +620,28 @@ final class ScanController: ObservableObject {
             }
         } catch {
             if Task.isCancelled || stopped { return }
-            calculatorOnline = false  // originals stay on disk; retried
-            say(AppModel.explain(error))
+            requestFailed(error)   // originals stay on disk; retried
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
+    }
+
+    /// The calculator took a request: it is there, and whatever it refused before is over.
+    private func requestAccepted() {
+        calculatorOnline = true
+        if calculatorRefusal != nil { calculatorRefusal = nil }
+        if !errorIsLasting { clearError() }
+    }
+
+    /// A request to the calculator failed. When it answered and refused (its disk is full, it no longer knows
+    /// this iPhone or this scan), it is there: its sentence stays in view, during the scan too. Otherwise it is
+    /// away, and the views wait on the iPhone.
+    private func requestFailed(_ error: Error) {
+        if let refusal = error as? TransportError, case .http = refusal {
+            calculatorOnline = true
+            calculatorRefusal = AppModel.explain(error, brief: true)
+        } else {
+            calculatorOnline = false
+            say(AppModel.explain(error, brief: true))
         }
     }
 
@@ -613,12 +673,10 @@ final class ScanController: ObservableObject {
             // the live preview by itself; the screen says so instead of "unreachable".
             waitingForCalculator = created.waiting
             transport.connectEvents(sessionID: created.id)
-            calculatorOnline = true
-            if !errorIsLasting { clearError() }
+            requestAccepted()
         } catch {
             if Task.isCancelled || stopped { return }
-            calculatorOnline = false
-            say(AppModel.explain(error))
+            requestFailed(error)
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
     }
@@ -629,8 +687,7 @@ final class ScanController: ObservableObject {
             try await transport.postBox(sessionID: sid, box: spec)
             if stopped { return }
             if pendingBox == spec { pendingBox = nil }   // not when the box was changed again meanwhile
-            calculatorOnline = true
-            if !errorIsLasting { clearError() }
+            requestAccepted()
         } catch let TransportError.http(code, _) where code == 400 || code == 422 {
             if Task.isCancelled || stopped { return }
             // The calculator answers and refuses this very box: sending it again would change nothing, and
@@ -639,8 +696,7 @@ final class ScanController: ObservableObject {
             say("Le calculateur n’a pas accepté cette boîte. Mettez le scan en pause, touchez « Boîte », ajustez-la et validez de nouveau.", lasting: true)
         } catch {
             if Task.isCancelled || stopped { return }
-            calculatorOnline = false
-            say(AppModel.explain(error))
+            requestFailed(error)
             try? await Task.sleep(nanoseconds: 1_500_000_000)
         }
     }
@@ -737,29 +793,30 @@ final class ScanController: ObservableObject {
         case "finish_progress":
             guard phase != .done else { break }   // late progress of an optional step must not replace "ready"
             finishQueued = false
-            let names = ["poses": "recalage des vues", "depth": "calcul fin des profondeurs", "mesh": "surface", "texture": "texture",
-                         "neural": "rendu neuronal"]
             let key = ev.step ?? ""
-            let step = names[key] ?? "calcul"
-            let label = step.prefix(1).uppercased() + step.dropFirst()
-            finishFraction = (ev.total ?? 0) > 1 ? min(1, Double(ev.done ?? 0) / Double(ev.total ?? 1)) : nil
+            finishText = FinishWording.step(key)
             if let total = ev.total, total > 1 {
                 let done = ev.done ?? 0
+                finishFraction = min(1, Double(done) / Double(total))
                 if finishStep?.name != key { finishStep = (key, Date(), done) }
-                finishText = "\(label) : \(done)/\(total)\(remainingText(done: done, total: total))"
+                finishDetail = remainingText(done: done, total: total)
             } else {
+                finishFraction = nil
                 finishStep = nil
-                finishText = "\(label)…"
+                finishDetail = nil
             }
         case "artifacts":
             note(outcome: ev.report)
             finished(files: ev.files ?? [])
         case "error":
             guard phase != .done else { break }   // nor may a late problem of an optional step
-            let detail = String((ev.message ?? ev.code ?? "erreur").prefix(140))
+            // The picture of the model or the optional extra step failed: the model itself still comes.
+            if ev.code == "render_failed" || ev.code == "neural_failed" { break }
+            // The calculator's own words here are notes for developers. When the final calculation is lost, a
+            // calculator that keeps a queue says so right after, in a sentence for the person (status "failed").
             say(phase == .finishing
-                ? "Le calcul a rencontré un problème sur le calculateur. Vous pourrez le relancer depuis Mes plats. (Détail : \(detail))"
-                : "Le calculateur signale un problème. (Détail : \(detail))")
+                ? "Le calcul a rencontré un problème sur le calculateur."
+                : "Le calculateur a rencontré un problème sur ce scan. Vos vues sont gardées : vous pouvez continuer.")
         default: break
         }
     }
@@ -778,6 +835,7 @@ final class ScanController: ObservableObject {
         phase = .done
         finishQueued = false
         finishFraction = nil
+        finishDetail = nil
         clearError()
         Haptics.success()
         preview.followPhone = false
@@ -794,6 +852,7 @@ final class ScanController: ObservableObject {
         finishFraction = nil
         finishStep = nil
         finishText = nil
+        finishDetail = nil
         let said = sentence?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         say((said.isEmpty ? "Le calcul du modèle n’a pas abouti." : said) + " Vous pouvez le relancer avec « Terminer ».", lasting: true)
         Haptics.warning()
@@ -823,6 +882,7 @@ final class ScanController: ObservableObject {
                     // Behind another dish: it starts by itself, this is not a calculation that stopped.
                     self.finishQueued = true
                     self.finishFraction = nil
+                    self.finishDetail = nil
                     self.finishText = QueueWording.waiting(position)
                     idle = 0
                 case .failed(let message):
@@ -847,7 +907,7 @@ final class ScanController: ObservableObject {
         guard let sid = serverSessionID, let store else { return }
         // The verdict normally comes with the event that ends the calculation; otherwise the calculator is asked.
         if finalOutcome == nil, let info = try? await transport.sessionInfo(sessionID: sid) { note(outcome: info.outcome) }
-        for name in files where ["final_preview.dpg", "model.glb", "model.usdz", "plat_seul.glb", "apercu.png", "report.json", "points.ply", "mesh.ply", "manifest.json"].contains(name) {
+        for name in AppModel.keptFiles where files.contains(name) {
             if name == "final_preview.dpg" && lastGeometry?.kind == "final" { continue }   // already received as an event
             guard let d = try? await transport.download("sessions/\(sid)/artifacts/\(name)"), let u = try? store.saveArtifact(name: name, data: d) else { continue }
             if !resultFiles.contains(u) { resultFiles.append(u) }

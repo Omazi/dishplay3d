@@ -232,10 +232,11 @@ final class DishStandingTests: XCTestCase {
     func testWithAnOlderCalculator() {
         let counted = standing(SessionStatus(state: "finishing", active: true, step: "depth", done: 12, total: 40))
         XCTAssertEqual(counted, .computing(step: "depth", done: 12, total: 40))
-        XCTAssertEqual(counted.text, "Calcul du modèle · 12/40")
+        XCTAssertEqual(counted.text, "Étape 1 sur 4 : mesure des reliefs", "the count is the progress bar, not figures")
         XCTAssertEqual(counted.fraction ?? 0, 0.3, accuracy: 1e-9)
         XCTAssertNil(counted.action)
-        XCTAssertEqual(standing(SessionStatus(state: "finishing", active: true, step: "poses", done: 3, total: 9)).text, "Recalage des vues · 3/9")
+        XCTAssertEqual(standing(SessionStatus(state: "finishing", active: true, step: "poses", done: 3, total: 9)).text,
+                       "Étape 2 sur 4 : alignement des vues")
 
         let uncounted = standing(SessionStatus(state: "finishing", active: true))
         XCTAssertEqual(uncounted, .computingUncounted)
@@ -257,6 +258,52 @@ final class DishStandingTests: XCTestCase {
         XCTAssertEqual(stopped.action, .finish)
 
         XCTAssertEqual(standing(SessionStatus(state: "done", ready: true)), .ready)
+    }
+}
+
+/// The words the app uses for the final calculation and for the check of the model's size.
+final class WordingTests: XCTestCase {
+    /// The calculator names its steps after its methods; the app says what happens to the dish.
+    func testStepsOfTheFinalCalculation() {
+        XCTAssertEqual(FinishWording.step("depth"), "Étape 1 sur 4 : mesure des reliefs")
+        XCTAssertEqual(FinishWording.step("poses"), "Étape 2 sur 4 : alignement des vues")
+        XCTAssertEqual(FinishWording.step("mesh"), "Étape 3 sur 4 : construction de la surface")
+        XCTAssertEqual(FinishWording.step("texture"), "Étape 4 sur 4 : pose des couleurs")
+        XCTAssertEqual(FinishWording.step("neural"), "Étape supplémentaire : rendu fin")
+        XCTAssertEqual(FinishWording.step("a_new_step"), "Calcul du modèle", "a step the app does not know")
+        XCTAssertEqual(FinishWording.step(nil), "Calcul du modèle")
+    }
+
+    func testTimeLeft() {
+        XCTAssertEqual(FinishWording.remaining(seconds: 10), "moins d’une minute")
+        XCTAssertEqual(FinishWording.remaining(seconds: 49), "moins d’une minute")
+        XCTAssertEqual(FinishWording.remaining(seconds: 61), "encore 2 min environ")
+        XCTAssertEqual(FinishWording.remaining(seconds: 240), "encore 4 min environ")
+        XCTAssertEqual(FinishWording.remaining(seconds: .infinity), "moins d’une minute", "no estimate is no promise")
+    }
+
+    /// The width typed in Réglages is only a check: the report says what the model measures.
+    func testTheCheckOfTheRealWidth() throws {
+        let report = Data(#"{"mesh":{"triangles":9000},"scale_check":{"reference_width_m":0.24,"measured_width_m":0.2431,"error_pct":1.29}}"#.utf8)
+        let check = try XCTUnwrap(ScaleCheck.read(report))
+        XCTAssertEqual(check.referenceWidthM, 0.24, accuracy: 1e-9)
+        XCTAssertEqual(check.text, "24,3 cm pour 24 cm saisis")
+        XCTAssertEqual(check.matches, true)
+
+        let far = try XCTUnwrap(ScaleCheck.read(Data(#"{"scale_check":{"reference_width_m":0.3,"measured_width_m":0.255}}"#.utf8)))
+        XCTAssertEqual(far.text, "25,5 cm pour 30 cm saisis")
+        XCTAssertEqual(far.matches, false)
+
+        let unmeasured = try XCTUnwrap(ScaleCheck.read(Data(#"{"scale_check":{"reference_width_m":0.185,"measured_width_m":null,"error_pct":null}}"#.utf8)))
+        XCTAssertEqual(unmeasured.text, "non mesurée (18,5 cm saisis)")
+        XCTAssertNil(unmeasured.matches)
+
+        // No width typed for this dish (the usual case), an older report, or something that is not a report.
+        XCTAssertNil(ScaleCheck.read(Data(#"{"mesh":{},"scale_check":null}"#.utf8)))
+        XCTAssertNil(ScaleCheck.read(Data(#"{"mesh":{}}"#.utf8)))
+        XCTAssertNil(ScaleCheck.read(Data(#"{"scale_check":{"reference_width_m":"0.24"}}"#.utf8)))
+        XCTAssertNil(ScaleCheck.read(Data(#"{"scale_check":{"reference_width_m":0}}"#.utf8)))
+        XCTAssertNil(ScaleCheck.read(Data("pas du JSON".utf8)))
     }
 }
 

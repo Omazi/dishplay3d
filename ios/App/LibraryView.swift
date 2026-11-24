@@ -7,8 +7,13 @@ struct LibraryView: View {
     @EnvironmentObject var model: AppModel
     @State private var dishes: [DishRecord] = []
     @Namespace private var zoom
+    /// The narrowest a card may be. It grows with the text size: two columns on an iPhone with the usual text,
+    /// one with very large text (a name and a state need the width), more on an iPad.
+    @ScaledMetric(relativeTo: .subheadline) private var cardWidth: CGFloat = 138
 
-    private let columns = [GridItem(.flexible(), spacing: Spacing.s), GridItem(.flexible(), spacing: Spacing.s)]
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: min(cardWidth, 360)), spacing: Spacing.s, alignment: .top)]
+    }
 
     var body: some View {
         NavigationStack {
@@ -40,6 +45,7 @@ struct LibraryView: View {
                             }
                         }
                         .padding(.horizontal, Spacing.m).padding(.top, Spacing.xs).padding(.bottom, Spacing.xl)
+                        .readableColumn(900)
                     }
                     .refreshable {
                         _ = await model.refreshDishProgress()

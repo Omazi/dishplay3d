@@ -16,6 +16,8 @@ struct DishDetailView: View {
     @State private var confirmDelete = false
     @State private var exportURL: URL?
     @State private var exportError: String?
+    /// The folder of the dish is being zipped for sharing.
+    @State private var exporting = false
     /// The textured model being shown by iOS itself (3D view and augmented reality), nil when closed.
     @State private var arPreview: URL?
     @StateObject private var renderer = PreviewRenderer()
@@ -53,6 +55,7 @@ struct DishDetailView: View {
                     }
                 }
                 .padding(.horizontal, Spacing.m).padding(.top, Spacing.xs).padding(.bottom, Spacing.xl)
+                .readableColumn()
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -129,6 +132,11 @@ struct DishDetailView: View {
             Label(progress?.text ?? "Vérification auprès du calculateur…", systemImage: "hourglass")
                 .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
+            // What brings the model when the calculator cannot be asked, or that nothing will.
+            if let advice = progress?.advice {
+                Text(advice).font(.footnote).foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let fraction = progress?.fraction {
                 ProgressView(value: fraction).tint(Theme.accent)
             }
@@ -167,6 +175,11 @@ struct DishDetailView: View {
             if let quality = qualityWord {
                 Divider()
                 fact("Qualité du modèle", quality)
+            }
+            // Only when a real width was typed before this scan: what the model measures next to it.
+            if let check = record.scaleCheck {
+                Divider()
+                fact("Largeur mesurée", check.text)
             }
         }
         .font(.subheadline)
@@ -226,13 +239,16 @@ struct DishDetailView: View {
                     .accessibilityHint("Ouvre le modèle avec ses vraies couleurs, en 3D ou en réalité augmentée.")
             }
             if let model = record.model {
-                ShareLink(item: model) {
+                // Shared under the name of the dish: sent as "model.glb", two dishes could not be told apart.
+                Button { exportURL = namedCopy(of: model) ?? model } label: {
                     QuietButtonLabel(title: "Partager le modèle 3D", icon: "square.and.arrow.up")
                 }
             }
             Button(action: exportAll) {
-                QuietButtonLabel(title: "Exporter le dossier complet", icon: "archivebox")
+                QuietButtonLabel(title: exporting ? "Préparation du dossier…" : "Exporter le dossier complet",
+                                 icon: exporting ? "hourglass" : "archivebox")
             }
+            .disabled(exporting)
             Button(role: .destructive) { confirmDelete = true } label: {
                 Label("Supprimer", systemImage: "trash")
                     .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(minHeight: 48)
@@ -270,16 +286,22 @@ struct DishDetailView: View {
 
     /// iOS's viewer uses the name of the file as its title: the name of the dish, rather than "model".
     private func showOnTable(_ model: URL) {
+        arPreview = namedCopy(of: model) ?? model   // without the copy the viewer still opens, under the file's own name
+    }
+
+    /// A copy of one of the dish's files under the name of the dish, in the temporary folder: what iOS shows
+    /// as a title, and what the person who receives the file sees. nil when the copy cannot be made.
+    private func namedCopy(of file: URL) -> URL? {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines).replacing("/", with: "-").replacing(":", with: "-")
-        let named = URL.temporaryDirectory.appending(path: "\(clean.isEmpty ? "Plat" : clean).usdz")
+        let named = URL.temporaryDirectory.appending(path: "\(clean.isEmpty ? "Plat" : clean).\(file.pathExtension)")
         do {
             if FileManager.default.fileExists(atPath: named.path(percentEncoded: false)) {
                 try FileManager.default.removeItem(at: named)
             }
-            try FileManager.default.copyItem(at: model, to: named)
-            arPreview = named
+            try FileManager.default.copyItem(at: file, to: named)
+            return named
         } catch {
-            arPreview = model   // the viewer still opens, under the file's own name
+            return nil
         }
     }
 
@@ -291,12 +313,20 @@ struct DishDetailView: View {
         changed()
     }
 
+    /// Everything the iPhone keeps of this dish, as one file to share. Made away from the main thread: with
+    /// its views a dish weighs a few hundred megabytes, and the screen would not answer meanwhile.
     private func exportAll() {
-        do {
-            exportURL = try SessionStore(resuming: record.id).exportZip()
-            exportError = nil
-        } catch {
-            exportError = "Export impossible : \(error.localizedDescription)"
+        guard !exporting else { return }
+        exporting = true
+        let id = record.id
+        Task {
+            do {
+                exportURL = try await Task.detached(priority: .userInitiated) { try SessionStore(resuming: id).exportZip() }.value
+                exportError = nil
+            } catch {
+                exportError = "Export impossible : \(error.localizedDescription)"
+            }
+            exporting = false
         }
     }
 }

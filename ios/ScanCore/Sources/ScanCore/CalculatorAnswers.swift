@@ -107,6 +107,78 @@ public struct FinalOutcome: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// The check of the model's size against the width of the container typed by the person before the scan
+/// ("scale_check" in the calculator's report.json). The width changes nothing in the model: it only says
+/// whether the model came out at the right size.
+public struct ScaleCheck: Equatable, Hashable, Sendable {
+    /// The width typed by the person, in metres.
+    public var referenceWidthM: Double
+    /// The width of the dish in the model, in metres; nil when the calculator could not measure it.
+    public var measuredWidthM: Double?
+
+    public init(referenceWidthM: Double, measuredWidthM: Double?) {
+        self.referenceWidthM = referenceWidthM
+        self.measuredWidthM = measuredWidthM
+    }
+
+    private struct Report: Decodable {
+        struct Check: Decodable {
+            var reference: Double?
+            var measured: Double?
+
+            private enum CodingKeys: String, CodingKey {
+                case reference = "reference_width_m"
+                case measured = "measured_width_m"
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                reference = c.lenient(Double.self, .reference)
+                measured = c.lenient(Double.self, .measured)
+            }
+        }
+
+        var check: Check?
+
+        private enum CodingKeys: String, CodingKey { case check = "scale_check" }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            check = c.lenient(Check.self, .check)
+        }
+    }
+
+    /// From the bytes of the calculator's report. nil when no width was typed for this dish, and when the
+    /// report cannot be read.
+    public static func read(_ report: Data) -> ScaleCheck? {
+        guard let check = (try? JSONDecoder().decode(Report.self, from: report))?.check,
+              let reference = check.reference, reference.isFinite, reference > 0 else { return nil }
+        let measured = check.measured.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        return ScaleCheck(referenceWidthM: reference, measuredWidthM: measured)
+    }
+
+    /// "24,3 cm pour 24 cm saisis", written the French way. Without a measure: "non mesurée (24 cm saisis)".
+    public var text: String {
+        let typed = ScaleCheck.centimetres(referenceWidthM)
+        guard let measuredWidthM else { return "non mesurée (\(typed) saisis)" }
+        return "\(ScaleCheck.centimetres(measuredWidthM)) pour \(typed) saisis"
+    }
+
+    /// Whether the model is within 5 % of the width typed; nil without a measure.
+    public var matches: Bool? {
+        guard let measuredWidthM else { return nil }
+        return abs(measuredWidthM - referenceWidthM) <= 0.05 * referenceWidthM
+    }
+
+    /// "24,3 cm": at most one decimal, with a comma.
+    static func centimetres(_ metres: Double) -> String {
+        let tenths = (metres * 1000).rounded()
+        let whole = Int(tenths / 10)
+        let decimal = Int(tenths) - whole * 10
+        return decimal == 0 ? "\(whole) cm" : "\(whole),\(decimal) cm"
+    }
+}
+
 /// What the calculator says about one scan (`GET /sessions/{id}`).
 public struct SessionStatus: Decodable, Equatable, Sendable {
     /// capturing, paused, finishing, done, failed.

@@ -70,8 +70,9 @@ public enum DishStanding: Equatable, Sendable {
             return "Modèle prêt, réception en cours…"
         case .queued(let position):
             return QueueWording.waiting(position)
-        case .computing(let step, let done, let total):
-            return "\(DishStanding.stepName(step)) · \(done)/\(total)"
+        case .computing(let step, _, _):
+            // The count is shown as a progress bar (`fraction`), not as figures.
+            return FinishWording.step(step)
         case .computingUncounted:
             return "Calcul du modèle en cours…"
         case .failed(let message):
@@ -84,13 +85,33 @@ public enum DishStanding: Equatable, Sendable {
             return "Calcul arrêté"
         }
     }
+}
 
-    private static func stepName(_ step: String?) -> String {
-        switch step ?? "" {
-        case "poses": return "Recalage des vues"
-        case "neural": return "Rendu neuronal"
+/// How the app names the steps of the final calculation, in words that say what happens to the dish rather
+/// than the names of the methods. The calculator sends them in this order: depth, poses, mesh, texture.
+public enum FinishWording {
+    /// The four steps every final calculation goes through, in the order they run.
+    public static let steps = ["depth", "poses", "mesh", "texture"]
+
+    /// "Étape 1 sur 4 : mesure des reliefs". A step the app does not know is "Calcul du modèle".
+    public static func step(_ key: String?) -> String {
+        let name: String
+        switch key ?? "" {
+        case "depth": name = "mesure des reliefs"
+        case "poses": name = "alignement des vues"
+        case "mesh": name = "construction de la surface"
+        case "texture": name = "pose des couleurs"
+        case "neural": return "Étape supplémentaire : rendu fin"
         default: return "Calcul du modèle"
         }
+        guard let index = steps.firstIndex(of: key ?? "") else { return "Calcul du modèle" }
+        return "Étape \(index + 1) sur \(steps.count) : \(name)"
+    }
+
+    /// "encore 4 min environ", from the seconds a step still needs; "moins d’une minute" under 50 s.
+    public static func remaining(seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 50 else { return "moins d’une minute" }
+        return "encore \(Int((seconds / 60).rounded(.up))) min environ"
     }
 }
 

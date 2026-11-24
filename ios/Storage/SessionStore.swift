@@ -29,7 +29,31 @@ final class SessionStore: @unchecked Sendable {
     init(localID: String) throws {
         self.localID = localID
         root = SessionStore.sessionsDirectory.appendingPathComponent(localID, isDirectory: true)
-        try FileManager.default.createDirectory(at: root.appendingPathComponent("frames"), withIntermediateDirectories: true)
+        let views = root.appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: views, withIntermediateDirectories: true)
+        SessionStore.keepOutOfBackups(views)
+    }
+
+    // MARK: backups
+
+    /// The views of a scan weigh 100 to 300 MB and can be taken again with the dish on the table; the model made
+    /// from them cannot. So only the views are left out of the iPhone's backups (iCloud or a computer): the
+    /// models, names and pictures of the dishes stay in them.
+    static func keepOutOfBackups(_ folder: URL) {
+        var folder = folder
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? folder.setResourceValues(values)
+    }
+
+    /// Same for the scans made with an earlier version of the app. Called once when the app starts.
+    static func keepViewsOutOfBackups() {
+        let fm = FileManager.default
+        for name in (try? fm.contentsOfDirectory(atPath: sessionsDirectory.path)) ?? [] {
+            let views = sessionsDirectory.appendingPathComponent(name, isDirectory: true)
+                .appendingPathComponent("frames", isDirectory: true)
+            if fm.fileExists(atPath: views.path) { keepOutOfBackups(views) }
+        }
     }
 
     // MARK: resuming after the app was closed in the middle of a scan

@@ -80,6 +80,7 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal, Spacing.l).padding(.bottom, Spacing.m)
             }
+            .readableColumn()
         }
     }
 

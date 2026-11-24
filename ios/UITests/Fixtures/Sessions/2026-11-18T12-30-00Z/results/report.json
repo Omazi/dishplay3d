@@ -1,0 +1,481 @@
+{
+  "schema": "dishplay.report/1",
+  "engine": "p1-0.11.0",
+  "finish_width": 1152,
+  "frames_available": 60,
+  "frames_used": 60,
+  "frames_integrated_final": 60,
+  "closure": {
+    "status": "ok",
+    "added_vertices": 22838,
+    "added_triangles": 43255,
+    "floor": true,
+    "holes_closed": 25,
+    "largest_hole_closed_m": 0.01786157116293907,
+    "holes_left_open": {
+      "at_the_edge_of_the_box": 2,
+      "not_seen_by_the_cameras": 6
+    },
+    "poisson_depth": 8,
+    "max_gap_m": 0.008
+  },
+  "cleaning": {
+    "status": "ok",
+    "outline_triangles_trimmed": 211,
+    "scrap_triangles": 0,
+    "triangles_before": 36260
+  },
+  "pairs": {
+    "ok": 120,
+    "rejected": 0,
+    "confirmation": {
+      "valid": 6801884,
+      "confirmed": 6624035,
+      "violated": 115601
+    }
+  },
+  "pair_bias": {
+    "applied": 119,
+    "skipped": 1,
+    "mean_correction_pct": 0.052,
+    "largest_correction_pct": 0.236
+  },
+  "mono_fill": {
+    "enabled": false
+  },
+  "points": 36890,
+  "confirmed_points": 36890,
+  "mesh": {
+    "vertices": 41449,
+    "triangles": 79304,
+    "surface": {
+      "measured_m2": 0.05641265586018562,
+      "interpolated_m2": 0.0006384248263202608,
+      "estimated_m2": 0.05215497687458992
+    },
+    "provenance_vertices": {
+      "measured": 17987,
+      "interpolated": 624,
+      "estimated": 22838
+    }
+  },
+  "pose_refinement": {
+    "applied": true,
+    "frames": 60,
+    "pairs": 175,
+    "matches": 45886,
+    "tracks": 7071,
+    "points": 7063,
+    "observations": 31714,
+    "reproj_before_px": 0.2613921638131729,
+    "reproj_after_px": 0.19949764070270945,
+    "max_shift_mm": 0.6098978940613423,
+    "median_shift_mm": 0.28819696400268185,
+    "max_rot_deg": 0.10909144928508743,
+    "seconds": 13.201092398001492,
+    "iterations": 11,
+    "relaxed": false,
+    "reproj_first_stage_px": 0.19949764070270945,
+    "obs_per_view": 529,
+    "second_stage": [],
+    "size_before_restoring": 1.0
+  },
+  "dish_only": {
+    "status": "ok",
+    "triangles": 36260,
+    "removed_triangles": 22655,
+    "crumb_triangles": 0,
+    "table_y_m": -0.0004560034752044939
+  },
+  "completion": {
+    "provider": "none",
+    "applied": false
+  },
+  "texture": {
+    "status": "ok",
+    "views": 36,
+    "size": 1024,
+    "seconds": 13.486093475001326,
+    "filled_from_vertex_colours": 0.1685589440911659,
+    "source_width": 640,
+    "triangles": 7999,
+    "vertices": 4884,
+    "file_mb": 0.42,
+    "usdz": {
+      "status": "ok",
+      "file_mb": 0.68
+    }
+  },
+  "footprint_width": {
+    "x_m": 0.23954899609088898,
+    "z_m": 0.23830431699752808
+  },
+  "scale_check": {
+    "reference_width_m": 0.24,
+    "measured_width_m": 0.23954899609088898,
+    "error_pct": -0.18791829546292255
+  },
+  "verdict": {
+    "level": "good",
+    "score": 99,
+    "issues": [],
+    "top_coverage": 1.0,
+    "measured_share": 0.966,
+    "raggedness": 9.5,
+    "sides_seen": 1.0,
+    "views": 60
+  },
+  "fallbacks": [],
+  "live": {
+    "frames": {
+      "integrated": 60
+    },
+    "reasons": {},
+    "snapshots": 19,
+    "latency_s": {
+      "median": 1.2000000000000002,
+      "p95": 1.6000000000000014,
+      "n": 57
+    },
+    "alignment": {
+      "applied": 0,
+      "median_shift_mm": null
+    },
+    "confirmation": {
+      "valid": 6492384,
+      "confirmed": 6396440,
+      "violated": 68257
+    },
+    "mono_fill": {
+      "enabled": false
+    },
+    "pair_bias": {
+      "applied": 61,
+      "skipped": 1,
+      "mean_correction_pct": 0.041,
+      "largest_correction_pct": 0.145
+    },
+    "depth_scale": {
+      "applied": 0,
+      "skipped": 1,
+      "mean_abs_correction_pct": 0.0
+    },
+    "pairs": {
+      "total": 62,
+      "ok": 62,
+      "corrected_pose": 0,
+      "median_residual_px": 0.12714390221563399
+    },
+    "live_pose": {
+      "enabled": true,
+      "anchored": 0,
+      "predicted": 0,
+      "already_consistent": 58,
+      "refused": {
+        "no_improvement": 1
+      },
+      "median_shift_mm": null,
+      "largest_shift_mm": null,
+      "median_residual_before_px": 0.467,
+      "median_residual_after_px": null
+    }
+  },
+  "snapshots": [
+    {
+      "version": 1,
+      "kind": "points+mesh",
+      "computed_at": 1.6,
+      "integrated_frames": 3,
+      "measured_points": 11919,
+      "confirmed_points": 11919,
+      "triangles": 18565,
+      "bytes": 609004,
+      "compute_ms": 117.3,
+      "surface": {
+        "measured_m2": 0.04178311303257942,
+        "interpolated_m2": 3.7975041777826846e-06
+      }
+    },
+    {
+      "version": 2,
+      "kind": "points+mesh",
+      "computed_at": 2.8000000000000003,
+      "integrated_frames": 6,
+      "measured_points": 14703,
+      "confirmed_points": 14703,
+      "triangles": 18999,
+      "bytes": 663616,
+      "compute_ms": 162.6,
+      "surface": {
+        "measured_m2": 0.04351307079195976,
+        "interpolated_m2": 3.9444639696739614e-05
+      }
+    },
+    {
+      "version": 3,
+      "kind": "points+mesh",
+      "computed_at": 4.0,
+      "integrated_frames": 9,
+      "measured_points": 16240,
+      "confirmed_points": 16240,
+      "triangles": 19624,
+      "bytes": 702176,
+      "compute_ms": 235.4,
+      "surface": {
+        "measured_m2": 0.04531235992908478,
+        "interpolated_m2": 7.680603448534384e-05
+      }
+    },
+    {
+      "version": 4,
+      "kind": "points+mesh",
+      "computed_at": 5.2,
+      "integrated_frames": 12,
+      "measured_points": 17853,
+      "confirmed_points": 17853,
+      "triangles": 20607,
+      "bytes": 750464,
+      "compute_ms": 176.6,
+      "surface": {
+        "measured_m2": 0.04781344160437584,
+        "interpolated_m2": 9.980702452594414e-05
+      }
+    },
+    {
+      "version": 5,
+      "kind": "points+mesh",
+      "computed_at": 6.4,
+      "integrated_frames": 15,
+      "measured_points": 18870,
+      "confirmed_points": 18870,
+      "triangles": 21321,
+      "bytes": 782728,
+      "compute_ms": 185.5,
+      "surface": {
+        "measured_m2": 0.0494953915476799,
+        "interpolated_m2": 0.00011090157204307616
+      }
+    },
+    {
+      "version": 6,
+      "kind": "points+mesh",
+      "computed_at": 7.6000000000000005,
+      "integrated_frames": 18,
+      "measured_points": 19846,
+      "confirmed_points": 19846,
+      "triangles": 21940,
+      "bytes": 812668,
+      "compute_ms": 194.9,
+      "surface": {
+        "measured_m2": 0.05096789821982384,
+        "interpolated_m2": 0.0001197242017951794
+      }
+    },
+    {
+      "version": 7,
+      "kind": "points+mesh",
+      "computed_at": 8.8,
+      "integrated_frames": 21,
+      "measured_points": 20611,
+      "confirmed_points": 20611,
+      "triangles": 22411,
+      "bytes": 835464,
+      "compute_ms": 201.6,
+      "surface": {
+        "measured_m2": 0.052191395312547684,
+        "interpolated_m2": 0.00010254650987917557
+      }
+    },
+    {
+      "version": 8,
+      "kind": "points+mesh",
+      "computed_at": 10.0,
+      "integrated_frames": 24,
+      "measured_points": 21415,
+      "confirmed_points": 21415,
+      "triangles": 22980,
+      "bytes": 860856,
+      "compute_ms": 236.7,
+      "surface": {
+        "measured_m2": 0.053518146276474,
+        "interpolated_m2": 0.00010952255252050236
+      }
+    },
+    {
+      "version": 9,
+      "kind": "points+mesh",
+      "computed_at": 11.200000000000001,
+      "integrated_frames": 27,
+      "measured_points": 22058,
+      "confirmed_points": 22058,
+      "triangles": 23371,
+      "bytes": 879356,
+      "compute_ms": 276.5,
+      "surface": {
+        "measured_m2": 0.05460692197084427,
+        "interpolated_m2": 0.00011022577382391319
+      }
+    },
+    {
+      "version": 10,
+      "kind": "points+mesh",
+      "computed_at": 12.4,
+      "integrated_frames": 30,
+      "measured_points": 22570,
+      "confirmed_points": 22570,
+      "triangles": 23671,
+      "bytes": 894524,
+      "compute_ms": 220.1,
+      "surface": {
+        "measured_m2": 0.05531475692987442,
+        "interpolated_m2": 0.00011802841618191451
+      }
+    },
+    {
+      "version": 11,
+      "kind": "points+mesh",
+      "computed_at": 13.600000000000001,
+      "integrated_frames": 33,
+      "measured_points": 23122,
+      "confirmed_points": 23122,
+      "triangles": 24065,
+      "bytes": 911696,
+      "compute_ms": 219.0,
+      "surface": {
+        "measured_m2": 0.05654808133840561,
+        "interpolated_m2": 0.00011445271229604259
+      }
+    },
+    {
+      "version": 12,
+      "kind": "points+mesh",
+      "computed_at": 14.8,
+      "integrated_frames": 36,
+      "measured_points": 23532,
+      "confirmed_points": 23532,
+      "triangles": 24257,
+      "bytes": 922308,
+      "compute_ms": 309.2,
+      "surface": {
+        "measured_m2": 0.05719085782766342,
+        "interpolated_m2": 0.00011484557035146281
+      }
+    },
+    {
+      "version": 13,
+      "kind": "points+mesh",
+      "computed_at": 16.0,
+      "integrated_frames": 39,
+      "measured_points": 23851,
+      "confirmed_points": 23851,
+      "triangles": 24360,
+      "bytes": 929508,
+      "compute_ms": 281.2,
+      "surface": {
+        "measured_m2": 0.057430438697338104,
+        "interpolated_m2": 0.00012583220086526126
+      }
+    },
+    {
+      "version": 14,
+      "kind": "points+mesh",
+      "computed_at": 17.2,
+      "integrated_frames": 42,
+      "measured_points": 24008,
+      "confirmed_points": 24008,
+      "triangles": 24348,
+      "bytes": 931656,
+      "compute_ms": 257.2,
+      "surface": {
+        "measured_m2": 0.057582125067710876,
+        "interpolated_m2": 0.00011337055184412748
+      }
+    },
+    {
+      "version": 15,
+      "kind": "points+mesh",
+      "computed_at": 18.400000000000002,
+      "integrated_frames": 45,
+      "measured_points": 24119,
+      "confirmed_points": 24119,
+      "triangles": 24528,
+      "bytes": 937704,
+      "compute_ms": 265.9,
+      "surface": {
+        "measured_m2": 0.05734362453222275,
+        "interpolated_m2": 0.00031988753471523523
+      }
+    },
+    {
+      "version": 16,
+      "kind": "points+mesh",
+      "computed_at": 19.6,
+      "integrated_frames": 48,
+      "measured_points": 24255,
+      "confirmed_points": 24255,
+      "triangles": 24700,
+      "bytes": 943848,
+      "compute_ms": 277.4,
+      "surface": {
+        "measured_m2": 0.05721476674079895,
+        "interpolated_m2": 0.0007328998181037605
+      }
+    },
+    {
+      "version": 17,
+      "kind": "points+mesh",
+      "computed_at": 20.8,
+      "integrated_frames": 51,
+      "measured_points": 24335,
+      "confirmed_points": 24335,
+      "triangles": 24789,
+      "bytes": 947196,
+      "compute_ms": 263.9,
+      "surface": {
+        "measured_m2": 0.05712558701634407,
+        "interpolated_m2": 0.0009892791276797652
+      }
+    },
+    {
+      "version": 18,
+      "kind": "points+mesh",
+      "computed_at": 22.0,
+      "integrated_frames": 54,
+      "measured_points": 24415,
+      "confirmed_points": 24415,
+      "triangles": 24861,
+      "bytes": 950200,
+      "compute_ms": 285.3,
+      "surface": {
+        "measured_m2": 0.05705682933330536,
+        "interpolated_m2": 0.0012561311013996601
+      }
+    },
+    {
+      "version": 19,
+      "kind": "points+mesh",
+      "computed_at": 23.200000000000003,
+      "integrated_frames": 57,
+      "measured_points": 24532,
+      "confirmed_points": 24532,
+      "triangles": 24995,
+      "bytes": 955156,
+      "compute_ms": 252.2,
+      "surface": {
+        "measured_m2": 0.05698272958397865,
+        "interpolated_m2": 0.0016556310001760721
+      }
+    }
+  ],
+  "timings_s": {
+    "poses_s": 13.323856237000655,
+    "depth_s": 56.18961105299968,
+    "mesh_s": 0.2792929939987516,
+    "total": 76.2060249540009
+  },
+  "notes": [
+    "Global pose refinement (bundle adjustment on SIFT tracks) runs when finishing; it is applied only if it lowers the reprojection error and stays close to ARKit (see pose_refinement).",
+    "Gaps are closed with a smooth surface and the dish gets a flat base on the table: gaps up to 16 mm wide everywhere, and wider holes (up to 6 cm) when they are enclosed by the reconstructed surface and the cameras looked at them (photographed, not measured). Everything added is labelled estimated (class 2) and textured from the photographs where they show it; the model as measured is kept in model_mesure.glb (see closure).",
+    "model.usdz holds the same mesh and texture as model.glb, for AR Quick Look on iPhone and iPad; it is written only when the texture succeeded."
+  ]
+}
