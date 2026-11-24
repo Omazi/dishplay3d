@@ -83,6 +83,39 @@ def test_combine_depths_removes_disagreement():
     assert d2[1, 1] == pytest.approx(0.5) and s2[1, 1] == 1
 
 
+def test_combine_depths_keeps_what_two_of_three_pairs_measured():
+    """Finishing asks for three partners per view. A pixel measured by exactly two of the three pairs used to be
+    thrown away (the median of two numbers and a missing one was 'missing'), even when the two agreed: a view
+    with three partners gave less than a view with two."""
+    a = np.full((4, 4), 0.5, np.float32)
+    empty = np.zeros_like(a)
+    for maps in ([a, a.copy(), empty], [a, empty, a.copy()], [empty, a, a.copy()]):
+        d, s = combine_depths(maps)
+        assert (d > 0).all() and np.allclose(d, 0.5) and (s == 2).all(), (d, s)
+    # two pairs that disagree are still unknown, never averaged, with or without a third empty map
+    b = a.copy()
+    b[0, 0] = 0.6
+    d, s = combine_depths([a, b, empty])
+    assert d[0, 0] == 0 and s[0, 0] == 0 and d[1, 1] == pytest.approx(0.5) and s[1, 1] == 2
+    # one pair alone is kept as a single measurement; three agreeing pairs count three
+    only = empty.copy()
+    only[2, 2] = 0.5
+    d, s = combine_depths([only, empty, empty])
+    assert d[2, 2] == pytest.approx(0.5) and s[2, 2] == 1 and (d > 0).sum() == 1
+    d, s = combine_depths([a, a.copy(), a.copy()])
+    assert np.allclose(d, 0.5) and (s == 3).all()
+    # of three measurements, the two that agree are kept and the third is ignored
+    c = a.copy()
+    c[3, 3] = 0.7
+    d, s = combine_depths([a, c, a.copy()])
+    assert d[3, 3] == pytest.approx(0.5) and s[3, 3] == 2
+    # the stricter mode keeps only what two pairs agree on
+    d, s = combine_depths([a, a.copy(), only], require_agreement=True)
+    assert np.allclose(d, 0.5) and (s[2, 2] == 3) and (s[0, 0] == 2)
+    d, s = combine_depths([only, empty, empty], require_agreement=True)
+    assert not (d > 0).any()
+
+
 def test_reflections_are_left_unknown(scene):
     """A blown-out highlight that sits at different places in the two images must not get a depth."""
     P = orbit_poses(120)

@@ -27,7 +27,10 @@ import cv2
 import numpy as np
 
 MODEL_NAME = "depth_anything_v2_small.onnx"
-MODEL_URL = "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx"
+# A fixed revision of the repository, not its moving branch: the address then always serves the file whose
+# SHA-256 is checked below (verified on 24 Nov 2026: 99 060 839 bytes, same hash).
+MODEL_REVISION = "4472b7362082ad9968fee890ca0f1e5aca36b93d"
+MODEL_URL = f"https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/{MODEL_REVISION}/onnx/model.onnx"
 MODEL_SHA256 = "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
 _MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 _STD = np.array([0.229, 0.224, 0.225], np.float32)

@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read    # the plan asks whether this commit was already walked
 
 concurrency:
   group: scan-screens-${{ github.ref }}
@@ -23,13 +24,22 @@ jobs:
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.read.outputs.matrix }}
+      skip: ${{ steps.read.outputs.skip }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - id: read
-        run: python3 ios/ci/screens-plan.py ios/UITests/RUN.txt >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ios-screens.yml/runs?head_sha=$GITHUB_SHA&per_page=30" > "$RUNNER_TEMP/runs.json" \
+            || echo '{"workflow_runs": []}' > "$RUNNER_TEMP/runs.json"
+          python3 ios/ci/screens-plan.py ios/UITests/RUN.txt "$RUNNER_TEMP/runs.json" "$GITHUB_RUN_ID" | tee -a "$GITHUB_OUTPUT"
 
   screens:
     needs: plan
+    # A commit already walked with success (on the working branch, before it reached main) is not walked again;
+    # a manual start always walks.
+    if: github.event_name != 'push' || needs.plan.outputs.skip != 'true'
     name: ${{ matrix.label }}
     runs-on: macos-15
     timeout-minutes: 45

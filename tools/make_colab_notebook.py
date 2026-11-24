@@ -31,15 +31,21 @@ Ce carnet prend le fichier `splat_dataset.zip` d'un scan et calcule un modèle 3
 """),
         md("## 1. Vérifier la carte graphique"),
         code("""
-import torch, subprocess
-print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True).stdout)
-assert torch.cuda.is_available(), "Pas de carte graphique : menu Exécution > Modifier le type d'exécution > GPU T4"
-print("Carte graphique visible par PyTorch :", torch.cuda.get_device_name(0))
+import torch
+assert torch.cuda.is_available(), "Pas de carte graphique : menu Exécution > Modifier le type d'exécution > GPU T4, puis relancez cette cellule."
+print("Carte graphique :", torch.cuda.get_device_name(0), "-", round(torch.cuda.get_device_properties(0).total_memory / 2**30), "Go")
 """),
-        md("## 2. Installer les outils (1 à 3 minutes)"),
+        md("""
+## 2. Installer les outils et les préparer pour la carte graphique
+
+À chaque nouvelle session Colab, la bibliothèque de calcul se construit pour la carte graphique : comptez plusieurs minutes (durée jamais mesurée), avec beaucoup de lignes de compilation. C'est l'étape la plus incertaine du carnet : elle n'a jamais pu être essayée. Si elle échoue, envoyez une capture de la fin du message, sans rien corriger.
+"""),
         code("""
-!pip -q install gsplat imageio imageio-ffmpeg
-!python -c "import gsplat; print('gsplat', gsplat.__version__)"
+!pip -q install gsplat==1.5.3
+%env MAX_JOBS=2
+!nvcc --version | tail -1
+!VERBOSE=1 python -c "from gsplat.cuda._backend import _C; assert _C is not None, 'construction impossible'; print('gsplat pret pour la carte graphique')"
+assert _exit_code == 0, "La bibliothèque ne s'est pas construite : envoyez une capture de la fin du message ci-dessus."
 """),
         md("## 3. Le programme de calcul\n\nRien à modifier : cette cellule écrit le programme sur la machine Colab."),
         code("%%writefile /content/splat_train.py\n" + trainer),
@@ -51,19 +57,26 @@ Sur le PC, `preparer-essai-neuronal.ps1` a créé un fichier `splat_dataset.zip`
         code("""
 from google.colab import files
 up = files.upload()
-ZIP = "/content/" + next(iter(up))
-print("Reçu :", ZIP)
+if not up:
+    raise SystemExit("Aucun fichier reçu : relancez cette cellule et choisissez splat_dataset.zip.")
+name = next(iter(up))
+ZIP = "/content/scan_a_calculer.zip"
+with open(ZIP, "wb") as f:
+    f.write(up[name])
+print("Reçu :", name)
 """),
         md("""
 ## 5. Calculer le modèle
 
-La toute première fois, la bibliothèque se compile pour la carte graphique : plusieurs minutes sans rien d'affiché, c'est normal. Ensuite une ligne s'affiche tous les 250 pas.
+Une ligne s'affiche tous les 250 pas. Si la session Colab a été redémarrée, relancez d'abord les cellules 2 à 4.
 """),
         code("""
 STEPS = 7000   # 15000 pour un résultat plus fin (plus long)
+!rm -rf /content/resultat
 !python /content/splat_train.py --data "$ZIP" --out /content/resultat --steps $STEPS
+assert _exit_code == 0, "Le calcul a échoué : envoyez une capture de CETTE cellule (le message est juste au-dessus)."
 """),
-        md("## 6. Voir le résultat\n\nÀ gauche la vraie photo (jamais utilisée pour l'entraînement), à droite le modèle vu du même endroit."),
+        md("## 6. Voir le résultat\n\nÀ gauche la vraie photo (jamais utilisée pour l'entraînement), à droite le modèle vu du même endroit. Puis quatre vues du modèle, et le modèle qui tourne."),
         code("""
 import json, base64
 from IPython.display import Image, HTML, display
@@ -72,14 +85,18 @@ print({k: v for k, v in rep.items() if k != "log"})
 display(Image("/content/resultat/compare.jpg"))
 display(Image("/content/resultat/preview.jpg"))
 try:
-    b = base64.b64encode(open("/content/resultat/turntable.mp4", "rb").read()).decode()
-    display(HTML(f'<video width="640" controls loop autoplay muted src="data:video/mp4;base64,{b}"></video>'))
+    b = base64.b64encode(open("/content/resultat/turntable.webp", "rb").read()).decode()
+    display(HTML(f'<img width="640" alt="Le modèle qui tourne" src="data:image/webp;base64,{b}">'))
 except FileNotFoundError:
-    print("Pas de vidéo (voir le message plus haut)")
+    print("Pas d'animation (voir le message plus haut)")
 """),
-        md("## 7. Télécharger\n\n`splat.ply` s'ouvre dans un visualiseur de splats (par exemple https://superspl.at/editor : glisser le fichier dans la page)."),
+        md("""
+## 7. Télécharger
+
+Le zip contient les images, l'animation, le rapport et `splat.compressed.ply`, le modèle allégé. Pour le regarder en 3D : https://superspl.at/editor, glisser ce fichier dans la page. Le plat peut y apparaître à l'envers : c'est la convention de ce visualiseur, pas un défaut du modèle. Le modèle non allégé (`splat.ply`, plus lourd) reste sur la machine Colab, dans `/content/resultat`.
+"""),
         code("""
-!cd /content/resultat && zip -q -r /content/resultat_dishplay.zip . -x "dataset/*"
+!cd /content/resultat && zip -q -r /content/resultat_dishplay.zip . -x "dataset/*" "splat.ply"
 files.download("/content/resultat_dishplay.zip")
 """),
     ]

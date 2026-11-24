@@ -275,6 +275,16 @@ def test_finished_model_texture_reads_correctly_in_gltf(session, tmp_path):
     # the closing step knows where the cameras were (holes they looked at are closed even when wide) and says what it did
     assert rep["closure"]["status"] == "ok" and {"holes_closed", "largest_hole_closed_m", "holes_left_open"} <= set(rep["closure"])
     assert "applied" in rep["pose_refinement"]
+    # The final model says how good the scan is (the verdict given during the scan, computed the same way on the
+    # dish as the final calculation reconstructed it, before gaps are closed and the base is added) and what the
+    # final step could not do as intended: in what finish_session returns, in report.json, and in the final preview.
+    verdict = rep["verdict"]
+    assert verdict["level"] == "good" and verdict["score"] > 90 and verdict["issues"] == [], verdict
+    assert verdict["measured_share"] > 0.9, verdict      # the added base and patches do not count against the scan
+    assert rep["fallbacks"] == [], rep["fallbacks"]
+    on_disk = json.loads((tmp_path / "final" / "report.json").read_text())
+    assert on_disk["verdict"] == verdict and on_disk["fallbacks"] == []
+    assert decode_geometry((tmp_path / "final" / "final_preview.dpg").read_bytes())["header"]["quality"] == verdict
     js, b = read_glb(tmp_path / "final" / "model.glb")
     at = js["meshes"][0]["primitives"][0]["attributes"]
     P = glb_accessor(js, b, at["POSITION"]).astype(np.float64)
@@ -401,3 +411,34 @@ def test_an_exact_tracker_is_left_alone(session):
     lp = eng.metrics()["live_pose"]
     assert lp["enabled"] and lp["anchored"] <= 3, lp
     assert lp["already_consistent"] >= 40, lp
+
+
+def test_what_the_final_step_could_not_do_is_said_in_plain_words():
+    """Silent fallbacks of the final step (texture, table, closing, depth model...) become sentences for the person
+    who scanned. What is normal operation (a pose refinement that was not needed, a table with nothing to remove,
+    a depth model turned off on purpose) is not a fallback."""
+    from reconstruction.refinement import final_fallbacks
+    fine = dict(tex_info={"status": "ok", "filled_from_vertex_colours": 0.03, "usdz": {"status": "ok"}}, dish_info={"status": "nothing_to_remove"},
+                closure_info={"status": "ok"}, pose_info={"applied": False, "reason": "not_better"}, mono_reason="disabled", used=60, integrated=58)
+    assert final_fallbacks(**fine) == []
+    assert final_fallbacks(**{**fine, "tex_info": {"status": "not_requested"}}) == []      # nobody asked for a texture
+
+    def codes(**changed):
+        out = final_fallbacks(**{**fine, **changed})
+        assert all(set(f) == {"code", "message"} and f["message"].endswith(".") and len(f["message"]) < 160 for f in out), out
+        return [f["code"] for f in out]
+
+    assert codes(tex_info={"status": "failed_fallback_vertex_colors", "error": "x"}) == ["texture_failed", "ar_file_missing"]
+    assert codes(tex_info={"status": "ok", "filled_from_vertex_colours": 0.4, "usdz": {"status": "ok"}}) == ["texture_partly_missing"]
+    assert codes(tex_info={"status": "ok", "filled_from_vertex_colours": 0.0, "usdz": {"status": "failed", "error": "x"}}) == ["ar_file_missing"]
+    assert codes(dish_info={"status": "failed", "error": "x"}) == ["table_not_removed"]
+    assert codes(closure_info={"status": "failed", "error": "x"}) == ["holes_not_closed"]
+    assert codes(pose_info={"applied": False, "reason": "error", "error": "x"}) == ["poses_not_refined"]
+    assert codes(mono_reason="model_not_found:/somewhere/model.onnx") == ["depth_model_missing"]
+    assert codes(mono_reason="load_failed:RuntimeError('x')") == ["depth_model_missing"]
+    assert codes(mono_reason="onnxruntime_not_installed") == ["depth_model_missing"]
+    assert codes(used=60, integrated=20) == ["few_views_used"]
+    said = final_fallbacks(**{**fine, "used": 60, "integrated": 20})[0]["message"]
+    assert "20" in said and "60" in said
+    partly = final_fallbacks(**{**fine, "tex_info": {"status": "ok", "filled_from_vertex_colours": 0.4, "usdz": {"status": "ok"}}})[0]["message"]
+    assert "40" in partly

@@ -2,7 +2,7 @@
 """Quality benchmark on the hard synthetic bowl (tests/realistic.py). Prints metrics for the last
 live preview and for the finished model, and renders both. Used to compare engine changes.
 
-  python tools/bench_quality.py --out /tmp/bench [--frames 110] [--no-finish]
+  python tools/bench_quality.py --out /tmp/bench [--frames 110] [--no-finish] [--texture]
 """
 from __future__ import annotations
 
@@ -63,6 +63,43 @@ def metrics(scene, verts, tris, vis_pts, vis_mat, cls=None):
     return out
 
 
+def texture_metrics(scene, glb_path: Path) -> dict:
+    """How close the texture of the delivered model is to the true colours of the scene, at the vertices that
+    were reconstructed (what was added by estimation has no true colour to compare with)."""
+    import open3d as o3d
+    from reconstruction.exports import glb_accessor, read_glb
+    js, b = read_glb(glb_path)
+    at = js["meshes"][0]["primitives"][0]["attributes"]
+    if "TEXCOORD_0" not in at or not js.get("images"):
+        return {"textured": False}
+    P = glb_accessor(js, b, at["POSITION"]).astype(np.float64)
+    N = glb_accessor(js, b, at["NORMAL"]).astype(np.float64)
+    UV = glb_accessor(js, b, at["TEXCOORD_0"]).astype(np.float64)
+    keep = glb_accessor(js, b, at["_PROVENANCE"]).reshape(-1) < 1.5
+    P, N, UV = P[keep], N[keep], UV[keep]
+    view = js["bufferViews"][js["images"][0]["bufferView"]]
+    tex = cv2.imdecode(np.frombuffer(b[view["byteOffset"]: view["byteOffset"] + view["byteLength"]], np.uint8), 1)
+    H, W = tex.shape[:2]
+    seen = tex[np.clip((UV[:, 1] * (H - 1)).round().astype(int), 0, H - 1),
+               np.clip((UV[:, 0] * (W - 1)).round().astype(int), 0, W - 1)][:, ::-1].astype(np.float64)
+    org = P + N * 0.006
+    ans = scene.scene.cast_rays(o3d.core.Tensor(np.concatenate([org, -N], 1).astype(np.float32)))
+    t = ans["t_hit"].numpy()
+    hit = np.isfinite(t) & (t < 0.02)
+    geom = ans["geometry_ids"].numpy()
+    mat = np.zeros(len(geom), int)
+    for gid, k in scene.ids.items():
+        mat[geom == gid] = k
+    X = org - N * np.where(hit, t, 0)[:, None]
+    light = np.array([0.25, 1.0, 0.3]) / np.linalg.norm([0.25, 1.0, 0.3])      # same shading as BowlScene.render
+    truth = np.clip(scene._color(X, mat) * (0.5 + 0.5 * np.abs(ans["primitive_normals"].numpy().astype(np.float64) @ light))[:, None], 0, 1) * 255
+    err = np.abs(seen[hit] - truth[hit]).mean(1)
+    darker = seen[hit].sum(1) < 0.6 * truth[hit].sum(1)
+    return {"textured": True, "vertices_compared": int(hit.sum()), "colour_error_mean": float(err.mean()),
+            "colour_error_p90": float(np.percentile(err, 90)), "colour_error_over_40_pct": float((err > 40).mean() * 100),
+            "much_darker_than_the_scene_pct": float(darker.mean() * 100)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="/tmp/bench")
@@ -78,6 +115,8 @@ def main():
                     help="fill stereo gaps from a SIMULATED single-image depth (true depth, damaged): upper bound of the fill step, not a result of the real network")
     ap.add_argument("--mono-distortion", type=float, default=0.03, help="slow relative error of the simulated prediction")
     ap.add_argument("--mono-model", default="", help="path of the real ONNX depth model: fill stereo gaps with it")
+    ap.add_argument("--texture", action="store_true",
+                    help="also texture the finished model and compare its colours with the true colours of the scene")
     a = ap.parse_args()
     from reconstruction.engine import Box, EngineConfig, SessionEngine
     from reconstruction.preview_format import decode_geometry
@@ -145,9 +184,17 @@ def main():
         from reconstruction.refinement import finish_session
         import open3d as o3d
         t1 = time.perf_counter()
-        rep_final = finish_session(eng, out / "final", texture=False, refine=not a.no_refine, remove_table=False, mono=mono, close=not a.no_close)
+        rep_final = finish_session(eng, out / "final", texture=a.texture, refine=not a.no_refine, remove_table=False, mono=mono, close=not a.no_close)
         res["pose_refinement"] = rep_final["pose_refinement"]
         res["mono_fill_final"] = rep_final["mono_fill"]
+        res["frames_final"] = {k: rep_final[k] for k in ("frames_available", "frames_used", "frames_integrated_final")}
+        res["points_final"] = {k: rep_final[k] for k in ("points", "confirmed_points")}
+        res["pairs_final"] = rep_final["pairs"]
+        if a.texture:
+            res["texture"] = {**{k: v for k, v in rep_final["texture"].items() if k != "usdz"}, **texture_metrics(sc, out / "final" / "model.glb")}
+        for k in ("verdict", "fallbacks"):      # engines before p1-0.11.0 do not give them
+            if k in rep_final:
+                res[k] = rep_final[k]
         gf = decode_geometry((out / "final" / "final_preview.dpg").read_bytes())
         res["final"] = metrics(sc, gf["verts"].astype(np.float64), gf["tris"], vis_pts, vis_mat, gf["vert_rgbc"][:, 3])
         res["finish_seconds"] = time.perf_counter() - t1
@@ -157,6 +204,10 @@ def main():
             print(k, json.dumps({a: (round(b, 2) if isinstance(b, float) else b) for a, b in res[k].items()}))
     if "pose_refinement" in res:
         print("pose_refinement", {k: (round(v, 2) if isinstance(v, float) else v) for k, v in res["pose_refinement"].items()})
+    for k in ("frames_final", "points_final", "pairs_final", "texture", "verdict", "fallbacks"):
+        if k in res:
+            print(k, json.dumps(res[k], default=float) if not isinstance(res[k], dict)
+                  else json.dumps({a: (round(b, 3) if isinstance(b, float) else b) for a, b in res[k].items()}, default=float))
     print("mono_fill live", res["engine_metrics"]["mono_fill"], "final", res.get("mono_fill_final"))
     print("frames", res["engine_metrics"]["frames"], "live_s", round(live_s, 1), "finish_s", round(res.get("finish_seconds", 0), 1))
 

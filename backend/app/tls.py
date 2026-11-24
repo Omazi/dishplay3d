@@ -18,15 +18,22 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 
-def ensure_certificate(directory: Path, ips: list[str]) -> tuple[Path, Path, str]:
+def ensure_certificate(directory: Path, ips: list[str], new: bool = False) -> tuple[Path, Path, str]:
+    """The calculator's certificate, its key and its fingerprint; made on first use.
+
+    The certificate is kept as long as it is valid, whatever the addresses of the computer have become: the
+    iPhone compares the fingerprint of the whole certificate and does not look at the addresses written in
+    it, so a new certificate would only force every iPhone to be paired again. new=True makes a new one.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     cert_p, key_p = directory / "server.crt", directory / "server.key"
-    if cert_p.exists() and key_p.exists():
-        cert = x509.load_pem_x509_certificate(cert_p.read_bytes())
-        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
-        have = {str(a) for a in san.get_values_for_type(x509.IPAddress)}
-        if set(ips) <= have and cert.not_valid_after_utc > dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=7):
-            return cert_p, key_p, fingerprint(cert_p)
+    if not new and cert_p.exists() and key_p.exists():
+        try:
+            cert = x509.load_pem_x509_certificate(cert_p.read_bytes())
+            if cert.not_valid_after_utc > dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=7):
+                return cert_p, key_p, fingerprint(cert_p)
+        except ValueError:
+            pass    # unreadable file (cut while being written, for example): replaced below
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "DishPlay Scan local calculator")])
     now = dt.datetime.now(dt.timezone.utc)

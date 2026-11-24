@@ -559,7 +559,12 @@ def combine_depths(depths: list[np.ndarray], rel_tol: float = 0.01, abs_tol: flo
             out[:] = 0
             support[:] = 0
         return out, support
-    med = np.median(np.where(valid, stack, np.nan), axis=0) if nvalid.any() else out
+    # Median of the pairs that measured the pixel, whatever their number: a pixel measured by two of three pairs
+    # has a median (np.median over the missing value gave none, and the two measurements were lost). Missing
+    # values sort last, so the median of the k valid ones sits at positions (k-1)//2 and k//2.
+    ordered = np.sort(np.where(valid, stack, np.nan), axis=0)
+    med = 0.5 * (np.take_along_axis(ordered, (np.maximum(nvalid - 1, 0) // 2)[None], 0)[0]
+                 + np.take_along_axis(ordered, (nvalid // 2)[None], 0)[0])
     with np.errstate(invalid="ignore"):
         tol = np.maximum(abs_tol, rel_tol * med)
         agree = valid & (np.abs(stack - med[None]) <= tol[None])

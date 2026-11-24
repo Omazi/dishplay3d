@@ -34,7 +34,7 @@ Cloudflare R2, etc.) ; le choix du fournisseur n'est pas fait et le modèle n'en
 ```
 r/{restaurant}/brand/logo.png, cover.jpg
 r/{restaurant}/dishes/{plat}/images/{empreinte}.jpg
-r/{restaurant}/dishes/{plat}/models/{modèle}/model.glb, model.usdz, splat.ply, poster.jpg, turntable.mp4
+r/{restaurant}/dishes/{plat}/models/{modèle}/model.glb, model.usdz, splat.ply, poster.jpg, turntable.webp
 r/{restaurant}/scans/{scan}/frames/000001.jpg + .json        (vues brutes, privées)
 r/{restaurant}/qr/{qr}.png
 ```

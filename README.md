@@ -21,7 +21,8 @@ Calculateur Windows/Linux : FastAPI ── processus de reconstruction
 | `ios/` | app SwiftUI (`App/ Scanner/ Preview/ Network/ Storage/`), paquet testable `ScanCore/`, `project.yml` ; contrôle des écrans dans le simulateur (`UITests/`, `project.screens.yml`) |
 | `contracts/` | schémas JSON versionnés (capture, messages) ; formats binaires décrits dans `backend/reconstruction/preview_format.py` |
 | `tools/` | `replay_session.py`, `pack_session.py` (zip compact d'une session), `bench_quality.py` (banc de qualité), `doctor.py`, `verify_capture.py`, `render_geometry.py`, `asc_profile.py`, `asc_testflight.py`, `scan_client.py`, `ios_colors.py` (couleurs de l'app), `make_screen_fixture.py` (plats d'exemple du contrôle des écrans) |
-| `docs/` | `SETUP_WINDOWS_LINUX.md`, `TESTFLIGHT.md`, `FIRST_TEST.md`, `TEST_REPORT.md`, `SCREEN_CHECK.md` |
+| `colab/` | deux essais à lancer sur Google Colab : `essai_neuronal.ipynb` (un scan → modèle neuronal, `docs/ESSAI_NEURONAL.md`) et `photo_express.ipynb` (une photo → modèle 3D par IA générative, `docs/PHOTO_EXPRESS.md`) ; générés par `tools/make_colab_notebook.py` et `tools/make_photo_notebook.py` |
+| `docs/` | `SETUP_WINDOWS_LINUX.md`, `TESTFLIGHT.md`, `FIRST_TEST.md`, `TEST_REPORT.md`, `SCREEN_CHECK.md`, `ESSAI_NEURONAL.md`, `PHOTO_EXPRESS.md` |
 | `compliance/` | `components.csv`, `THIRD_PARTY_NOTICES.md` |
 
 Démarrage rapide : `./start-calculator.sh` (Linux) ou `start-calculator.ps1` (Windows), puis `docs/FIRST_TEST.md`.

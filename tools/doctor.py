@@ -26,9 +26,10 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
-    from app.diagnostics import capabilities
+    from app.diagnostics import LOW_FREE_BYTES, capabilities, human_size
     from app.main import lan_addresses
-    rep = {"capabilities": capabilities(os.environ.get("DISHPLAY_DATA", str(Path.home() / "dishplay-scan-data"))), "lan_addresses": lan_addresses(), "checks": []}
+    data = os.environ.get("DISHPLAY_DATA", str(Path.home() / "dishplay-scan-data"))
+    rep = {"capabilities": capabilities(data), "lan_addresses": lan_addresses(), "checks": []}
 
     def check(name, ok, detail=""):
         rep["checks"].append({"name": name, "ok": bool(ok), "detail": detail})
@@ -39,6 +40,11 @@ def main():
     check("open3d", "open3d" in c, c.get("open3d", c.get("open3d_error")))
     ram = c.get("ram_bytes") or 0
     check("RAM >= 8 GB (4 GB minimum)", ram >= 3.5e9, f"{ram / 1e9:.1f} GB")
+    free = c.get("disk_free_bytes")
+    if free is not None:
+        # Below disk_min_free_bytes the calculator refuses new views; a scan takes 100 to 300 MB.
+        hint = " : faites de la place, par exemple avec tools/clean_sessions.py" if free < LOW_FREE_BYTES else ""
+        check("espace libre sur le disque des données", not c.get("disk_full"), f"{human_size(free)} libres ({data}){hint}")
     # Optional: without it the calculator works, but uniform or shiny surfaces keep their holes.
     rep["optional"] = {"onnxruntime": c.get("onnxruntime"), "depth_model": bool(c.get("depth_model"))}
     check("LAN address found", bool(rep["lan_addresses"]), ", ".join(rep["lan_addresses"]) or "none: connect to Wi-Fi/Ethernet")
