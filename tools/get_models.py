@@ -45,9 +45,12 @@ def main() -> int:
     tmp = dst.with_suffix(".part")
     print(f"depth model: downloading about 99 MB to {dst} ...")
     try:
-        urllib.request.urlretrieve(MODEL_URL, tmp)
+        # A connection that stops answering must not hold the calculator's start for ever: 30 s without a byte ends it.
+        with urllib.request.urlopen(MODEL_URL, timeout=30) as src, open(tmp, "wb") as out:
+            while chunk := src.read(1 << 20):
+                out.write(chunk)
     except Exception as exc:
-        print(f"depth model: download failed ({exc!r}); the calculator works without it")
+        print(f"depth model: download failed ({exc!r}); the calculator works without it and will try again at its next start")
         tmp.unlink(missing_ok=True)
         return 1
     got = sha256(tmp)

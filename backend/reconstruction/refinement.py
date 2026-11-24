@@ -23,6 +23,7 @@ from .fusion import FusionConfig
 from .mesh_preview import (ESTIMATED, INTERPOLATED, MEASURED, DishFootprint, MeshConfig, crop_mesh, distinct_triangles, drop_small_pieces,
                            edge_manifold_triangles, supported_mesh, surface_area)
 from .preview_format import encode_geometry
+from .quality import scan_quality
 from .stereo_depth import View
 
 
@@ -39,38 +40,67 @@ def footprint_width(V: np.ndarray, size_m) -> dict:
     return {"x_m": ex, "z_m": ez}
 
 
+def _plain_texels(shape, base: np.ndarray, pts: np.ndarray, plain: np.ndarray) -> np.ndarray:
+    """The texels of the triangles marked `plain`, with the texel border of each triangle."""
+    mask = np.zeros(shape, np.uint8)
+    for k in np.nonzero(plain)[0]:
+        cv2.fillConvexPoly(mask, pts[k], 255, lineType=cv2.LINE_8, shift=2)
+    return (cv2.dilate(mask, np.ones((3, 3), np.uint8)) > 0) & (base.sum(2) > 0)
+
+
 def _paint_plain(tex: np.ndarray, base: np.ndarray, pts: np.ndarray, plain: np.ndarray) -> int:
     """Give the triangles marked `plain` their plain surface colour (taken from `base`) in the atlas, whatever
     the photographs projected there. Returns the number of texels repainted."""
-    mask = np.zeros(tex.shape[:2], np.uint8)
-    for k in np.nonzero(plain)[0]:
-        cv2.fillConvexPoly(mask, pts[k], 255, lineType=cv2.LINE_8, shift=2)
-    sel = (cv2.dilate(mask, np.ones((3, 3), np.uint8)) > 0) & (base.sum(2) > 0)   # with the texel border of each triangle
+    sel = _plain_texels(tex.shape[:2], base, pts, plain)
     tex[sel] = base[sel]
     return int(sel.sum())
 
 
+def _projected_share(tm, views, Ks, Es, tex_size: int) -> np.ndarray:
+    """Per texel, between 0 and 1: how much of its colour the projection really took from the photographs.
+
+    Open3D blends the photographs that reach a texel, but where the surface turns away from the cameras the
+    blend comes out darker than every photograph (measured on a ball under 16 plain grey-200 pictures: grey 35
+    to 130 on the flank that faces down). The blend is linear in the pictures (checked to one grey level), so
+    projecting all-white pictures through the same cameras gives the factor that was applied to each texel."""
+    white = {}
+    for v in views:
+        size = v.image.shape[:2]
+        if size not in white:
+            white[size] = o3d.t.geometry.Image(np.full((size[0], size[1], 3), 255, np.uint8))
+    out = tm.project_images_to_albedo([white[v.image.shape[:2]] for v in views], Ks, Es, tex_size, False)
+    return np.asarray(out.as_tensor().numpy())[:, :, :3].max(2).astype(np.float32) / 255.0
+
+
 def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_bgr: np.ndarray | None = None,
-                 plain: np.ndarray | None = None):
+                 plain: np.ndarray | None = None, min_share: float = 0.2):
     """UV atlas + projection of calibrated images (Open3D).
 
-    Returns (per-corner uv in glTF convention, texture BGR, views used, fraction filled from vertex colours)."""
+    min_share: below this share of real photograph (see _projected_share) a texel takes the fused colour.
+
+    Returns (per-corner uv in glTF convention, texture BGR, views used, fraction filled from vertex colours:
+    the share of the surface the photographs could have shown and did not, the `plain` triangles left out)."""
     tm = o3d.t.geometry.TriangleMesh()
     tm.vertex.positions = o3d.core.Tensor(V.astype(np.float32))
     tm.triangle.indices = o3d.core.Tensor(T.astype(np.int32))
     tm.compute_uvatlas(size=tex_size)
-    step = max(1, len(views) // max_views)
-    sel = views[::step][:max_views]
+    sel = views
+    if len(views) > max_views:
+        sel = [views[i] for i in texture_view_choice(np.stack([v.T_obj_from_cam[:3, 3] for v in views]), max_views)]
     imgs = [o3d.t.geometry.Image(np.ascontiguousarray(v.image[:, :, ::-1])) for v in sel]
     Ks = [o3d.core.Tensor(v.K.astype(np.float64)) for v in sel]
     Es = [o3d.core.Tensor(invert_rigid(v.T_obj_from_cam).astype(np.float64)) for v in sel]
     albedo = tm.project_images_to_albedo(imgs, Ks, Es, tex_size, True)
     tex = np.asarray(albedo.as_tensor().numpy())
     tex = tex[:, :, ::-1].copy() if tex.shape[2] == 3 else cv2.cvtColor(tex, cv2.COLOR_RGBA2BGR)
+    # Each texel back to the brightness of the photographs: divided by the share of them it received. Under
+    # min_share too little of a photograph is left to be trusted (and dividing would only amplify its rounding).
+    share = _projected_share(tm, sel, Ks, Es, tex_size)
+    tex = np.clip(np.rint(tex.astype(np.float32) / np.maximum(share, min_share)[:, :, None]), 0, 255).astype(np.uint8)
     tri_uv = tm.triangle["texture_uvs"].numpy().astype(np.float64)  # (M, 3, 2) per corner, v pointing UP (Open3D)
     h, w = tex.shape[:2]
-    # Texels that no selected image reached stay black in Open3D's result. Fill them with the fused
-    # colour of their triangle (measured vertex colours), so the model has no black patches.
+    # Texels that the selected images did not reach, or hardly, are black or dark in Open3D's result. Fill them
+    # with the fused colour of their triangle (measured vertex colours), so the model has no dark patches.
     base = np.zeros_like(tex)
     px = np.stack([tri_uv[:, :, 0] * (w - 1), (1.0 - tri_uv[:, :, 1]) * (h - 1)], -1)
     tri_col = colors_bgr[T].mean(1) if colors_bgr is not None else None
@@ -79,25 +109,115 @@ def texture_mesh(V, T, views, tex_size: int = 2048, max_views: int = 36, colors_
         pts = np.round(px * 4).astype(np.int32)
         for k in range(len(pts)):
             cv2.fillConvexPoly(base, pts[k], tri_col[k].tolist(), lineType=cv2.LINE_8, shift=2)
-        unprojected = tex.sum(2) < 15
-        filled = float(unprojected[base.sum(2) > 0].mean()) if (base.sum(2) > 0).any() else 0.0
+        unprojected = (share < min_share) & (base.sum(2) > 0)
+        counted = base.sum(2) > 0
         tex[unprojected] = base[unprojected]
         if plain is not None and plain.any():
             # The base under the dish faces the table: no photograph shows it, and what the projection puts
-            # there comes from views that grazed it through a gap (grey streaks on a real capture).
+            # there comes from views that grazed it through a gap (grey streaks on a real capture). It is
+            # painted plain, and it does not count in the share below: no photograph could have shown it.
+            counted &= ~_plain_texels(tex.shape[:2], base, pts, plain)
             _paint_plain(tex, base, pts, plain)
+        filled = float(unprojected[counted].mean()) if counted.any() else 0.0
     # glTF texture coordinates have their origin at the TOP-left of the image: flip v.
     uv = tri_uv.copy()
     uv[:, :, 1] = 1.0 - uv[:, :, 1]
     return uv, tex, len(sel), filled
 
 
+def spread_views(centres: np.ndarray, count: int, sharpness: np.ndarray | None = None) -> list[int]:
+    """Indices of at most `count` cameras spread as evenly as possible over the positions `centres` (Nx3).
+
+    The cameras are picked one by one, each time the one farthest from those already chosen: every part of the
+    path is represented, whatever the order of capture. With `sharpness` (one number per camera, higher is
+    sharper), each chosen camera then gives its place to the sharpest camera of its own neighbourhood - the
+    cameras that are closer to it than to any other chosen one, which show the same thing."""
+    n = len(centres)
+    if count <= 0 or n <= count:
+        return list(range(n))
+    C = np.asarray(centres, np.float64)
+    chosen = [0]
+    d = np.linalg.norm(C - C[0], axis=1)
+    for _ in range(count - 1):
+        k = int(np.argmax(d))
+        chosen.append(k)
+        d = np.minimum(d, np.linalg.norm(C - C[k], axis=1))
+    if sharpness is not None:
+        sharp = np.asarray(sharpness, np.float64)
+        owner = np.argmin(np.linalg.norm(C[:, None, :] - C[chosen][None, :, :], axis=2), axis=1)
+        for j, seed in enumerate(chosen):
+            members = np.nonzero(owner == j)[0]
+            best = int(members[np.argmax(sharp[members])]) if len(members) else seed
+            if sharp[best] > sharp[seed]:
+                chosen[j] = best
+    return sorted(set(chosen))
+
+
+def texture_view_choice(centres: np.ndarray, count: int, sharpness: np.ndarray | None = None, tour_band_deg: float = 10.0) -> list[int]:
+    """Indices of the cameras whose photographs paint the texture, `count` at most, for cameras at `centres`
+    (Nx3, object frame: the vertical axis of the box in the middle, +y up).
+
+    One camera per direction around the dish - `count` equal sectors of azimuth - taken from the MAIN TOUR:
+    the height at which the scan has the most cameras, give or take `tour_band_deg`. In each sector the
+    sharpest camera of the tour wins (`sharpness`: one number per camera, higher is sharper), the one nearest
+    the middle of the sector among equals. A sector the tour did not visit takes its camera nearest to that
+    height. Places still free go to the cameras farthest from those chosen: another pass covers what the tour
+    did not show.
+
+    Two simpler rules were measured and dropped. The first photographs in capture order (the rule until
+    p1-0.10.0): a tour of 37 to 107 views lost its end, up to half of it, and that side of the dish got no
+    photograph at all. Cameras spread over the whole scan, both heights mixed: on the hand-held bench (one lap
+    and a higher partial lap) the colour error of the delivered texture rose (mean 11.8 -> 12.9 of 255, 90th
+    percentile 25 -> 30), most on the surfaces that face up: a photograph taken from another height than the
+    views that measured a surface lands beside its place wherever that surface is a millimetre off."""
+    n = len(centres)
+    if count <= 0 or n <= count:
+        return list(range(n))
+    C = np.asarray(centres, np.float64)
+    azimuth = np.arctan2(C[:, 2], C[:, 0])
+    height = np.degrees(np.arctan2(C[:, 1], np.hypot(C[:, 0], C[:, 2])))
+    # The main tour: the height with the most cameras around it (the lower one when two tours are equal: it
+    # is the one that sees the flanks).
+    near = (np.abs(height[:, None] - height[None, :]) <= tour_band_deg).sum(1)
+    tour = float(height[np.lexsort((height, -near))[0]])
+    sector = np.floor((azimuth + np.pi) / (2 * np.pi) * count).astype(int) % count
+    sharp = None if sharpness is None else np.asarray(sharpness, np.float64)
+    chosen = []
+    for k in range(count):
+        members = np.nonzero(sector == k)[0]
+        if not len(members):
+            continue
+        off = np.abs(height[members] - tour)
+        on_tour = members[off <= tour_band_deg]
+        if not len(on_tour):
+            chosen.append(int(members[np.argmin(off)]))
+            continue
+        if sharp is not None:
+            on_tour = on_tour[sharp[on_tour] >= 0.9 * sharp[on_tour].max()]
+        middle = -np.pi + (k + 0.5) * 2 * np.pi / count
+        chosen.append(int(on_tour[np.argmin(np.abs(np.angle(np.exp(1j * (azimuth[on_tour] - middle)))))]))
+    if len(chosen) < count:
+        d = np.linalg.norm(C[:, None, :] - C[chosen][None, :, :], axis=2).min(1) if chosen else np.full(n, np.inf)
+        while len(chosen) < count:
+            k = int(np.argmax(d))
+            if d[k] <= 0:
+                break
+            chosen.append(k)
+            d = np.minimum(d, np.linalg.norm(C - C[k], axis=1))
+    return sorted(set(chosen))
+
+
 def _texture_views(fin: SessionEngine, frame_ids: list[int], max_views: int = 36) -> list[View]:
     """The views that paint the texture, at the resolution of the stored photographs (the depth was computed
-    on reduced images; the texture need not be)."""
-    step = max(1, len(frame_ids) // max_views)
+    on reduced images; the texture need not be). One per direction around the dish, from the main tour, the
+    sharpest of each place (see texture_view_choice): the first photographs in capture order used to be taken,
+    which left the end of a tour (up to half of it) out of the texture."""
+    if not frame_ids:
+        return []
+    centres = np.stack([fin._geometry(f)[0][:3, 3] for f in frame_ids])
+    sharpness = np.array([fin.frames[f].sharpness for f in frame_ids])
     out = []
-    for f in frame_ids[::step][:max_views]:
+    for f in (frame_ids[i] for i in texture_view_choice(centres, max_views, sharpness)):
         v = fin._view(f)
         img = cv2.imread(str(fin.frames[f].image_path), cv2.IMREAD_COLOR)
         if img is None or img.shape[1] <= v.image.shape[1]:
@@ -118,13 +238,40 @@ def spread_subset(engine: SessionEngine, frame_ids: list[int], max_frames: int) 
     if max_frames <= 0 or len(frame_ids) <= max_frames:
         return list(frame_ids)
     C = np.stack([engine._geometry(f)[0][:3, 3] for f in frame_ids])
-    chosen = [0]
-    d = np.linalg.norm(C - C[0], axis=1)
-    for _ in range(max_frames - 1):
-        k = int(np.argmax(d))
-        chosen.append(k)
-        d = np.minimum(d, np.linalg.norm(C - C[k], axis=1))
-    return [frame_ids[i] for i in sorted(chosen)]
+    return [frame_ids[i] for i in spread_views(C, max_frames)]
+
+
+def final_fallbacks(tex_info: dict, dish_info: dict, closure_info: dict, pose_info: dict, mono_reason: str,
+                    used: int, integrated: int) -> list[dict]:
+    """What the final step could not do as intended, each as {"code", "message"}: a stable code and one French
+    sentence for the person who scanned. These used to be written in report.json only, which nobody reads: a
+    model with approximate colours or with its table left around it was announced exactly like a good one.
+    Normal operation is not listed: a pose refinement that was not needed, a dish with no table to remove, a
+    depth model turned off on purpose."""
+    out = []
+
+    def say(code: str, message: str):
+        out.append({"code": code, "message": message})
+
+    status = tex_info.get("status")
+    if status == "failed_fallback_vertex_colors":
+        say("texture_failed", "Les photos n'ont pas pu être posées sur le modèle : ses couleurs sont approximatives.")
+    elif status == "ok" and (tex_info.get("filled_from_vertex_colours") or 0.0) > 0.25:
+        share = int(round(100 * tex_info["filled_from_vertex_colours"]))
+        say("texture_partly_missing", f"Environ {share} % de la surface visible n'a été bien vue par aucune photo : ses couleurs y sont approximatives.")
+    if status == "failed_fallback_vertex_colors" or (status == "ok" and tex_info.get("usdz", {}).get("status") != "ok"):
+        say("ar_file_missing", "Le fichier qui sert à voir le plat sur la table n'a pas pu être écrit.")
+    if dish_info.get("status") == "failed":
+        say("table_not_removed", "La table autour du plat n'a pas pu être retirée du modèle.")
+    if closure_info.get("status") == "failed":
+        say("holes_not_closed", "Les trous du modèle n'ont pas pu être refermés.")
+    if pose_info.get("reason") == "error":
+        say("poses_not_refined", "Les positions du téléphone n'ont pas pu être affinées : le modèle peut être un peu moins net.")
+    if mono_reason.startswith(("model_not_found", "onnxruntime_not_installed", "load_failed")):
+        say("depth_model_missing", "Le modèle de profondeur n'est pas disponible sur le PC : les surfaces unies ou brillantes peuvent être moins bien reconstruites.")
+    if used and integrated < max(8, 0.5 * used):
+        say("few_views_used", f"Seules {integrated} vues sur {used} ont pu être utilisées : le modèle est moins complet.")
+    return out
 
 
 def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 1152, reference_width_m: float | None = None,
@@ -235,6 +382,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
     # dish. What was reconstructed is kept as it is (also delivered alone, model_mesure.glb); what is added is
     # labelled ESTIMATED. See closure.py.
     closure_info = {"status": "disabled"}
+    as_measured = (V, T, cls)     # the dish as reconstructed, before anything is added: what the verdict judges
     if close and len(T):
         try:
             write_glb(out_dir / "model_mesure.glb", V, T, N, colors=C, provenance=cls.astype(np.float32), extras=glb_extras)
@@ -313,13 +461,26 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
                  "error_pct": None if meas is None else 100.0 * (meas - reference_width_m) / reference_width_m}
     areas = {"measured_m2": surface_area(V, T, cls, MEASURED), "interpolated_m2": surface_area(V, T, cls, INTERPOLATED),
              "estimated_m2": surface_area(V, T, cls, ESTIMATED)}
+    # How good is this scan? The verdict given during the scan (quality.py), computed the same way on the same
+    # kind of surface: the dish as the final calculation reconstructed it, before the gaps are closed and the
+    # base is added (those are estimates; they make the model whole, they say nothing about the scan). A final
+    # model is never "too early": too little to judge is poor.
+    sides = float((np.array(fin.coverage()["views_per_bin"]).sum(0) > 0).mean())
+    Vq, Tq, clsq = as_measured
+    verdict = scan_quality(Vq, Tq, clsq, fp if dish_info.get("status") == "ok" else None, len(fusion.integrated_frames), sides,
+                           engine.box.size_m)
+    if verdict["level"] == "too_early":
+        verdict = {**verdict, "level": "poor"}
+    verdict = json.loads(json.dumps(verdict, default=float))      # plain numbers: it travels in events and files
+    fallbacks = final_fallbacks(tex_info, dish_info, closure_info, pose_info, mono_reason if mono is None else "",
+                                len(usable), len(fusion.integrated_frames))
     sel = slice(None) if len(xyz) <= 150000 else np.linspace(0, len(xyz) - 1, 150000).astype(np.int64)
     header = {"schema": "dishplay.geometry/1", "engine": ENGINE_VERSION, "version": 1_000_000 + engine.version, "kind": "final",
               "frame": "object", "units": "m", "box_revision": engine.box.revision, "epoch": engine.box.epoch,
               "box_size_m": list(engine.box.size_m), "computed_at": time.time(), "last_frame_ids": fusion.integrated_frames[-5:],
               "integrated_frames": len(fusion.integrated_frames), "received_frames": len(engine.frames),
               "measured_points": int(len(xyz)), "confirmed_points": int((pcls == MEASURED).sum()), "surface": areas,
-              "coverage": fin.coverage()}
+              "coverage": fin.coverage(), "quality": verdict}
     (out_dir / "final_preview.dpg").write_bytes(encode_geometry(header, xyz[sel], np.concatenate([rgb, pcls[:, None]], 1)[sel],
                                                                disp[0], np.concatenate([disp[1], disp[3][:, None]], 1), disp[2], disp[4]))
     try:  # a picture of the result, easy to check and to share
@@ -338,6 +499,7 @@ def finish_session(engine: SessionEngine, out_dir: Path, finish_width: int = 115
         "pose_refinement": pose_info, "dish_only": dish_info,
         "completion": {"provider": "none", "applied": completion is not None},
         "texture": tex_info, "footprint_width": fw, "scale_check": scale,
+        "verdict": verdict, "fallbacks": fallbacks,
         "live": engine.metrics(), "snapshots": engine.snapshot_log, "timings_s": {**timings, "total": time.perf_counter() - t0},
         "notes": [
             "Global pose refinement (bundle adjustment on SIFT tracks) runs when finishing; it is applied only if it lowers the reprojection error and stays close to ARKit (see pose_refinement).",

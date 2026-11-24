@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import asdict, dataclass, field
+from itertools import zip_longest
 from pathlib import Path
 from typing import Callable
 
@@ -29,7 +30,7 @@ from .live_pose import AnchorConfig, Tie, anchor_pose, common_correction, sample
 from .stereo_depth import StereoParams, View, _box_mask, combine_depths, compute_pair_depth, epipolar_matches
 
 PROVISIONAL = 4
-ENGINE_VERSION = "p1-0.10.0"
+ENGINE_VERSION = "p1-0.11.0"
 
 
 @dataclass
@@ -73,6 +74,10 @@ class EngineConfig:
     anchor_memory_frames: int = 10   # ...if the last of them is no older than this many frames
     anchor: AnchorConfig = field(default_factory=AnchorConfig)
     max_backlog_live: int = 12  # beyond this, older frames are stored but deferred to finishing
+    # While scanning, one call of process_pending hands back after this long (the view in progress is finished
+    # first): the calculator publishes the preview and reads the commands between two calls, instead of after
+    # up to twelve views in a row. A fast computer still does everything that waits in one call.
+    live_slice_s: float = 1.0
     fusion: FusionConfig = field(default_factory=FusionConfig)
     mesh: MeshConfig = field(default_factory=MeshConfig)
     # live: no half-resolution pass (keeps the per-view cost low); finishing turns it on
@@ -108,6 +113,8 @@ class FrameRecord:
     attempts: int = 0
     sharpness: float = 0.0
     integrated_at: float | None = None
+    tried: set = field(default_factory=set)   # partners whose pair with this view failed: the same two pictures are not asked again
+    looked_at: int = -1                       # state of the session (SessionEngine._arrivals) when no partner was left to try
 
 
 def point_to_mesh_distance(mesh, pts: np.ndarray) -> np.ndarray:
@@ -163,6 +170,10 @@ class SessionEngine:
         self.latencies: list[float] = []
         self.snapshot_log: list[dict] = []
         self.paused = False
+        # Views to compute again after a box revision. They are not "backlog": the rule that keeps the live
+        # backlog short does not put them off until finishing (see process_pending).
+        self._rebuild: set[int] = set()
+        self._arrivals = 0     # grows when a view arrives or the box changes: a view without partner is looked at again only then
         self.set_box(box, reprocess=False)
 
     # ------------------------------------------------------------------ setup
@@ -182,10 +193,20 @@ class SessionEngine:
         self._anchor_done = set()
         self._landmarks = {}
         self._corrections = []
+        self._rebuild = set()
+        self._arrivals += 1
         if reprocess:
             for rec in self.frames.values():
-                rec.attempts = 0
-                rec.status = "received" if rec.epoch == box.epoch else "other_epoch"
+                rec.attempts, rec.tried, rec.looked_at = 0, set(), -1
+                if rec.epoch != box.epoch:
+                    rec.status, rec.reason = "other_epoch", "tracking_epoch_differs_from_box"
+                elif rec.meta.get("tracking", {}).get("state") != "normal":
+                    rec.status, rec.reason = "rejected", "tracking_not_normal"
+                elif rec.status == "rejected" and rec.reason in ("image_decode_failed", "blurred"):
+                    pass        # the picture itself is unusable, whatever the box
+                else:
+                    rec.status, rec.reason = "received", ""
+                    self._rebuild.add(rec.frame_id)
             self.emit({"type": "status", "state": "box_revised", "box_revision": box.revision})
 
     # ----------------------------------------------------------------- frames
@@ -195,6 +216,7 @@ class SessionEngine:
         rec = FrameRecord(fid, int(meta.get("epoch", 0)), meta, Path(image_path), depth_path, conf_path,
                           received_at if received_at is not None else self.clock())
         self.frames[fid] = rec
+        self._arrivals += 1
         if rec.epoch != self.box.epoch:
             rec.status, rec.reason = "other_epoch", "tracking_epoch_differs_from_box"
             self._frame_event(rec)
@@ -278,26 +300,45 @@ class SessionEngine:
         return len(self._awaiting)
 
     def process_pending(self, live: bool = True) -> int:
-        """Process frames that still need depth. Returns number of newly integrated frames."""
+        """Process frames that still need depth. Returns number of newly integrated frames.
+
+        live=False (replay, finishing): everything that waits, in capture order.
+        live=True (while the phone is scanning): the most recent views first, and the call hands back after
+        `live_slice_s`; what is left is taken up by the next call."""
         todo = [f for f in self.pending() if self.frames[f].status == "received"]
         retry = [f for f in self.pending() if self.frames[f].status == "waiting_partner"]
-        if live and len(todo) > self.cfg.max_backlog_live:
-            # Keep latency bounded: the oldest unprocessed frames wait for finishing (originals kept).
-            for f in todo[: len(todo) - self.cfg.max_backlog_live]:
-                self.frames[f].status, self.frames[f].reason = "deferred", "backlog_deferred_to_finish"
-                self._frame_event(self.frames[f])
-            todo = todo[-self.cfg.max_backlog_live:]
-        n = 0
+        self._rebuild &= set(todo)
         order = todo + retry
+        if live:
+            fresh = [f for f in todo if f not in self._rebuild]
+            if len(fresh) > self.cfg.max_backlog_live:
+                # Keep latency bounded: the oldest unprocessed frames wait for finishing (originals kept).
+                for f in fresh[: len(fresh) - self.cfg.max_backlog_live]:
+                    self.frames[f].status, self.frames[f].reason = "deferred", "backlog_deferred_to_finish"
+                    self._frame_event(self.frames[f])
+                fresh = fresh[-self.cfg.max_backlog_live:]
+            # What the phone is looking at now comes first. The views of a revised box are all computed again,
+            # newest first, in turn with the new ones so that neither waits for the other; second chances last.
+            again = sorted(self._rebuild, reverse=True)
+            order = [f for pair in zip_longest(reversed(fresh), again) for f in pair if f is not None] + retry[::-1]
+        n = 0
         self._live = live
         ahead = int(getattr(self.mono, "ahead", 0)) if hasattr(self.mono, "request") else -1
+        started = self.clock()
         for i, fid in enumerate(order):
-            if ahead >= 0:
+            if ahead >= 0 and not self._settled(fid):
                 # The model works on its own thread: it is given this picture (and, when finishing, the next
                 # ones) now, and computes while stereo is busy with the same pictures.
                 self._ask_mono(order[i: i + 1 + (0 if live else ahead)], live)
             n += self._process(fid)
+            if live and self.clock() - started >= self.cfg.live_slice_s:
+                break
         return n
+
+    def _settled(self, fid: int) -> bool:
+        """A view that waits for a partner, has none left to try, and nothing has arrived since it was last looked at."""
+        rec = self.frames[fid]
+        return rec.status == "waiting_partner" and rec.looked_at == self._arrivals
 
     def _ask_mono(self, frame_ids: list[int], live: bool) -> None:
         for f in frame_ids:
@@ -319,6 +360,8 @@ class SessionEngine:
 
     def _process(self, fid: int) -> int:
         rec = self.frames[fid]
+        if self._settled(fid):
+            return 0        # nothing can have changed for it: no computation, no event
         try:
             ref = self._view(fid)
         except ValueError:
@@ -331,7 +374,8 @@ class SessionEngine:
         if self.cfg.use_lidar and rec.depth_path is not None:
             return self._integrate_lidar(rec, ref)
         cands = self._candidates()
-        partners = select_partners(fid, cands, self.box.size_m, self.cfg.max_partners, self.cfg.limits)
+        # The same two pictures always give the same answer: a partner whose pair failed is not offered again.
+        partners = select_partners(fid, cands, self.box.size_m, self.cfg.max_partners, self.cfg.limits, exclude=rec.tried)
         depths, reports = [], []
         if partners:
             rec.attempts += 1
@@ -345,14 +389,23 @@ class SessionEngine:
             self.pair_reports.append(rep)
             if res.depth is not None:
                 depths.append(res.depth)
+            else:
+                rec.tried.add(g.other_id)
         ref.matches.clear()      # only needed while this view is the reference: a megabyte per view otherwise
         if not depths:
-            if rec.attempts >= self.cfg.retry_limit:
+            was = (rec.status, rec.reason)
+            if partners and rec.attempts >= self.cfg.retry_limit:
                 rec.status, rec.reason = "rejected", "no_valid_pair"
             else:
                 rec.status = "waiting_partner"
-                rec.reason = reports[-1]["reason"] if reports else "no_partner_geometry_yet"
-            self._frame_event(rec, reports)
+                if reports:
+                    rec.reason = reports[-1]["reason"]
+                elif not rec.tried:
+                    rec.reason = "no_partner_geometry_yet"      # (else: the reason of its last failed pair stays)
+            if not partners:
+                rec.looked_at = self._arrivals       # looked at again when a view arrives or the box changes
+            if reports or (rec.status, rec.reason) != was:
+                self._frame_event(rec, reports)      # said once, not at every pass of the calculator
             return 0
         aligned = self.cfg.pair_bias_fit and self._align_pairs(fid, depths, ref)
         depth, support = combine_depths(depths)
