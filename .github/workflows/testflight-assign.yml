@@ -17,7 +17,11 @@ permissions:
 
 jobs:
   assign:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # After a TestFlight run that succeeded AND sent a build: a "Build only" run (see its run-name) sends nothing,
+    # and this job used to wait 40 minutes for a build that would never arrive.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && !startsWith(github.event.workflow_run.display_title, 'Build only'))
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     environment:

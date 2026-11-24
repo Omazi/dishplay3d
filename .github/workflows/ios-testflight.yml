@@ -16,20 +16,39 @@ on:
         default: true
         type: boolean
 
+# The name of a run says whether it sends anything: the workflow that follows (testflight-assign) reads it.
+run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.upload == false && 'Build only (nothing sent to Apple)' || 'TestFlight release' }}
+
 permissions:
   contents: read
+  actions: read    # the gate asks for the screen checks that succeeded
 
 concurrency:
   group: scan-testflight
   cancel-in-progress: false
 
 jobs:
+  # Nothing is sent to Apple unless the screen check succeeded on this very app (three walks) and the notes name
+  # the app's version (ios/ci/release-gate.py). Version 1.7.0 reached the testers before its pictures existed.
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: The pictures of this very app exist, and the notes name its version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPLOAD: ${{ github.event_name == 'push' || inputs.upload }}
+        run: python3 ios/ci/release-gate.py
   check:
+    needs: gate
     uses: ./.github/workflows/ios-check.yml
     with:
       release: true
   distribute:
-    needs: check
+    needs: [gate, check]
     runs-on: macos-15
     timeout-minutes: 40
     environment:

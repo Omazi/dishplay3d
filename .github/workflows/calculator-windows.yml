@@ -5,7 +5,7 @@ name: DishPlay Scan — calculator on Windows
 # behind, then runs the calculator's tests and one real scan with the environment the script made.
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
     paths:
       - start-calculator.ps1
       - Demarrer-le-calculateur.cmd

@@ -1,6 +1,7 @@
 name: DishPlay Scan — checks
 
 # Backend tests on Linux + ScanCore unit tests and an unsigned iOS device build on macOS.
+# A push runs only the jobs its files need (job "gate"): none for documents, no Mac for the calculator alone.
 # Each change is checked ONCE:
 #  - only pushes to main start it (the working branch is a copy of main: checking it again told nothing new);
 #  - a release push (ios/RELEASE_NOTES.txt changed) is checked inside the TestFlight workflow, which calls
@@ -29,29 +30,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      run: ${{ steps.decide.outputs.run }}
+      backend: ${{ steps.decide.outputs.backend }}
+      ios: ${{ steps.decide.outputs.ios }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+      # Only what the changed files need (ios/ci/check-plan.py): nothing for documents, no Mac for the calculator.
       - id: decide
         env:
           RELEASE_CALL: ${{ inputs.release }}
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
         run: |
-          run=true
-          if [ "$RELEASE_CALL" != "true" ] && [ "$EVENT" = "push" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qx 'ios/RELEASE_NOTES.txt'; then
-              run=false
-              echo "Release push: the same checks run inside the TestFlight workflow; not repeated here."
-            fi
+          if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            git diff --name-only "$BEFORE" "$GITHUB_SHA" | KNOWN=true python3 ios/ci/check-plan.py >> "$GITHUB_OUTPUT"
+          else
+            KNOWN=false python3 ios/ci/check-plan.py < /dev/null >> "$GITHUB_OUTPUT"
           fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
 
   backend:
     needs: gate
-    if: needs.gate.outputs.run == 'true'
+    if: needs.gate.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -67,10 +68,21 @@ jobs:
         run: .venv/bin/python -m pytest -q -p no:cacheprovider
       - name: Doctor (includes a synthetic self-test of the chain)
         run: .venv/bin/python ../tools/doctor.py || true
+      # The network that fills what stereo cannot measure. It is not in the repository (99 MB): downloaded here,
+      # for this step only, so that the suite above runs exactly as on a PC without it. A failed download is a
+      # visible warning, not a failed check.
+      - name: The real depth network loads and predicts
+        run: |
+          if .venv/bin/python ../tools/get_models.py --data "$RUNNER_TEMP/dishplay-data"; then
+            DISHPLAY_MONO_MODEL="$RUNNER_TEMP/dishplay-data/models/depth_anything_v2_small.onnx" \
+              .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_mono_fill.py -k real_model -rs
+          else
+            echo "::warning::The depth model could not be downloaded: its test did not run in this check."
+          fi
 
   ios:
     needs: gate
-    if: needs.gate.outputs.run == 'true'
+    if: needs.gate.outputs.ios == 'true'
     runs-on: macos-15
     timeout-minutes: 30
     steps:

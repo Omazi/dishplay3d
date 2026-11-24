@@ -49,7 +49,7 @@ def main() -> int:
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         data = Path(tmp) / "data"
         log = open(Path(tmp) / "calculator.log", "w")
         proc = subprocess.Popen([sys.executable, "-m", "app.main", "--data", str(data), "--port", str(port), "--host", "127.0.0.1",
@@ -90,12 +90,30 @@ def main() -> int:
                                 if held else "NO request of the calculator: the computer could go to sleep during a scan"))
             return 0 if held else 1
         finally:
-            proc.terminate()
+            proc.terminate()            # on Windows this kills the calculator alone, as the Task Manager would
             try:
                 proc.wait(20)
             except subprocess.TimeoutExpired:
                 proc.kill()
             log.close()
+            # The calculation process the calculator had started is now on its own. It must notice and stop by
+            # itself. On Windows a file held by a running process cannot be removed, and that process holds
+            # this log: the moment the file can be removed is the moment it stopped.
+            start, stopped = time.time(), False
+            while time.time() - start < 30:
+                try:
+                    (Path(tmp) / "calculator.log").unlink()
+                    stopped = True
+                    break
+                except FileNotFoundError:
+                    stopped = True
+                    break
+                except PermissionError:
+                    time.sleep(0.5)
+            if sys.platform == "win32":
+                print(f"calculation process left alone: {'stopped by itself after %.1f s' % (time.time() - start) if stopped else 'STILL RUNNING after 30 s'}")
+            if not stopped:
+                sys.exit(1)
 
 
 if __name__ == "__main__":
