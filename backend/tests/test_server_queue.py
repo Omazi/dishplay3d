@@ -1,6 +1,7 @@
 """One final calculation at a time, and a real queue: what the iPhone app relies on when several dishes are
 scanned in a row. The calculation processes are fake (tests/test_server_fakes.py); everything else is real."""
 import time
+from pathlib import Path
 
 from app import main
 from tests.test_server_fakes import SESSION, Listener, calc, wait_for  # noqa: F401  (calc is a fixture)
@@ -37,7 +38,7 @@ def test_a_new_scan_never_stops_the_dish_being_finished(calc):
     pa.release()
     wait_for(lambda: calc.info(a)["ready"], what="the first dish to be ready")
     pb = calc.proc(b)       # the live worker of the second scan starts by itself...
-    assert [p.rsplit("/", 1)[-1] for p, _ in pb.existing] == ["000000.json", "000001.json", "000002.json"]   # ...from the stored views
+    assert [Path(p).name for p, _ in pb.existing] == ["000000.json", "000001.json", "000002.json"]   # ...from the stored views
     info = wait_for(lambda: (i := calc.info(b))["active"] and i, what="the second scan to get its worker")
     assert (info["waiting"], info["busy_with_other"], info["state"]) == (False, False, "capturing")
     assert calc.info(a)["state"] == "done"
