@@ -772,6 +772,81 @@ effet aujourd'hui : à partir d'avril 2027 les envois devront être compilés av
 capacité `arkit` n'existe pas sur Vision Pro. Le dépôt est resté public : le travail qui le repasse en privé n'a
 pas son jeton (`REPO_ADMIN_TOKEN`), et une session de travail n'a pas le droit de changer ce réglage.
 
+## Mise à jour du 24 novembre — plusieurs plats à la suite, moteur `p1-0.11.0`, deux essais Colab
+
+Un audit du projet (six relectures, chaque constat recontrôlé par un contradicteur, puis une passe « qu'est-ce
+que personne n'a regardé ») a relevé 53 points. Ce qui suit est ce qui a été corrigé côté calculateur et moteur ;
+l'app iPhone, les contrôles GitHub et l'inventaire des licences restent à traiter.
+
+**Plusieurs plats à la suite (le défaut le plus gênant).** Démarrer un scan pendant que le plat précédent était
+en cours de calcul arrêtait ce calcul sans un mot, alors que l'app annonçait qu'il continuait. Reproduit avant
+correction. Le calculateur tient maintenant une vraie file : un calcul à la fois, jamais interrompu ; les demandes
+suivantes démarrent seules, dans l'ordre ; le scan suivant est accepté pendant ce temps (ses vues sont gardées,
+son aperçu en direct démarre quand le calculateur est libre). Un calcul qui échoue ou dont le processus meurt
+est marqué en échec avec une phrase en français (app, console du PC, `calculateur.log`) au lieu de rester « en
+cours » pour toujours. Un scan survit à un redémarrage du calculateur ; les calculs interrompus reprennent au
+démarrage suivant. L'app 1.7.0 déjà publiée fonctionne sans changement avec ce calculateur (vérifié à la
+lecture de son code) : son message « En attente : un autre plat est en cours de calcul » devient vrai.
+
+Aussi corrigé : le certificat n'est plus refait quand les adresses du PC changent (plus de jumelage à refaire
+après un VPN ou un autre Wi‑Fi) ; un disque plein donne un refus clair au lieu d'une erreur muette, et
+`tools/clean_sessions.py` fait le ménage ; le PC est maintenu éveillé pendant un scan ou un calcul ; un
+processus de calcul resté seul après un arrêt brutal du calculateur s'arrête au lieu de continuer à écrire.
+
+Tests : 88 tests rapides avec des processus de calcul factices (file, échecs, événements, redémarrage, disque,
+jumelage, certificat, veille) et 3 essais de bout en bout avec de vrais processus. Suite complète sur l'ensemble
+fusionné : **234 réussis, 3 ignorés** (16 min 22 s). Rien n'a été exécuté sous Windows ni sur iPhone.
+Limite connue : pendant qu'un calcul final tourne, le scan suivant se fait sans aperçu en direct. Limite
+mesurée : sur cette machine de 4 processeurs, quand le réseau de profondeur tourne aussi pendant le scan,
+moins de 85 % des vues sont traitées en direct (les autres attendent la finition) ; c'était déjà le cas avant.
+
+**Moteur `p1-0.11.0`, mesuré avant et après sur le banc** (`tools/bench_quality.py --texture` : bol de synthèse
+difficile, 110 vues tenues à la main, un tour puis un passage plus haut ; même scène, même script) :
+
+| Modèle final | `p1-0.10.0` | `p1-0.11.0` | `p1-0.11.0` + vrai réseau de profondeur |
+|---|---|---|---|
+| sommets réellement mesurés | 40,6 % | 42,5 % | 42,0 % |
+| sommets estimés (ajoutés pour refermer) | 30,4 % | 27,0 % | 16,4 % |
+| complétude (vraie surface à moins de 4 mm) | 82,9 % | 82,1 % | 87,8 % |
+| complétude des parois du bol | 75,1 % | 73,5 % | 89,8 % |
+| précision, médiane / 90ᵉ centile | 1,20 / 4,34 mm | 1,14 / 4,23 mm | 1,15 / 4,33 mm |
+| fragments à plus de 6 mm | 3,28 % | 2,95 % | 3,92 % |
+| texture, erreur de couleur moyenne (sur 255) | 12,4 | 11,5 | 9,7 |
+| texture, 90ᵉ centile de l'erreur | 26,5 | 23,0 | 19,2 |
+| texture, nettement plus sombre que la scène | 4,2 % | 2,5 % | 1,7 % |
+| durée de la finition | 122 s | 138 s | 174 s |
+
+Ce qui a changé dans le moteur :
+- une mesure faite par exactement deux des trois paires d'une vue était jetée à la finition, même quand les deux
+  concordaient ; elle est gardée ;
+- texture : la bande assombrie là où la surface se détourne des caméras est corrigée ;
+- texture : les 36 photos sont prises tout autour du plat, sur le tour principal, la plus nette de chaque
+  endroit. L'ancienne règle (les premières photos du scan) laissait la fin d'un tour, jusqu'à la moitié, sans
+  aucune photo. Une première correction (photos réparties sur tout le scan, deux hauteurs mélangées) a été
+  **mesurée puis retirée** : elle dégradait la texture (erreur moyenne 12,9 ; 90ᵉ centile 30,5) ;
+- le modèle final reçoit un **verdict** (celui du scan, calculé de la même façon sur le plat tel qu'il a été
+  reconstruit) et la liste, en clair, de ce que la finition n'a pas pu faire comme prévu. Sur l'assiette de
+  synthèse le verdict final concorde avec celui du scan (bon / bon à 45 et 60 vues, insuffisant / insuffisant
+  à 14). Une première version jugeait le modèle refermé et classait « moyen » un bon scan : corrigée ;
+- pendant le scan : après un changement de boîte, toutes les vues sont recalculées (l'aperçu ne reposait plus
+  que sur les 12 dernières) ; un PC lent rend la main entre deux vues.
+
+**Le vrai réseau de profondeur, enfin exécuté.** Il n'avait jamais tourné dans ce projet. Téléchargé ici depuis
+une révision figée de son dépôt (empreinte vérifiée), il se charge et prédit (test `test_real_model_if_installed`,
+réussi), et sur le banc il comble les parois unies du bol : complétude des parois 73,5 % → 89,8 %, part estimée
+27 % → 16 %, sans erreur (dernière colonne du tableau). 97 vues sur 103 ont été complétées pendant le scan ; 6
+prédictions qui ne concordaient pas avec les mesures ont été écartées. Le verdict passe alors à « moyen, surfaces
+unies ou brillantes » : c'est exact, la moitié de la surface n'est plus mesurée mais prédite. Coût : 36 s de
+plus à la finition. Sur de vrais plats, rien n'est mesuré.
+
+**Deux essais à lancer sur Google Colab** (`docs/ESSAI_NEURONAL.md`, `docs/PHOTO_EXPRESS.md`). Aucun des deux
+n'a tourné sur une carte graphique. Deux relecteurs indépendants ont comparé chaque appel au vrai code des
+bibliothèques et trouvé 21 défauts, tous corrigés, dont un bloquant (avec la version de `transformers` de Colab,
+le modèle de l'essai « une photo » ne se chargeait pas). L'entraîneur neuronal a tourné 4 000 pas à blanc avec
+le vrai code de sa bibliothèque et un rendu factice. L'exécution du modèle « une photo » a été refusée ici par la
+protection de la session : seules ses parties propres au projet sont testées. La vidéo de l'essai neuronal
+passait par un encodeur sous GPL : remplacée par une image animée.
+
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de
 ~0,5 Mo), qualité sur aliments brillants/unis, reprise après coupure, épinglage TLS sur iOS, rendu Metal, export.
