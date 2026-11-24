@@ -62,6 +62,21 @@ def test_nothing_is_removed_without_apply(data, capsys):
     assert old_done.exists() and old_empty.exists()
 
 
+def test_the_list_says_which_dish_each_folder_is(data, capsys):
+    named = make_session(data, "20260101-120000-aaaaaa", age_days=45)
+    (named / "nom.txt").write_text("Tajine aux pruneaux\n", encoding="utf-8")      # written by the calculator when the app names the dish
+    when = time.time() - 45 * DAY
+    os.utime(named / "nom.txt", (when, when))
+    make_session(data, "20260102-120000-bbbbbb", age_days=45)
+    assert clean_sessions.main(["--data", str(data)]) == 0
+    out = capsys.readouterr().out
+    assert "20260101-120000-aaaaaa  « Tajine aux pruneaux »" in out
+    assert "20260102-120000-bbbbbb  45 j" in out                                       # a dish without a name: its folder alone
+    # With --apply the views go and the name stays with the model.
+    assert clean_sessions.main(["--data", str(data), "--apply"]) == 0
+    assert (named / "nom.txt").exists() and (named / "final" / "model.glb").exists()
+
+
 def test_apply_removes_the_views_of_old_finished_dishes_and_keeps_their_model(data, capsys):
     d = make_session(data, "20260101-120000-aaaaaa", age_days=45, frames=8)      # 8 views of 0,25 Mo
     assert clean_sessions.main(["--data", str(data), "--apply"]) == 0

@@ -87,6 +87,14 @@ def protected_sessions(data: Path) -> set[str] | None:
         return None
 
 
+def dish_name(folder: Path) -> str:
+    """The name the person gave this dish in the app (nom.txt, written by the calculator); empty without one."""
+    try:
+        return (folder / "nom.txt").read_text(encoding="utf-8").strip()[:120]
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
 def plan(data: Path, days: float = 30, with_final: bool = False, now: float | None = None, protected=()) -> list[dict]:
     """What would be removed, oldest session first: {"session", "what": "views" | "session", "finished",
     "age_days", "bytes", "paths"}. Nothing is touched here."""
@@ -110,7 +118,8 @@ def plan(data: Path, days: float = 30, with_final: bool = False, now: float | No
         else:
             paths, what = [d], "session"
         if paths:
-            actions.append({"session": d.name, "what": what, "finished": finished, "age_days": idle / DAY, "bytes": size, "paths": paths})
+            actions.append({"session": d.name, "name": dish_name(d), "what": what, "finished": finished, "age_days": idle / DAY,
+                            "bytes": size, "paths": paths})
     return actions
 
 
@@ -163,7 +172,8 @@ def main(argv=None) -> int:
             detail = f"plat terminé : dossier entier ({kept})"
         else:
             detail = "scan sans modèle : dossier entier"
-        say(f"  {act['session']}  {act['age_days']:.0f} j  {human_size(act['bytes']):>9}  {detail}")
+        named = f"  « {act['name']} »" if act["name"] else ""
+        say(f"  {act['session']}{named}  {act['age_days']:.0f} j  {human_size(act['bytes']):>9}  {detail}")
         if a.apply:
             failures += remove(act)
     total = human_size(sum(act["bytes"] for act in actions))

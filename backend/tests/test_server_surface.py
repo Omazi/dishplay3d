@@ -28,10 +28,32 @@ def test_every_route_but_health_and_pairing_asks_for_the_token(calc):
     for method, path in (("GET", "/diagnostics"), ("POST", "/sessions"), ("GET", f"/sessions/{a}"),
                          ("POST", f"/sessions/{a}/resume_worker"), ("PUT", f"/sessions/{a}/frames/0"),
                          ("POST", f"/sessions/{a}/box"), ("POST", f"/sessions/{a}/pause"), ("POST", f"/sessions/{a}/resume"),
-                         ("POST", f"/sessions/{a}/finish"), ("GET", f"/sessions/{a}/preview/latest"),
+                         ("POST", f"/sessions/{a}/finish"), ("POST", f"/sessions/{a}/name"), ("GET", f"/sessions/{a}/preview/latest"),
                          ("GET", f"/sessions/{a}/artifacts"), ("GET", f"/sessions/{a}/artifacts/model.glb")):
         r = calc.client.request(method, path, content=b"{}")
         assert r.status_code == 401, (method, path, r.status_code)
+
+
+def test_the_name_given_in_the_app_is_kept_with_the_dish(calc):
+    """Until now the name never left the iPhone: on the PC every dish was a folder named after a date."""
+    a = calc.create()
+    assert calc.info(a)["name"] is None
+    r = calc.post(f"/sessions/{a}/name", {"name": "  Tajine aux\npruneaux \x07 "})
+    assert r.status_code == 200 and r.json() == {"ok": True, "name": "Tajine aux pruneaux"}      # one clean line
+    assert calc.info(a)["name"] == "Tajine aux pruneaux"
+    folder = calc.server.store.session_dir(a)
+    assert (folder / "nom.txt").read_text(encoding="utf-8") == "Tajine aux pruneaux\n"           # readable on the PC without any tool
+    # Renamed in the app: the new name replaces the old one.
+    assert calc.post(f"/sessions/{a}/name", {"name": "Tajine d'agneau"}).status_code == 200
+    assert calc.info(a)["name"] == "Tajine d'agneau"
+    assert (folder / "nom.txt").read_text(encoding="utf-8") == "Tajine d'agneau\n"
+    # A long name is cut, an empty or odd one is refused, an unknown dish is unknown.
+    assert len(calc.post(f"/sessions/{a}/name", {"name": "x" * 500}).json()["name"]) == 120
+    for bad in ({"name": "   "}, {"name": 12}, {}, {"name": None}):
+        assert calc.post(f"/sessions/{a}/name", bad).status_code == 422, bad
+    assert calc.post("/sessions/unknown-dish/name", {"name": "Tajine"}).status_code == 404
+    # The name changes nothing for the scan itself.
+    assert calc.info(a)["state"] == "capturing"
 
 
 def test_pairing_answers_a_malformed_request_without_an_error_500(calc):

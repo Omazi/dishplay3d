@@ -32,7 +32,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.awake import KeepAwake  # noqa: E402
 from app.diagnostics import LOW_FREE_BYTES, MIN_FREE_BYTES, free_bytes, human_size  # noqa: E402
-from app.store import Store  # noqa: E402
+from app.store import Store, clean_name  # noqa: E402
 from app.worker import FAILURE_TEXT, failure_reason  # noqa: E402
 from reconstruction.engine import ENGINE_VERSION  # noqa: E402
 from reconstruction.preview_format import EnvelopeError, decode_frame  # noqa: E402
@@ -721,7 +721,22 @@ def create_app(server: Server) -> FastAPI:
                 "busy_with_other": other or position is not None,
                 "queued": position is not None, "queue_position": position, "waiting": sid in server.waiting,
                 "failed": failed, "error": server.store.failure(sid) if failed else None,
-                "verdict": verdict, "fallbacks": fallbacks}
+                "verdict": verdict, "fallbacks": fallbacks, "name": server.store.name(sid)}
+
+    @app.post("/sessions/{sid}/name")
+    async def name_session(sid: str, request: Request, _=Depends(auth)):
+        """The name the person gave this dish in the app. Until now it never left the iPhone: on the PC every
+        dish was a folder named after a date. It is kept with the dish (nom.txt in its folder)."""
+        require_session(sid)
+        name = clean_name((await read_json(request)).get("name"))
+        if not name:
+            raise HTTPException(422, "name: a text that is not empty is expected")
+        try:
+            await run_in_threadpool(server.store.set_name, sid, name)
+        except OSError as exc:
+            raise server.storage_refusal(exc)
+        server._say(f"[plat] {sid} s'appelle « {name} » (son dossier : {server.store.session_dir(sid)}).")
+        return {"ok": True, "name": name}
 
     @app.post("/sessions/{sid}/resume_worker")
     def resume_worker(sid: str, _=Depends(auth)):

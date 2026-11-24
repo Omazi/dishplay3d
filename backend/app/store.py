@@ -22,9 +22,21 @@ CREATE TABLE IF NOT EXISTS finish_requests (
   session_id TEXT PRIMARY KEY, requested_at REAL, reference_width_m REAL, started INTEGER, restarts INTEGER
 );
 CREATE TABLE IF NOT EXISTS failures (session_id TEXT PRIMARY KEY, t REAL, message TEXT);
+CREATE TABLE IF NOT EXISTS names (session_id TEXT PRIMARY KEY, name TEXT, t REAL);
 """
 
 SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
+NAME_FILE = "nom.txt"      # in the folder of a dish: the name the person gave it in the app
+NAME_MAX = 120
+
+
+def clean_name(value) -> str:
+    """The name of a dish as it is kept: one line, without control characters, at most NAME_MAX characters.
+    Empty when `value` is not a text or holds nothing to read."""
+    if not isinstance(value, str):
+        return ""
+    text = "".join(ch if ch.isprintable() else " " for ch in value)
+    return " ".join(text.split())[:NAME_MAX].strip()
 
 
 class Store:
@@ -64,6 +76,17 @@ class Store:
         r = rows[0]
         return {"id": r[0], "created_at": r[1], "state": r[2], "box": json.loads(r[3]), "device": json.loads(r[4]),
                 "settings": json.loads(r[5]), "reference_width_m": r[6]}
+
+    # the name the person gave the dish in the app
+    def set_name(self, sid, name):
+        """Kept in the database and as a small text file in the folder of the dish, so that the folder can be
+        recognised on the PC without any tool."""
+        (self.session_dir(sid) / NAME_FILE).write_text(name + "\n", encoding="utf-8")
+        self.x("INSERT OR REPLACE INTO names VALUES (?,?,?)", (sid, name, time.time()))
+
+    def name(self, sid):
+        rows = self.x("SELECT name FROM names WHERE session_id=?", (sid,))
+        return rows[0][0] if rows else None
 
     def set_state(self, sid, state):
         self.x("UPDATE sessions SET state=? WHERE id=?", (state, sid))
