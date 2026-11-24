@@ -12,6 +12,8 @@ on:
       - preparer-essai-neuronal.ps1
       - backend/requirements.lock
       - backend/app/**
+      - backend/reconstruction/**
+      - backend/tests/test_server_*.py
       - tools/doctor.py
       - tools/get_models.py
       - tools/clean_sessions.py
