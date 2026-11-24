@@ -73,8 +73,9 @@ final class ScreenCheckTests: XCTestCase {
                 app.swipeUp()
                 settle(1)
                 record.capture("12-plat-bas", app, audit: false)
-                let onTable = app.buttons["Voir sur votre table"]
-                if !look.isDark, look.textSize == nil, onTable.exists {
+                // The sample dish has its AR model: a missing button is a failure of the walk, not a picture less.
+                if !look.isDark, look.textSize == nil, appears(app.buttons["Voir sur votre table"], within: 5) {
+                    let onTable = app.buttons["Voir sur votre table"]
                     // iOS's own viewer opens the textured model: the simulator shows it in 3D, without the camera.
                     onTable.tap()
                     settle(8)
@@ -164,8 +165,16 @@ final class ScreenCheckTests: XCTestCase {
     private func open(tab name: String, in app: XCUIApplication) {
         let inBar = app.tabBars.buttons[name].firstMatch
         let button = inBar.waitForExistence(timeout: 8) ? inBar : app.buttons[name].firstMatch
-        if appears(button, within: 8) { button.tap() }
+        guard appears(button, within: 8) else { return }
+        button.tap()
         settle(1)
+        if !button.isSelected {
+            // Seen on the iPad, whose tab bar floats at the top: a tap was not taken, and the picture that
+            // followed showed the previous tab under the name of this one. Once more, then said if still not.
+            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            settle(1.5)
+        }
+        XCTAssertTrue(button.isSelected, "The tab \(name) did not open")
     }
 
     /// Lets entrance animations finish before the picture.

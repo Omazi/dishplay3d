@@ -87,11 +87,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Select the newest installed Xcode 26 and record versions
+      - name: Select the project's Xcode (ios/ci/select-xcode.sh) and record versions
         run: |
-          XC=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          export DEVELOPER_DIR="$XC/Contents/Developer"
+          DEVELOPER_DIR=$(bash ios/ci/select-xcode.sh)
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphoneos
           swift --version

@@ -8,11 +8,15 @@ struct LibraryView: View {
     @State private var dishes: [DishRecord] = []
     @Namespace private var zoom
     /// The narrowest a card may be. It grows with the text size: two columns on an iPhone with the usual text,
-    /// one with very large text (a name and a state need the width), more on an iPad.
+    /// one with very large text (a name and a state need the width).
     @ScaledMetric(relativeTo: .subheadline) private var cardWidth: CGFloat = 138
+    /// In a wide window (an iPad) the cards are wider rather than more numerous: three or four in a row.
+    @ScaledMetric(relativeTo: .subheadline) private var wideCardWidth: CGFloat = 210
+    @Environment(\.horizontalSizeClass) private var widthClass
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: min(cardWidth, 360)), spacing: Spacing.s, alignment: .top)]
+        let narrowest = widthClass == .regular ? wideCardWidth : cardWidth
+        return [GridItem(.adaptive(minimum: min(narrowest, 360)), spacing: Spacing.s, alignment: .top)]
     }
 
     var body: some View {

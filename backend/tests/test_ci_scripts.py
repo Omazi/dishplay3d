@@ -68,6 +68,55 @@ def test_the_plan_is_one_machine_and_every_walk_unless_the_file_asks_for_more_or
     assert r.returncode != 0 and "night" in r.stderr
 
 
+# ------------------------------------------------------------------ a new accessibility finding is seen (ios/ci/audit-compare.py)
+
+def test_a_new_accessibility_finding_fails_and_a_known_one_does_not(tmp_path):
+    def run(walk, *more):
+        (tmp_path / "audit.txt").write_text(walk, encoding="utf-8")
+        return subprocess.run([sys.executable, str(CI / "audit-compare.py"), str(tmp_path / "audit.txt"), str(tmp_path / "accepted.txt"), *more],
+                              capture_output=True, text=True)
+
+    known = ("clair-08-accueil\tcontrast\tContrast failed\ttype 48 « Calculateur relié » 120×18 pt\n"
+             "clair-18-scan-scanning\tdynamic-type\tDynamic Type font sizes are unsupported\ttype 48 « 34 vues utilisées · mis à jour il y a 7 s » 210×14 pt\n"
+             "clair-10-plats\tok\tno finding\t-\n"
+             "sombre-08-accueil\tcontrast\tContrast failed\ttype 48 « Calculateur relié » 120×18 pt\n")
+    assert run(known).returncode == 0 and "nothing compared" in run(known).stdout              # no accepted list yet
+    made = run(known, "--write")
+    assert made.returncode == 0 and "3 findings" in made.stdout
+    accepted = (tmp_path / "accepted.txt").read_text(encoding="utf-8")
+    assert "clair-10-plats" not in accepted and "il y a # s" in accepted                          # "ok" is no finding; figures are left out
+
+    same = run(known.replace("il y a 7 s", "il y a 12 s").replace("210×14", "214×14"))
+    assert same.returncode == 0 and "0 new, 0 no longer found" in same.stdout                     # the clock and a size are not a change
+    one_walk = run("".join(line + "\n" for line in known.splitlines() if line.startswith("clair-")))
+    assert one_walk.returncode == 0 and "0 new, 0 no longer found" in one_walk.stdout             # a single walk is judged on its own screens
+    fixed = run(known.replace("clair-08-accueil\tcontrast\tContrast failed\ttype 48 « Calculateur relié » 120×18 pt\n", "clair-08-accueil\tok\tno finding\t-\n"))
+    assert fixed.returncode == 0 and "no longer found" in fixed.stdout and "1 no longer found" in fixed.stdout
+    worse = run(known + "clair-16-reglages\ttext-clipped\tText clipped\ttype 9 « Changer de calculateur » 150×44 pt\n")
+    assert worse.returncode == 1 and "NEW finding" in worse.stdout and "Changer de calculateur" in worse.stdout
+
+
+# ------------------------------------------------------------------ one Xcode for every workflow (ios/ci/select-xcode.sh)
+
+def test_every_workflow_of_the_app_takes_its_xcode_from_one_script(tmp_path):
+    for name in ("Xcode_16.4.app", "Xcode_26.1.app", "Xcode_26.3.app", "Xcode_26.10.app", "Xcode_27.0.app"):
+        (tmp_path / name).mkdir()
+
+    def select(**env):
+        return subprocess.run(["bash", str(CI / "select-xcode.sh")], capture_output=True, text=True,
+                              env={"PATH": "/usr/bin:/bin", "XCODE_APPS_DIR": str(tmp_path), **env})
+
+    newest = select()
+    assert newest.returncode == 0 and newest.stdout.strip() == f"{tmp_path}/Xcode_26.10.app/Contents/Developer"   # 26.10 is after 26.3
+    assert select(XCODE_MAJOR="27").stdout.strip() == f"{tmp_path}/Xcode_27.0.app/Contents/Developer"
+    missing = select(XCODE_MAJOR="28")
+    assert missing.returncode != 0 and "Xcode_27.0.app" in missing.stderr                                           # it says what is installed
+    workflows = CI.parents[1] / ".github" / "workflows"
+    for name in ("ios-check.yml", "ios-screens.yml", "ios-testflight.yml"):
+        text = (workflows / name).read_text()
+        assert "ios/ci/select-xcode.sh" in text and "/Applications/Xcode" not in text, name
+
+
 # ------------------------------------------------------------------ which checks a push needs (ios/ci/check-plan.py)
 
 def check_plan(files, release="false", event="push", known="true"):

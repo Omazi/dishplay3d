@@ -697,6 +697,8 @@ struct ScannerView: View {
     private var previewSubtitle: String {
         guard let g = controller.lastGeometry, let t = controller.lastGeometryReceivedAt else { return "En direct pendant le scan" }
         if g.kind == "final" { return "Tournez-le du doigt, pincez pour zoomer" }
+        // Once the model is asked for, the live preview no longer changes: its age would only grow.
+        if controller.phase == .uploadingRest || controller.phase == .finishing { return "Dernier aperçu du scan, en attendant le modèle final" }
         let views = g.integrated_frames ?? 0
         let age = max(0, Int(now.timeIntervalSince(t)))
         return "\(views) \(views == 1 ? "vue utilisée" : "vues utilisées") · mis à jour il y a \(age) s"

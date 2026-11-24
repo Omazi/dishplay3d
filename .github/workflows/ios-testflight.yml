@@ -60,11 +60,11 @@ jobs:
       IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'app.dishplay.capture' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Select Xcode
+      - name: Select the project's Xcode (ios/ci/select-xcode.sh)
         run: |
-          XC=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          DEVELOPER_DIR="$XC/Contents/Developer" xcodebuild -version
+          DEVELOPER_DIR=$(bash ios/ci/select-xcode.sh)
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$DEVELOPER_DIR" xcodebuild -version
       - name: App Store profile (existing secret; API fallback only if absent)
         env:
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}

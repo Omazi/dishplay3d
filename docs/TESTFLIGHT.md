@@ -3,10 +3,12 @@
 Tout passe par GitHub Actions (runner macOS hébergé) et l'API App Store Connect. Rien n'est à faire sur un Mac.
 
 ## 1. Vérification automatique (aucun secret)
-Le workflow **DishPlay Scan — checks** (`.github/workflows/ios-check.yml`) se lance à chaque push touchant
-tout push : tests Python (Linux), tests `ScanCore` (`swift test`), génération du projet par XcodeGen 2.46.0
-(SHA‑256 vérifié) et compilation **non signée** pour iPhone, avec contrôle du bundle (metallib, manifeste de
-confidentialité, `NSLocalNetworkUsageDescription`). Résultat réel : voir `TEST_REPORT.md`.
+Le workflow **DishPlay Scan — checks** (`.github/workflows/ios-check.yml`) se lance à chaque push sur `main`
+et ne fait que ce que les fichiers modifiés demandent : tests Python (Linux) pour le calculateur ; tests
+`ScanCore` (`swift test`), génération du projet par XcodeGen 2.46.0 (SHA‑256 vérifié) et compilation **non
+signée** pour iPhone, avec contrôle du bundle (metallib, manifeste de confidentialité,
+`NSLocalNetworkUsageDescription`) pour l'app ; rien pour de simples documents. Résultat réel : voir
+`TEST_REPORT.md`.
 
 ## 2. Fiche et signature : celles qui existent déjà
 DishPlay Scan est publiée comme **nouvelle version (1.0.0) de la fiche existante « DishPlay Capture »**
@@ -28,12 +30,26 @@ Conséquence sur l'iPhone : la mise à jour TestFlight **remplace** l'app DishPl
 `main1` (dossier `native/ios/`).
 
 ## 3. Lancer le build TestFlight
-Deux façons de lancer la publication depuis `main` :
-- modifier `ios/RELEASE_NOTES.txt` (notes de version) et pousser sur `main` : le workflow démarre et envoie le build ;
-- ou Actions › **DishPlay Scan — TestFlight** › Run workflow › `main` › `upload = true`.
-Le job réexécute les vérifications, installe la signature dans un trousseau temporaire, archive, exporte l'IPA, la
-valide puis l'envoie (`altool`), et nettoie le trousseau. Numéro de build : `run_number.run_attempt` (version 1.0.0,
-supérieure à 0.6.x).
+La publication part de `main`, quand `ios/RELEASE_NOTES.txt` (notes de version) change. Elle commence par une
+**porte** (`ios/ci/release-gate.py`) qui refuse d'envoyer quoi que ce soit si :
+- la première ligne des notes ne porte pas le numéro de version de `ios/project.yml` ;
+- ou aucun passage complet et réussi du contrôle des écrans n'existe pour ce même code de l'app
+  (`docs/SCREEN_CHECK.md`, « Avant une version »).
+
+L'ordre est donc : numéro de version, contrôle des écrans sur la branche de travail, images regardées, puis
+seulement les notes de version sur `main`. Le job refait ensuite les vérifications, installe la signature dans
+un trousseau temporaire, archive, exporte l'IPA, la valide puis l'envoie (`altool`), et nettoie le trousseau.
+Numéro de build : `run_number.run_attempt`.
+
+Un lancement à la main est aussi possible (Actions › **DishPlay Scan — TestFlight** › Run workflow › `main`) :
+avec `upload` décoché, il compile et signe sans rien envoyer à Apple ; avec `upload` coché, il passe par la même
+porte qu'une publication.
+
+## Une version TestFlight expire au bout de 90 jours
+Apple cesse d'ouvrir un build TestFlight 90 jours après son envoi. La 1.7.0, envoyée le 21 novembre 2026,
+s'arrêtera donc vers le **19 février 2027** ; chaque nouvelle version repousse l'échéance de 90 jours à partir
+de son propre envoi. Si l'app doit rester utilisable sans rien changer, il suffit de republier la même version
+avant cette date (un numéro de version suivant et des notes de version).
 
 ## 4. Sur l'iPhone
 Une fois le build « Prêt à tester » (traitement Apple : quelques minutes à une heure), l'ajouter au groupe interne
@@ -60,9 +76,10 @@ Run [44857647148](https://github.com/Omazi/dishplay3d/actions/runs/44857647148) 
 `UPLOAD SUCCEEDED with no errors, 2 warnings`, build traité (`VALID`) et attribué au groupe interne.
 Les deux avertissements d'Apple :
 - **SDK** : l'app est compilée avec le SDK d'iOS 26.2. À partir d'**avril 2027**, Apple n'acceptera que les envois
-  compilés avec le SDK d'iOS 27 (Xcode 27). Les workflows choisissent aujourd'hui « le plus récent Xcode 26 installé »
-  (`ls -d /Applications/Xcode_26*.app`) : avant cette date, les faire pointer sur Xcode 27 (et, si besoin, sur une
-  image de machine GitHub qui le contient), puis relancer le contrôle des écrans (`docs/SCREEN_CHECK.md`).
+  compilés avec le SDK d'iOS 27 (Xcode 27). Les trois workflows de l'app prennent « le plus récent Xcode 26 installé » par
+  un seul script, `ios/ci/select-xcode.sh` : avant cette date, y passer le numéro à 27 (et, si les machines
+  `macos-15` de GitHub ne contiennent pas Xcode 27, changer aussi l'image des machines dans les workflows), puis
+  relancer le contrôle des écrans (`docs/SCREEN_CHECK.md`). Aucun essai avec Xcode 27 n'a encore été fait.
 - **Vision Pro** : la capacité `arkit` n'y existe pas. Sans effet : l'app n'est pas destinée à cet appareil.
 
 ## Limites honnêtes

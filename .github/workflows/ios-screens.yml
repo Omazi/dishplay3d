@@ -51,11 +51,11 @@ jobs:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Select the newest installed Xcode 26
+      - name: Select the project's Xcode (ios/ci/select-xcode.sh)
         run: |
-          XC=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          DEVELOPER_DIR="$XC/Contents/Developer" xcodebuild -version
+          DEVELOPER_DIR=$(bash ios/ci/select-xcode.sh)
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$DEVELOPER_DIR" xcodebuild -version
       - name: Install pinned XcodeGen (2.46.0, SHA-256 verified)
         run: echo "XCODEGEN=$(bash ios/ci/install-xcodegen.sh)" >> "$GITHUB_ENV"
       # The two steps of tests do not stop the job: the walk runs whatever they say, and the last step of the
@@ -129,6 +129,14 @@ jobs:
           if [ "$status" != "0" ]; then echo "---- end of the full log ----"; tail -60 build/screens.log | cut -c1-600; fi
           ls build/screens | head -100
           exit "$status"
+      # A finding that is not in the accepted list fails the job: either the app got worse, or the list is made
+      # again on purpose (ios/ci/audit-compare.py --write) and the change is read in its diff.
+      - name: No accessibility finding beyond the accepted list (ios/UITests/audit-baseline.txt)
+        if: always() && matrix.logic
+        working-directory: ios
+        run: |
+          if [ ! -f build/screens/audit.txt ]; then echo "the walk wrote no audit: nothing compared"; exit 0; fi
+          python3 ci/audit-compare.py build/screens/audit.txt UITests/audit-baseline.txt
       - name: The app's own logic, tested inside the app (what is kept, resumed and deleted on the iPhone)
         id: apptests
         if: always() && matrix.logic
