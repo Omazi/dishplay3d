@@ -1,7 +1,12 @@
 # Mentions tierces — DishPlay Scan P1
 
 Inventaire complet (versions installées, licence déclarée dans les métadonnées, usage, décision) :
-`components.csv`, généré depuis l'environnement réellement installé (`backend/requirements.lock`, Python 3.12).
+`components.csv`, écrit par `tools/make_components.py` depuis l'environnement réellement installé
+(`backend/requirements.lock`, Python 3.12). Un test (`backend/tests/test_compliance.py`) échoue dès qu'un paquet
+installé n'y figure pas, qu'une licence sort des familles admises sans décision écrite, ou que du code redemande
+l'encodeur vidéo sous GPL. Jusqu'au 24 novembre l'inventaire était tenu à la main : trois paquets ajoutés avec le
+modèle de profondeur (flatbuffers, onnxruntime, protobuf, tous permissifs) y manquaient, et les deux paquets sous
+MPL-2.0 y étaient notés « permissifs ».
 
 ## App iOS
 Aucune bibliothèque tierce embarquée : frameworks Apple (SwiftUI, ARKit, RealityKit, Metal/MetalKit, CryptoKit,
@@ -79,6 +84,14 @@ Modèles génératifs plus récents écartés à ce stade : TRELLIS.2 et Pixal3D
 Meta ; export GLB par nvdiffrast, « Nvidia Source Code License », recherche et évaluation seulement), Step1X-3D,
 Hunyuan3D, Stable Fast 3D / SPAR3D, SAM 3D (licences à conditions). Lecture des dépôts officiels ; la contre-
 vérification de cette liste a été interrompue et reste à faire avant toute décision.
+
+## Données d'essai
+Le moteur a été réglé sur des scènes de synthèse du projet et sur des captures du jeu public **Objectron**
+(Google Research ; licence annoncée par son dépôt : C-UDA, « Computational Use of Data Agreement », non relue
+ici). Ces captures ne sont pas dans le dépôt (`tools/import_objectron.py` les convertit depuis une copie locale).
+Quatre images de `docs/evidence/` montrent des modèles reconstruits à partir d'elles (chaussures, livre, objets
+texturés) : ce sont des résultats de calcul, pas les données. À décider avant toute publication commerciale de
+ces images : les garder ou les remplacer par des reconstructions de vos propres plats.
 
 ## Skills de développement (`.claude/skills/`)
 
