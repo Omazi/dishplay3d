@@ -77,7 +77,8 @@ def test_a_push_runs_only_the_checks_its_files_need():
     assert check_plan(["ios/ci/pick-simulator.py"]) == {"run": "true", "backend": "true", "ios": "true"}   # tested by the calculator's suite
     assert check_plan(["ios/ScanCore/Tests/ScanCoreTests/Vectors/frames.json"]) == {"run": "true", "backend": "true", "ios": "true"}
     assert check_plan([".github/workflows/ios-check.yml"]) == {"run": "true", "backend": "true", "ios": "true"}
-    assert check_plan([".github/workflows/calculator-windows.yml"]) == {"run": "true", "backend": "false", "ios": "true"}
+    assert check_plan([".github/workflows/ios-screens.yml"]) == {"run": "true", "backend": "false", "ios": "true"}
+    assert check_plan([".github/workflows/calculator-windows.yml"]) == {"run": "false", "backend": "false", "ios": "false"}   # it starts itself
     assert check_plan(["ios/UITests/RUN.txt"]) == {"run": "false", "backend": "false", "ios": "false"}     # the screen check builds the app itself
     assert check_plan(["start-calculator.ps1"]) == {"run": "false", "backend": "false", "ios": "false"}    # the Windows check runs it
 
