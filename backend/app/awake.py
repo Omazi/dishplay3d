@@ -28,7 +28,8 @@ class KeepAwake:
     from the same thread, and one that lives as long as the calculator. Nothing here ever raises: a system
     that cannot be asked simply sleeps as it is set to."""
 
-    def __init__(self, platform: str = sys.platform, kernel32=None, which=shutil.which, popen=subprocess.Popen):
+    def __init__(self, platform: str = sys.platform, kernel32=None, which=shutil.which, popen=subprocess.Popen,
+                 probe=subprocess.run):
         self.busy = False
         self._kernel32 = None
         self._program = None
@@ -47,9 +48,21 @@ class KeepAwake:
         elif platform in HOLDERS:
             name, args = HOLDERS[platform]
             path = which(name)
-            if path:
+            if path and self._usable(platform, path, probe):
                 self._program = [path, *args]
                 self.how = name
+
+    @staticmethod
+    def _usable(platform: str, path: str, probe) -> bool:
+        """systemd-inhibit exists on machines where nothing answers it (a container, WSL without systemd): the
+        calculator must not announce that it keeps such a machine awake."""
+        if platform != "linux":
+            return True
+        try:
+            return probe([path, "--list", "--no-pager"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, timeout=3).returncode == 0
+        except Exception:
+            return False
 
     def set(self, busy: bool) -> None:
         busy = bool(busy)

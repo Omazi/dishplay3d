@@ -14,11 +14,20 @@ licence payante ne sont nécessaires. Mesuré ici : Linux x86-64, 4 cœurs, sans
 ```powershell
 git clone https://github.com/Omazi/dishplay3d.git
 cd dishplay3d
-powershell -ExecutionPolicy Bypass -File .\start-calculator.ps1
 ```
-Le premier lancement crée `backend\.venv`, installe `requirements.lock`, ajoute (une fois, avec demande admin)
-une règle de pare-feu TCP 8765 limitée au profil **Privé**, lance le diagnostic puis le serveur.
+Puis **double-cliquer sur `Demarrer-le-calculateur.cmd`** (la fenêtre reste ouverte à la fin, pour lire un
+éventuel message). En ligne de commande : `powershell -ExecutionPolicy Bypass -File .\start-calculator.ps1`.
+
+Le premier lancement vérifie que Python 3.12 est là (sinon il dit où l'installer), crée `backend\.venv`, installe
+`requirements.lock`, télécharge le modèle de profondeur (99 Mo), demande **une fois** l'accord de Windows pour
+ajouter une règle de pare-feu (port TCP 8765, réseaux privés seulement), lance le diagnostic puis le calculateur.
+Si l'accord est refusé, le calculateur démarre quand même et le script explique comment ajouter la règle.
 Le réseau Wi‑Fi doit être déclaré « Privé » dans Windows (Paramètres › Réseau › Propriétés).
+
+Ce script est exécuté sur une machine Windows de GitHub à chaque modification (travail « calculator on
+Windows ») : installation, règle de pare-feu, tests du calculateur et un scan complet de synthèse.
+Jusqu'au 24 novembre il n'avait jamais été exécuté, et sa ligne de pare-feu ne pouvait pas créer la règle
+(Windows redemandait l'accord à chaque démarrage).
 
 **WSL2** : en mode NAT par défaut, l'iPhone ne peut pas joindre le serveur. Utiliser Python natif (ci‑dessus) ou
 activer `networkingMode=mirrored` dans `%UserProfile%\.wslconfig` (Windows 11 22H2+), puis `./start-calculator.sh`.

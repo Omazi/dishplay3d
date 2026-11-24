@@ -1,0 +1,91 @@
+name: DishPlay Scan — calculator on Windows
+
+# The owner's PC runs Windows, and nothing of this project had ever been executed there. This job runs the
+# owner's own start script on a Windows machine of GitHub (set-up only), checks what the script must leave
+# behind, then runs the calculator's tests and one real scan with the environment the script made.
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - start-calculator.ps1
+      - Demarrer-le-calculateur.cmd
+      - preparer-essai-neuronal.ps1
+      - backend/requirements.lock
+      - backend/app/**
+      - tools/doctor.py
+      - tools/get_models.py
+      - tools/clean_sessions.py
+      - tools/check_keep_awake.py
+      - tools/export_splat_dataset.py
+      - .github/workflows/calculator-windows.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calculator-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: What the machine has
+        shell: powershell
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion)"
+          python --version
+          if (Get-Command py -ErrorAction SilentlyContinue) { py -0p } else { "no py launcher on this machine" }
+          Get-NetConnectionProfile | Format-Table Name, NetworkCategory -AutoSize | Out-String
+      - name: First start of the owner's script (set-up only)
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\start-calculator.ps1 -SetupOnly
+          if ($LASTEXITCODE -ne 0) { throw "the set-up reported a problem (exit code $LASTEXITCODE)" }
+      - name: The firewall rule the script must leave behind
+        shell: powershell
+        run: |
+          $rule = Get-NetFirewallRule -DisplayName "DishPlay Scan 8765"
+          $port = $rule | Get-NetFirewallPortFilter
+          "{0} | enabled {1} | {2} | {3} | profile {4} | {5} {6}" -f $rule.DisplayName, $rule.Enabled, $rule.Direction, $rule.Action, $rule.Profile, $port.Protocol, $port.LocalPort
+          if (@($rule).Count -ne 1) { throw "exactly one rule is expected" }
+          if ("$($rule.Enabled)" -ne "True" -or "$($rule.Direction)" -ne "Inbound" -or "$($rule.Action)" -ne "Allow") { throw "the rule is not an enabled inbound allow rule" }
+          if ("$($port.Protocol)" -ne "TCP" -or "$($port.LocalPort)" -ne "8765") { throw "the rule is not for TCP 8765" }
+          if ("$($rule.Profile)" -ne "Private") { throw "the rule must be limited to private networks" }
+      - name: A second start installs nothing and asks nothing again
+        shell: powershell
+        run: |
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File .\start-calculator.ps1 -SetupOnly | Out-String
+          $out
+          if ($LASTEXITCODE -ne 0) { throw "the second set-up reported a problem" }
+          if ($out -match "Ouverture du pare-feu") { throw "the script asked for the firewall again" }
+          if ($out -match "Installation des bibliotheques") { throw "the script installed the libraries again" }
+          if (@(Get-NetFirewallRule -DisplayName "DishPlay Scan 8765").Count -ne 1) { throw "a second rule was added" }
+      - name: The calculator keeps this Windows awake while a scan is in progress
+        shell: powershell
+        run: |
+          .\backend\.venv\Scripts\python.exe tools\check_keep_awake.py
+      - name: Calculator tests on Windows (queue, failures, restart, disk, pairing, certificate, sleep)
+        shell: powershell
+        working-directory: backend
+        run: |
+          .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests/test_server_queue.py tests/test_server_failures.py tests/test_server_events.py tests/test_server_restart.py tests/test_server_worker.py tests/test_server_tls.py tests/test_server_storage.py tests/test_server_surface.py tests/test_server_clean_sessions.py tests/test_server_awake.py tests/test_coordinates.py tests/test_formats_exports.py tests/test_usdz.py tests/test_vectors.py tests/test_neural_trial.py
+      - name: One real scan from pairing to the finished model (real processes, real certificate)
+        shell: powershell
+        working-directory: backend
+        run: |
+          .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider tests/test_server_e2e.py -rs
+      - name: The preparation of the neural trial says what to do when no scan is finished
+        shell: powershell
+        run: |
+          $env:DISHPLAY_DATA = Join-Path $env:RUNNER_TEMP "empty-data"
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File .\preparer-essai-neuronal.ps1 -NoPause 2>&1 | Out-String
+          $out
+          if ($LASTEXITCODE -eq 0) { throw "it must fail when there is no scan" }
+          if ($out -notmatch "La preparation a echoue") { throw "the failure is not announced" }

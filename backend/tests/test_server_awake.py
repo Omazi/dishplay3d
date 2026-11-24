@@ -47,10 +47,15 @@ class Holder:
         return 0
 
 
+class Answer:
+    def __init__(self, returncode):
+        self.returncode = returncode
+
+
 def test_on_linux_and_macos_a_small_program_holds_the_request_while_the_calculator_works():
     for platform, program in (("linux", "systemd-inhibit"), ("darwin", "caffeinate")):
         Holder.started = []
-        awake = KeepAwake(platform=platform, which=lambda name: f"/usr/bin/{name}", popen=Holder)
+        awake = KeepAwake(platform=platform, which=lambda name: f"/usr/bin/{name}", popen=Holder, probe=lambda cmd, **kw: Answer(0))
         assert awake.how == program
         awake.set(True)
         awake.set(True)
@@ -71,14 +76,31 @@ def test_a_system_that_cannot_be_asked_never_stops_the_calculator():
     def no_program(cmd, **kwargs):
         raise FileNotFoundError(cmd[0])
 
+    answers = lambda cmd, **kw: Answer(0)                                     # noqa: E731
     for awake in (KeepAwake(platform="linux", which=lambda name: None), KeepAwake(platform="win32", kernel32=Broken()),
-                  KeepAwake(platform="linux", which=lambda name: "/usr/bin/systemd-inhibit", popen=no_program),
+                  KeepAwake(platform="linux", which=lambda name: "/usr/bin/systemd-inhibit", popen=no_program, probe=answers),
                   KeepAwake(platform="sunos5")):
         awake.set(True)
         awake.set(False)
         awake.close()
     assert KeepAwake(platform="linux", which=lambda name: None).how is None
     assert KeepAwake(platform="sunos5").how is None
+
+
+def test_a_linux_where_nothing_answers_the_request_is_not_announced_as_kept_awake():
+    """The program exists in a container or under WSL without systemd, but nothing answers it there."""
+    present = lambda name: "/usr/bin/systemd-inhibit"                         # noqa: E731
+
+    def nobody(cmd, **kw):
+        assert cmd[:2] == ["/usr/bin/systemd-inhibit", "--list"]
+        return Answer(1)
+
+    def hangs(cmd, **kw):
+        raise TimeoutError("no answer")
+
+    assert KeepAwake(platform="linux", which=present, probe=nobody, popen=Holder).how is None
+    assert KeepAwake(platform="linux", which=present, probe=hangs, popen=Holder).how is None
+    assert KeepAwake(platform="linux", which=present, probe=lambda cmd, **kw: Answer(0), popen=Holder).how == "systemd-inhibit"
 
 
 class Recorder:

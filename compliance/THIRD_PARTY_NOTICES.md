@@ -23,7 +23,8 @@ Security) soumis au contrat Apple Developer Program, et le paquet local `ScanCor
 Dépendances d'Open3D (dash, plotly, flask, matplotlib, pandas, scikit-learn, ipywidgets…) : licences permissives
 (MIT/BSD/PSF/MPL-2.0 pour certifi et tqdm) ; requises à l'import d'Open3D, non utilisées par DishPlay.
 
-Outils de build (non distribués) : XcodeGen 2.46.0 (MIT), Xcode (Apple).
+Outils de build (non distribués) : XcodeGen 2.46.0 (MIT), Xcode (Apple) ; actions officielles de GitHub, figées par
+empreinte de commit : `actions/checkout`, `actions/upload-artifact`, `actions/setup-python` (MIT).
 Outils de vérification (ni dans le dépôt ni distribués) : `@google/model-viewer` 4.1.0 (Apache-2.0) et three.js
 0.170.0 (MIT), pour afficher les fichiers GLB et USDZ produits dans un navigateur de test.
 Contrôle des écrans de l'app (non distribué) : XCTest, le simulateur iOS, `usdchecker`, Model I/O, RealityKit et
