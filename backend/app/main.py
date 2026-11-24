@@ -30,6 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.awake import KeepAwake  # noqa: E402
 from app.diagnostics import LOW_FREE_BYTES, MIN_FREE_BYTES, free_bytes, human_size  # noqa: E402
 from app.store import Store  # noqa: E402
 from app.worker import FAILURE_TEXT, failure_reason  # noqa: E402
@@ -50,6 +51,7 @@ CAPTURE_GRACE_S = 30.0   # a scan that sent a view more recently than this keeps
 MAX_LIVE_CRASHES = 3     # live workers of one session that may die before its views stop restarting one
 STOP_WAIT_S = 3.0        # a process asked to stop is given this long before it is terminated
 STORAGE_ALERT_S = 60.0   # a disk problem is told on the console of the PC at most this often
+KEEP_AWAKE_AFTER_VIEW_S = 600.0   # the PC is kept awake this long after the last view of a scan (the person is still at the table)
 
 # What a phone is told (HTTP 507) when its data cannot be stored. The app shows the sentence to the person.
 DISK_ALMOST_FULL = (f"Le disque du PC est presque plein (moins de {human_size(MIN_FREE_BYTES)} libres) : "
@@ -149,6 +151,7 @@ class Server:
         self.base_urls = list(base_urls)
         self.loop: asyncio.AbstractEventLoop | None = None
         self._closed = threading.Event()
+        self.awake = KeepAwake()                     # asked from the watchdog thread only (see app/awake.py)
         self._restore_queue()
         threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
 
@@ -158,6 +161,7 @@ class Server:
         self.loop = None
         with self.lock:
             self.stop_worker()
+        self.awake.close()
 
     # ------------------------------------------------------------ console and log file of the PC
     def _log(self, title: str, *details: str):
@@ -319,6 +323,7 @@ class Server:
         process whose reader is stuck on an unreadable pipe."""
         while not self._closed.wait(WATCH_S):
             try:
+                self.awake.set(self._busy())         # the PC must not go to sleep in the middle of a scan or a calculation
                 with self.lock:
                     a = self.active
                     if a is not None and not a.proc.is_alive():
@@ -329,6 +334,16 @@ class Server:
                         self._schedule()
             except Exception:
                 self._log("Erreur de surveillance du calcul", traceback.format_exc())
+
+    def _busy(self) -> bool:
+        """Is the calculator working for somebody? A final calculation running or waiting its turn, a scan
+        waiting for its live worker, or a scan that sent a view in the last KEEP_AWAKE_AFTER_VIEW_S seconds."""
+        if self.finish_queue or self.waiting:
+            return True
+        a = self.active
+        if a is None or not a.proc.is_alive():
+            return False
+        return a.finishing or (a.state not in ("done", "failed") and time.time() - a.last_frame_at < KEEP_AWAKE_AFTER_VIEW_S)
 
     def _worker_died(self, a: ActiveSession):
         """The process of `a` is gone without having been asked to. Called with the lock held."""
@@ -946,6 +961,10 @@ def main(argv=None):
     except Exception:
         pass
     say(f"Page du QR (à ouvrir sur cet ordinateur) : {scheme}://127.0.0.1:{args.port}/")
+    if server.awake.how:
+        say("Veille : le PC restera éveillé pendant un scan ou un calcul (l'écran peut s'éteindre).")
+    else:
+        say("Veille : ce système ne permet pas au calculateur d'empêcher la mise en veille ; réglez-la sur « jamais » pendant les scans.")
     if server.restored:
         say(f"Reprise des calculs interrompus par l'arrêt précédent : {len(server.restored)} plat(s) ({', '.join(server.restored)}).")
     say("")
