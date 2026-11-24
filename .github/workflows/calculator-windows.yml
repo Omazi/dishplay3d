@@ -95,3 +95,6 @@ jobs:
           if ($code -eq 0) { throw "it must fail when there is no scan" }
           if ($out -notmatch "Aucun scan") { throw "the reason is not said" }
           if ($out -notmatch "La preparation a echoue") { throw "the failure is not announced" }
+          # The failure above was the expected one: without this line the step would end with the script's own
+          # exit code, which GitHub reads from the last program that ran.
+          exit 0
