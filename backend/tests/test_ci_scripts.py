@@ -126,28 +126,42 @@ def check_plan(files, release="false", event="push", known="true"):
     return dict(line.split("=") for line in r.stdout.split())
 
 
+def jobs(files, **more):
+    """The three jobs a push starts, without the quality bench (checked on its own below)."""
+    return {k: v for k, v in check_plan(files, **more).items() if k != "engine"}
+
+
+def test_the_quality_bench_runs_when_the_engine_changes():
+    assert check_plan(["backend/reconstruction/refinement.py"])["engine"] == "true"
+    assert check_plan(["tools/bench_reference.json"])["engine"] == "true"
+    assert check_plan(["backend/app/main.py"])["engine"] == "false"            # the calculator around the engine does not change the models
+    assert check_plan(["ios/App/HomeView.swift"])["engine"] == "false"
+    assert check_plan(["docs/x.md"], event="workflow_dispatch")["engine"] == "true"
+    assert check_plan(["docs/x.md"], release="true")["engine"] == "false"       # a release of the app does not wait for it
+
+
 def test_a_push_runs_only_the_checks_its_files_need():
-    assert check_plan(["docs/TEST_REPORT.md", "README.md"]) == {"run": "false", "backend": "false", "ios": "false"}
-    assert check_plan(["backend/app/main.py"]) == {"run": "true", "backend": "true", "ios": "false"}
-    assert check_plan(["tools/doctor.py", "docs/x.md"]) == {"run": "true", "backend": "true", "ios": "false"}
+    assert jobs(["docs/TEST_REPORT.md", "README.md"]) == {"run": "false", "backend": "false", "ios": "false"}
+    assert jobs(["backend/app/main.py"]) == {"run": "true", "backend": "true", "ios": "false"}
+    assert jobs(["tools/doctor.py", "docs/x.md"]) == {"run": "true", "backend": "true", "ios": "false"}
     assert check_plan(["colab/photo_express.ipynb"])["backend"] == "true"            # a test reads the notebooks
-    assert check_plan(["ios/App/HomeView.swift"]) == {"run": "true", "backend": "false", "ios": "true"}
-    assert check_plan(["ios/ci/pick-simulator.py"]) == {"run": "true", "backend": "true", "ios": "true"}   # tested by the calculator's suite
-    assert check_plan(["ios/ScanCore/Tests/ScanCoreTests/Vectors/frames.json"]) == {"run": "true", "backend": "true", "ios": "true"}
-    assert check_plan([".github/workflows/ios-check.yml"]) == {"run": "true", "backend": "true", "ios": "true"}
-    assert check_plan([".github/workflows/ios-screens.yml"]) == {"run": "true", "backend": "false", "ios": "true"}
-    assert check_plan([".github/workflows/calculator-windows.yml"]) == {"run": "false", "backend": "false", "ios": "false"}   # it starts itself
-    assert check_plan(["ios/UITests/RUN.txt"]) == {"run": "false", "backend": "false", "ios": "false"}     # the screen check builds the app itself
-    assert check_plan(["start-calculator.ps1"]) == {"run": "false", "backend": "false", "ios": "false"}    # the Windows check runs it
+    assert jobs(["ios/App/HomeView.swift"]) == {"run": "true", "backend": "false", "ios": "true"}
+    assert jobs(["ios/ci/pick-simulator.py"]) == {"run": "true", "backend": "true", "ios": "true"}   # tested by the calculator's suite
+    assert jobs(["ios/ScanCore/Tests/ScanCoreTests/Vectors/frames.json"]) == {"run": "true", "backend": "true", "ios": "true"}
+    assert jobs([".github/workflows/ios-check.yml"]) == {"run": "true", "backend": "true", "ios": "true"}
+    assert jobs([".github/workflows/ios-screens.yml"]) == {"run": "true", "backend": "false", "ios": "true"}
+    assert jobs([".github/workflows/calculator-windows.yml"]) == {"run": "false", "backend": "false", "ios": "false"}   # it starts itself
+    assert jobs(["ios/UITests/RUN.txt"]) == {"run": "false", "backend": "false", "ios": "false"}     # the screen check builds the app itself
+    assert jobs(["start-calculator.ps1"]) == {"run": "false", "backend": "false", "ios": "false"}    # the Windows check runs it
 
 
 def test_everything_is_checked_when_in_doubt_and_a_release_push_steps_aside():
     everything = {"run": "true", "backend": "true", "ios": "true"}
-    assert check_plan(["docs/x.md"], release="true") == everything                  # the release's own check
-    assert check_plan(["docs/x.md"], event="workflow_dispatch") == everything
-    assert check_plan(["docs/x.md"], event="pull_request") == everything
-    assert check_plan([], known="false") == everything                              # the changes could not be listed
-    assert check_plan(["ios/RELEASE_NOTES.txt", "ios/App/HomeView.swift"]) == {"run": "false", "backend": "false", "ios": "false"}
+    assert jobs(["docs/x.md"], release="true") == everything                  # the release's own check
+    assert jobs(["docs/x.md"], event="workflow_dispatch") == everything
+    assert jobs(["docs/x.md"], event="pull_request") == everything
+    assert jobs([], known="false") == everything                              # the changes could not be listed
+    assert jobs(["ios/RELEASE_NOTES.txt", "ios/App/HomeView.swift"]) == {"run": "false", "backend": "false", "ios": "false"}
 
 
 # ------------------------------------------------------------------ the same commit is photographed once (ios/ci/screens-plan.py)

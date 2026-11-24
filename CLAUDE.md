@@ -6,8 +6,14 @@
   des couleurs, clair et sombre, sont dans une seule table : `tools/ios_colors.py` (l'exécuter après modification,
   `--check` pour vérifier). Identité : celle du site (papier, encre, bleu), une seule couleur d'action.
   Avant une version : le contrôle des écrans (`docs/SCREEN_CHECK.md`) photographie chaque écran dans le simulateur
-  de GitHub ; regarder les images avant de publier.
+  de GitHub ; regarder les images avant de publier. La publication refuse de partir sans lui : numéro de version
+  dans `ios/project.yml`, contrôle complet sur la branche de travail (`ios/UITests/RUN.txt` sans `only:`), images
+  regardées, puis seulement les notes de version sur `main`, sans retoucher l'app (`docs/TESTFLIGHT.md`).
+  Aucun compilateur Swift ici : l'app se compile et se teste sur GitHub (tests `ios/ScanCore` et `ios/AppTests`,
+  lancés par le contrôle des écrans).
 - `backend/` : calculateur (FastAPI + moteur de reconstruction Python). Tests : `cd backend && .venv/bin/python -m pytest -q`.
+  Le script de démarrage Windows et le calculateur sont exécutés sur une machine Windows de GitHub à chaque
+  modification (travail « calculator on Windows »).
 - `db/` : modèle de base de données (PostgreSQL) et plan de stockage des fichiers. Voir `db/README.md`.
 - `colab/`, `tools/` : essai de reconstruction neuronale et outils.
 - Le **site web** (Next.js, menus par restaurant, QR) est dans la branche `main1`, pas dans `main`.

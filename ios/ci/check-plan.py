@@ -1,5 +1,6 @@
-"""Which jobs of the checks a push needs (workflow ios-check.yml, job "gate"). Prints `run=`, `backend=` and
-`ios=` for GitHub Actions.
+"""Which jobs of the checks a push needs (workflow ios-check.yml, job "gate"). Prints `run=`, `backend=`,
+`ios=` and `engine=` (the quality bench of the reconstruction engine, a few minutes more in the calculator's
+job) for GitHub Actions.
 
     git diff --name-only BEFORE AFTER | python3 ios/ci/check-plan.py
     environment: RELEASE_CALL  "true" when the TestFlight workflow calls the checks for a release
@@ -16,6 +17,8 @@ import sys
 
 BACKEND = ("backend/", "tools/", "contracts/", "colab/", "compliance/", "ios/ci/", "ios/ScanCore/Tests/ScanCoreTests/Vectors/")
 IOS = ("ios/", ".github/workflows/")
+# What can change the models themselves: the engine, and the bench that measures it with its reference figures.
+ENGINE = ("backend/reconstruction/", "tools/bench_quality.py", "tools/bench_reference.json", "backend/tests/realistic.py")
 # Neither the app nor its build: the release notes and the screen check have their own workflows, and the Windows
 # check of the calculator starts itself.
 NOT_THE_APP = ("ios/RELEASE_NOTES.txt", "ios/UITests/RUN.txt", "ios/UITests/audit-baseline.txt",
@@ -24,20 +27,24 @@ NOT_THE_APP = ("ios/RELEASE_NOTES.txt", "ios/UITests/RUN.txt", "ios/UITests/audi
 
 def plan(changed, release_call: bool, event: str, known: bool) -> dict:
     if release_call or event != "push" or not known:
-        return {"run": True, "backend": True, "ios": True, "why": "everything (release, manual start, pull request, or changes unknown)"}
+        # A release of the app does not change the engine: its bench is left out of the release's own check.
+        return {"run": True, "backend": True, "ios": True, "engine": not release_call,
+                "why": "everything (release, manual start, pull request, or changes unknown)"}
     if "ios/RELEASE_NOTES.txt" in changed:
-        return {"run": False, "backend": False, "ios": False, "why": "release push: the same checks run inside the TestFlight workflow"}
+        return {"run": False, "backend": False, "ios": False, "engine": False,
+                "why": "release push: the same checks run inside the TestFlight workflow"}
     backend = any(f.startswith(BACKEND) or f == ".github/workflows/ios-check.yml" for f in changed)
     ios = any(f.startswith(IOS) and f not in NOT_THE_APP for f in changed)
-    why = ", ".join(name for name, on in (("calculator", backend), ("app", ios)) if on) or "nothing to check (documents only)"
-    return {"run": backend or ios, "backend": backend, "ios": ios, "why": why}
+    engine = any(f.startswith(ENGINE) for f in changed)
+    why = ", ".join(name for name, on in (("calculator", backend), ("app", ios), ("quality bench", engine)) if on) or "nothing to check (documents only)"
+    return {"run": backend or ios, "backend": backend, "ios": ios, "engine": engine, "why": why}
 
 
 def main() -> None:
     changed = [line.strip() for line in sys.stdin if line.strip()]
     p = plan(changed, os.environ.get("RELEASE_CALL") == "true", os.environ.get("EVENT", ""), os.environ.get("KNOWN") == "true")
     print(f"checks: {p['why']}", file=sys.stderr)
-    for key in ("run", "backend", "ios"):
+    for key in ("run", "backend", "ios", "engine"):
         print(f"{key}={'true' if p[key] else 'false'}")
 
 

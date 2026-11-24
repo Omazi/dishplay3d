@@ -32,6 +32,7 @@ jobs:
     outputs:
       backend: ${{ steps.decide.outputs.backend }}
       ios: ${{ steps.decide.outputs.ios }}
+      engine: ${{ steps.decide.outputs.engine }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -79,6 +80,16 @@ jobs:
           else
             echo "::warning::The depth model could not be downloaded: its test did not run in this check."
           fi
+      # Only when the engine changed: the same hard synthetic bowl as always, scanned and finished, and the
+      # figures of the model compared with the last accepted ones (tools/bench_reference.json). A figure that got
+      # worse by more than its margin fails the check: a loss of quality is seen, not discovered on a real dish.
+      - name: Quality of the finished model on the bench, against the last accepted figures
+        if: needs.gate.outputs.engine == 'true'
+        run: |
+          .venv/bin/python ../tools/bench_quality.py --out "$RUNNER_TEMP/bench" --texture --check ../tools/bench_reference.json \
+            > "$RUNNER_TEMP/bench.log" 2>&1 || { tail -30 "$RUNNER_TEMP/bench.log"; exit 1; }
+          grep -A14 "against the reference" "$RUNNER_TEMP/bench.log" || true
+          grep -E "^frames " "$RUNNER_TEMP/bench.log" || true
 
   ios:
     needs: gate

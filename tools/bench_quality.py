@@ -3,6 +3,11 @@
 live preview and for the finished model, and renders both. Used to compare engine changes.
 
   python tools/bench_quality.py --out /tmp/bench [--frames 110] [--no-finish] [--texture]
+
+The automatic check (GitHub, when the engine changes) runs it with --texture --check tools/bench_reference.json:
+the figures of the finished model are compared with the last accepted ones, and a figure that got worse by
+more than its margin fails the check. After a change that moves them on purpose, the reference is written
+again with --write-reference and the new figures are read in its diff.
 """
 from __future__ import annotations
 
@@ -100,8 +105,56 @@ def texture_metrics(scene, glb_path: Path) -> dict:
             "much_darker_than_the_scene_pct": float(darker.mean() * 100)}
 
 
+# The figures of the finished model watched by the automatic check: where each one is in bench.json, whether a
+# higher (+1) or a lower (-1) value is better, and how far it may move for the worse before the check fails. The
+# bench is the same scene and the same script each time: on one machine it repeats to the third decimal, and
+# the margins leave room for another processor.
+WATCHED = [
+    ("completeness_pct", ("final", "completeness_pct(<4mm)"), +1, 1.5),
+    ("wall_completeness_pct", ("final", "wall_completeness_pct"), +1, 2.5),
+    ("measured_vertices_pct", ("final", "measured_vertices_pct"), +1, 2.0),
+    ("accuracy_median_mm", ("final", "accuracy_median_mm"), -1, 0.1),
+    ("accuracy_p90_mm", ("final", "accuracy_p90_mm"), -1, 0.4),
+    ("floaters_pct", ("final", "floaters_pct(>6mm)"), -1, 0.8),
+    ("texture_error_mean", ("texture", "colour_error_mean"), -1, 0.8),
+    ("texture_error_p90", ("texture", "colour_error_p90"), -1, 2.5),
+    ("texture_much_darker_pct", ("texture", "much_darker_than_the_scene_pct"), -1, 0.8),
+]
+
+
+def watched_figures(res: dict) -> dict:
+    """The watched figures of one run; a figure the run did not produce is left out."""
+    out = {}
+    for name, (block, key), _, _ in WATCHED:
+        value = res.get(block, {}).get(key)
+        if isinstance(value, (int, float)):
+            out[name] = round(float(value), 3)
+    return out
+
+
+def compare_with_reference(res: dict, reference: dict) -> tuple[list[str], list[str]]:
+    """(one line per watched figure, the names of those that got worse by more than their margin)."""
+    now, before = watched_figures(res), reference.get("figures", {})
+    lines, worse = [], []
+    for name, _, better, margin in WATCHED:
+        if name not in before:
+            continue
+        if name not in now:
+            lines.append(f"  {name:26} reference {before[name]:8.3f}   not measured in this run")
+            worse.append(name)
+            continue
+        change = (now[name] - before[name]) * better          # positive: better than the reference
+        mark = "WORSE" if change < -margin else ("better" if change > margin else "same")
+        if mark == "WORSE":
+            worse.append(name)
+        lines.append(f"  {name:26} reference {before[name]:8.3f}   now {now[name]:8.3f}   margin {margin:<5} {mark}")
+    return lines, worse
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--check", default="", help="compare the finished model with this reference file; exit code 1 when a figure got worse")
+    ap.add_argument("--write-reference", default="", help="write the watched figures of this run to this file")
     ap.add_argument("--out", default="/tmp/bench")
     ap.add_argument("--frames", type=int, default=110)
     ap.add_argument("--no-finish", action="store_true")
@@ -210,6 +263,20 @@ def main():
                   else json.dumps({a: (round(b, 3) if isinstance(b, float) else b) for a, b in res[k].items()}, default=float))
     print("mono_fill live", res["engine_metrics"]["mono_fill"], "final", res.get("mono_fill_final"))
     print("frames", res["engine_metrics"]["frames"], "live_s", round(live_s, 1), "finish_s", round(res.get("finish_seconds", 0), 1))
+    if a.write_reference:
+        from reconstruction.engine import ENGINE_VERSION
+        reference = {"engine": ENGINE_VERSION, "frames": a.frames, "seed": a.seed, "figures": watched_figures(res)}
+        Path(a.write_reference).write_text(json.dumps(reference, indent=1) + "\n")
+        print(f"reference written to {a.write_reference}")
+    if a.check:
+        reference = json.loads(Path(a.check).read_text())
+        lines, worse = compare_with_reference(res, reference)
+        print(f"against the reference of engine {reference.get('engine')} ({a.check}):")
+        print("\n".join(lines))
+        if worse:
+            sys.exit(f"the finished model got worse on: {', '.join(worse)}. If this is intended, write the reference again "
+                     "with --write-reference and say why in the commit.")
+        print("no watched figure got worse")
 
 
 if __name__ == "__main__":

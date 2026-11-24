@@ -1,0 +1,16 @@
+{
+ "engine": "p1-0.11.0",
+ "frames": 110,
+ "seed": 0,
+ "figures": {
+  "completeness_pct": 82.122,
+  "wall_completeness_pct": 73.48,
+  "measured_vertices_pct": 42.542,
+  "accuracy_median_mm": 1.143,
+  "accuracy_p90_mm": 4.234,
+  "floaters_pct": 2.944,
+  "texture_error_mean": 11.377,
+  "texture_error_p90": 23.129,
+  "texture_much_darker_pct": 2.77
+ }
+}
