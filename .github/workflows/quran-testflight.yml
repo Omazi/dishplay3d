@@ -1,0 +1,52 @@
+name: Quran — TestFlight
+
+# Sends the owner's other app, the Quran app (github.com/Omazi/quran), to TestFlight.
+#
+# Why it is here: signing needs the Apple key, which lives in this repository's `testflight`
+# environment, and GitHub cannot copy a secret to another repository. Decided by the owner on
+# 24 November 2026 (Omazi/quran, docs/DECISIONS.md, D30).
+#
+# What it does to DishPlay: nothing. No file of this repository is read, built or changed. All
+# the steps are written and reviewed in Omazi/quran (.github/workflows/testflight.yml); that app
+# has its own identifier and its own record at Apple. The Apple key and the distribution
+# certificate are used, never created, changed or revoked.
+#
+# What it trusts: the branch `main` of Omazi/quran. Whoever can write there decides what runs with
+# the Apple key the next time this is started (Omazi/quran, docs/SECURITY.md).
+#
+# Started by hand only. To undo: delete this file.
+#
+# Any commit that adds, changes or removes this file carries [skip ci] in its message: without it
+# the DishPlay checks would start (ios/ci/check-plan.py counts every workflow file as the app).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "send = build, sign and upload; prepare = only check the Apple side"
+        type: choice
+        options: [send, prepare]
+        default: send
+      ref:
+        description: Commit or branch of Omazi/quran to send (it must be on its main)
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quran-testflight
+  cancel-in-progress: false
+
+jobs:
+  quran:
+    uses: Omazi/quran/.github/workflows/testflight.yml@main
+    with:
+      mode: ${{ inputs.mode }}
+      ref: ${{ inputs.ref }}
+    # These three, by name, and nothing else of this repository. The jobs of the called workflow
+    # that name the `testflight` environment read them from it.
+    secrets:
+      APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+      IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
