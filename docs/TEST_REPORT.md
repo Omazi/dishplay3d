@@ -776,7 +776,7 @@ pas son jeton (`REPO_ADMIN_TOKEN`), et une session de travail n'a pas le droit d
 
 Un audit du projet (six relectures, chaque constat recontrôlé par un contradicteur, puis une passe « qu'est-ce
 que personne n'a regardé ») a relevé 53 points. Ce qui suit est ce qui a été corrigé côté calculateur et moteur ;
-l'app iPhone, les contrôles GitHub et l'inventaire des licences restent à traiter.
+l'app iPhone et les contrôles GitHub sont dans la section suivante.
 
 **Plusieurs plats à la suite (le défaut le plus gênant).** Démarrer un scan pendant que le plat précédent était
 en cours de calcul arrêtait ce calcul sans un mot, alors que l'app annonçait qu'il continuait. Reproduit avant
@@ -846,6 +846,51 @@ le modèle de l'essai « une photo » ne se chargeait pas). L'entraîneur neuron
 le vrai code de sa bibliothèque et un rendu factice. L'exécution du modèle « une photo » a été refusée ici par la
 protection de la session : seules ses parties propres au projet sont testées. La vidéo de l'essai neuronal
 passait par un encodeur sous GPL : remplacée par une image animée.
+
+## Mise à jour du 26 novembre — app 1.7.1, le calculateur sur Windows, contrôles GitHub
+
+**Le calculateur a tourné sous Windows pour la première fois** (machine Windows de GitHub, `windows-2025`,
+travail « calculator on Windows »). Le script du propriétaire installe tout au premier lancement, crée la règle
+de pare-feu (TCP 8765, réseaux privés seulement) et ne redemande rien au second ; le PC reste éveillé pendant un
+scan (`powercfg` montre le calculateur) ; 119 tests du calculateur réussis (1 ignoré, propre à Linux) ; **un scan
+complet de synthèse, du jumelage au modèle fini, avec de vrais processus et un vrai certificat : réussi**.
+Quatre passages ont été nécessaires : un test supposait les chemins de Linux, et la dernière étape du contrôle
+lui-même lisait mal le message attendu. Le script de préparation de l'essai neuronal dit correctement « Aucun scan
+trouvé » quand il n'y en a pas. Rien n'a été essayé sur le PC du propriétaire.
+
+**App 1.7.1, compilée et photographiée sur GitHub** (aucun compilateur Swift ici) :
+- compilée du premier coup ; **30 tests de la logique partagée** (file d'attente, réponses du calculateur, mots
+  affichés, vérification de la largeur) et **20 tests de l'app dans l'app** (vues gardées et renvoyées après une
+  coupure, scan abandonné réellement effacé, état d'un plat calculateur éteint, phrases des refus, vues hors de
+  la sauvegarde) : tous réussis. Ces tests tournent désormais à chaque contrôle des écrans, donc avant chaque
+  publication ;
+- parcours clair, sombre et très grand texte sur l'iPhone de référence : réussis, images regardées une par une.
+  Parcours clair sur le plus petit iPhone et, **pour la première fois, sur un iPad** : réussis. L'iPhone sous
+  iOS 18 n'a pas été photographié pour cette version (son passage a été annulé par l'envoi suivant) ;
+- ce que les images ont fait corriger : âge de l'aperçu affiché pendant la finition, cartes trop petites sur
+  iPad, un onglet de l'iPad qui ne s'ouvrait pas au premier toucher pendant le parcours, trois textes coupés en
+  très grand texte.
+
+Ce que l'app fait de nouveau, et la part vérifiée : voir `RELEASE_NOTES.txt`. Vérifié par les tests et les
+images : les textes, les états des plats, la mise en page. **Non vérifié** (il faut un iPhone) : la caméra, le
+suivi, le réseau réel, ce que VoiceOver annonce réellement pendant un scan, la pose de la boîte « au centre »
+par VoiceOver, l'exclusion effective de la sauvegarde iCloud sur un vrai appareil.
+
+**Contrôles GitHub ajoutés** :
+- la publication refuse de partir sans un contrôle des écrans complet et réussi sur le même code de l'app ;
+- un seul script choisit Xcode pour les trois travaux de l'app (le passage à Xcode 27, exigé en avril 2027, se
+  fera là) ;
+- les constats d'accessibilité d'Apple sont comparés à une liste acceptée (`ios/UITests/audit-baseline.txt`) :
+  un constat nouveau fait échouer le contrôle ;
+- quand le moteur change, le banc de qualité (bol de synthèse difficile) refait un modèle et compare neuf
+  chiffres (complétude, précision, fragments, erreur de couleur) à ceux acceptés (`tools/bench_reference.json`).
+  Essayé sur deux mesures enregistrées : le moteur actuel passe, la règle de texture retirée le 24 novembre
+  aurait été signalée (erreur de couleur moyenne 12,9 pour 11,4, 90ᵉ centile 30,5 pour 23,1) ;
+- un changement de document ne lance plus aucune machine, et le calculateur seul ne lance plus de Mac.
+
+**Calculateur** : le nom donné à un plat dans l'app est gardé avec le plat sur le PC (`nom.txt` dans son
+dossier, et dans la liste de `tools/clean_sessions.py`). Testé ; l'envoi par l'app n'est vérifié que par la
+compilation et un test des noms à envoyer.
 
 ## Ce qui reste à prouver sur appareil (vos essais, `FIRST_TEST.md`)
 Suivi AR et boîte sur l'iPhone 13, autorisation Réseau local, cadence et chauffe, latence Wi‑Fi réelle (images de

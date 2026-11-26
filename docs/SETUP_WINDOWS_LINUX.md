@@ -92,7 +92,9 @@ chaîne (preuve que les bibliothèques fonctionnent sur ce PC, jamais présenté
 
 **Place sur le disque.** Un scan prend 100 à 300 Mo et rien n'est supprimé tout seul. Le calculateur prévient au
 démarrage sous 5 Go libres, et refuse les nouvelles vues sous 500 Mo (l'app affiche alors la raison ; l'envoi
-reprend quand la place est revenue). Pour faire le ménage :
+reprend quand la place est revenue). Chaque plat est un dossier de `dishplay-scan-data/sessions/`, nommé d'après
+sa date ; avec l'app 1.7.1, le nom donné au plat sur l'iPhone est écrit dans son fichier `nom.txt`, et l'outil de
+ménage l'affiche. Pour faire le ménage :
 ```bash
 backend/.venv/bin/python tools/clean_sessions.py            # Windows : backend\.venv\Scripts\python.exe tools\clean_sessions.py
 ```
