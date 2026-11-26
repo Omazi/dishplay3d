@@ -191,13 +191,37 @@ final class AppModel: ObservableObject {
         // Finished dishes that miss a file. Only when the calculator is known to answer, and no further than the
         // first dish it does not answer for: otherwise every dish would wait for its own time-out.
         if reachable == true {
-            for dish in DishLibrary.all() where dish.state == .ready {
+            let dishes = DishLibrary.all()
+            for dish in dishes where dish.state == .ready {
                 guard let arrived = await completeFiles(of: dish) else { break }
                 if arrived { received = true }
             }
+            await sendNames(of: dishes)
         }
         if received { libraryRevision += 1 }
         return received
+    }
+
+    /// Dishes whose name the calculator did not take since the app was opened (an older calculator, or a dish
+    /// it no longer knows): not asked again until the app is opened again.
+    private var namesNotTaken: Set<String> = []
+
+    /// The names given to the dishes go to the calculator: on the PC a dish is otherwise a folder named after a
+    /// date, and nobody can tell which one is the tajine. Sent from here, so that a name given while the
+    /// calculator was off reaches it later.
+    private func sendNames(of dishes: [DishRecord]) async {
+        guard let t = transport else { return }
+        for dish in dishes where !namesNotTaken.contains(dish.id) {
+            guard let sid = dish.serverSessionID, let name = dish.nameToSend else { continue }
+            do {
+                try await t.setName(sessionID: sid, name: name)
+                SessionStore.markNameSent(name, in: dish.root)
+            } catch is TransportError {
+                namesNotTaken.insert(dish.id)
+            } catch {
+                return   // the calculator is away: the names wait for the next time
+            }
+        }
     }
 
     /// How many times the missing files of a dish were asked for since the app was opened.

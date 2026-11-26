@@ -31,6 +31,17 @@ struct DishRecord: Identifiable, Hashable {
     let outcome: FinalOutcome?
     /// The check of the model's size, when a real width was typed before this scan and the dish is finished.
     let scaleCheck: ScaleCheck?
+    /// The name the person gave the dish; nil while it only has the name made from its date.
+    let givenName: String?
+    /// The name the calculator has for this dish, so that its folder can be recognised on the PC; nil when it
+    /// has none.
+    let nameOnCalculator: String?
+
+    /// The name the calculator still has to be told: the one the person gave, when it is not there yet.
+    var nameToSend: String? {
+        guard serverSessionID != nil, let givenName, givenName != nameOnCalculator else { return nil }
+        return givenName
+    }
 
     /// Where the dish stands from what the iPhone alone knows: said on its card until the calculator answers,
     /// and whenever it does not.
@@ -90,7 +101,9 @@ enum DishLibrary {
                                   geometry: hasGeometry ? geometry : nil, photo: photo, pendingViews: max(0, frames - sent),
                                   serverSessionID: (sid?.isEmpty == false) ? sid : nil,
                                   outcome: ready ? SessionStore.outcome(in: root) : nil,
-                                  scaleCheck: ready ? scaleCheck(in: results) : nil))
+                                  scaleCheck: ready ? scaleCheck(in: results) : nil,
+                                  givenName: (stored?.isEmpty == false) ? stored : nil,
+                                  nameOnCalculator: SessionStore.nameSent(in: root)))
         }
         return out
     }

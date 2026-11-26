@@ -128,6 +128,12 @@ final class ScanTransport: NSObject, @unchecked Sendable {
         return WorkerAnswer.decode(d)
     }
 
+    /// Tell the calculator the name the person gave this dish, so that its folder can be recognised on the PC.
+    /// A calculator that does not keep names yet answers 404, like for a dish it no longer knows.
+    func setName(sessionID: String, name: String) async throws {
+        _ = try await postJSON("sessions/\(sessionID)/name", json: ["name": name])
+    }
+
     func postBox(sessionID: String, box: BoxSpec) async throws {
         _ = try await send(request("sessions/\(sessionID)/box", method: "POST", body: try JSONEncoder().encode(box)))
     }

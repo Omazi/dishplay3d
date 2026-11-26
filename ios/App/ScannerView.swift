@@ -399,7 +399,7 @@ struct ScannerView: View {
                         // A problem or a warning is explained in full; an instruction stays short so as not to
                         // hide the dish (three lines, which large text needs for one sentence).
                         Text(d).font(.subheadline).foregroundStyle(.white.opacity(0.85))
-                            .lineLimit(i.color == .white ? 3 : 7).minimumScaleFactor(0.85)
+                            .lineLimit(i.color == .white ? 4 : 7).minimumScaleFactor(0.85)
                     }
                     if scanning {
                         let ring = controller.scheduler.ring
@@ -642,7 +642,7 @@ struct ScannerView: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(previewTitle).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+                        Text(previewTitle).font(.headline).lineLimit(2).minimumScaleFactor(0.8)
                             .accessibilityAddTraits(.isHeader)
                         // The verdict helps while there is still time to act on it: not once the finishing has started.
                         if let level = controller.lastGeometry?.quality?.level, level != "too_early",
@@ -709,7 +709,7 @@ struct ScannerView: View {
         case .placing, .needsNewBox: return "Le plat apparaîtra ici, d’abord en points puis en surface, pendant que vous tournez autour."
         default:
             if controller.waitingForCalculator || controller.olderCalculatorBusy {
-                return "Le calculateur termine un autre plat. Continuez de tourner : vos vues sont gardées et l’aperçu démarrera ensuite."
+                return "Le calculateur finit un autre plat : l’aperçu viendra ensuite. Vos vues sont gardées."
             }
             return controller.calculatorOnline ? "Calcul des premières vues… continuez de tourner lentement."
                 : "Calculateur injoignable : l’aperçu reprendra au retour du réseau."

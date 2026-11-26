@@ -78,6 +78,33 @@ final class DishLibraryTests: StorageTestCase {
         XCTAssertEqual(dishes[1].outcome?.fallbacks.first?.message, "La table n’a pas pu être retirée autour du plat.")
     }
 
+    /// The name given to a dish goes to the calculator once, and again only when the person changes it.
+    func testWhichNamesTheCalculatorStillHasToBeTold() throws {
+        let root = try makeScan("2026-11-20T20-15-00Z", views: 2, sent: 2)
+        var dish = try XCTUnwrap(DishLibrary.all().first)
+        XCTAssertNil(dish.givenName, "named after its date: nothing to tell the calculator")
+        XCTAssertNil(dish.nameToSend)
+
+        DishLibrary.rename(dish, to: "Tajine aux pruneaux")
+        dish = try XCTUnwrap(DishLibrary.all().first)
+        XCTAssertEqual(dish.givenName, "Tajine aux pruneaux")
+        XCTAssertEqual(dish.nameToSend, "Tajine aux pruneaux")
+
+        SessionStore.markNameSent("Tajine aux pruneaux", in: root)
+        dish = try XCTUnwrap(DishLibrary.all().first)
+        XCTAssertEqual(dish.nameOnCalculator, "Tajine aux pruneaux")
+        XCTAssertNil(dish.nameToSend, "the calculator has it")
+
+        DishLibrary.rename(dish, to: "Tajine d’agneau")
+        XCTAssertEqual(try XCTUnwrap(DishLibrary.all().first).nameToSend, "Tajine d’agneau", "changed: told again")
+
+        // A dish that never reached the calculator has nobody to tell.
+        try makeScan("2026-11-21T08-00-00Z", views: 2, server: nil)
+        let local = try XCTUnwrap(DishLibrary.all().first)
+        DishLibrary.rename(local, to: "Salade")
+        XCTAssertNil(try XCTUnwrap(DishLibrary.all().first).nameToSend)
+    }
+
     func testRenamingAndDeleting() throws {
         let root = try makeScan("2026-11-20T20-15-00Z", views: 2)
         var dish = try XCTUnwrap(DishLibrary.all().first)

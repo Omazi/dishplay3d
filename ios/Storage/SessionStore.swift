@@ -136,6 +136,23 @@ final class SessionStore: @unchecked Sendable {
         return count
     }
 
+    // MARK: the name of the dish, on the calculator too
+
+    private static func nameSentFile(in root: URL) -> URL { root.appendingPathComponent("name.sent") }
+
+    /// The name the calculator last received for the dish in this folder; nil when it never received one.
+    static func nameSent(in root: URL) -> String? {
+        guard let text = try? String(contentsOf: nameSentFile(in: root), encoding: .utf8) else { return nil }
+        let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
+    /// The calculator has this name for the dish: it is not sent again until the person changes it.
+    static func markNameSent(_ name: String, in root: URL) {
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        try? Data(name.utf8).write(to: nameSentFile(in: root), options: .atomic)
+    }
+
     // MARK: how the final model came out
 
     private static func outcomeFile(in root: URL) -> URL { root.appendingPathComponent("outcome.json") }
