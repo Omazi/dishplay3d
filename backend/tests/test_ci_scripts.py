@@ -92,6 +92,12 @@ def test_a_new_accessibility_finding_fails_and_a_known_one_does_not(tmp_path):
     assert one_walk.returncode == 0 and "0 new, 0 no longer found" in one_walk.stdout             # a single walk is judged on its own screens
     fixed = run(known.replace("clair-08-accueil\tcontrast\tContrast failed\ttype 48 « Calculateur relié » 120×18 pt\n", "clair-08-accueil\tok\tno finding\t-\n"))
     assert fixed.returncode == 0 and "no longer found" in fixed.stdout and "1 no longer found" in fixed.stdout
+    # Apple's audit reports some findings of a screen on the light walk one day, on the dark one the next:
+    # outside contrast, the two appearances of a screen count as one.
+    swapped = run(known.replace("clair-18-scan-scanning", "sombre-18-scan-scanning"))
+    assert swapped.returncode == 0 and "0 new" in swapped.stdout
+    dark_contrast = run(known + "sombre-16-reglages\tcontrast\tContrast failed\ttype 48 « Tester » 60×18 pt\n")
+    assert dark_contrast.returncode == 1                                                            # contrast keeps its appearance
     worse = run(known + "clair-16-reglages\ttext-clipped\tText clipped\ttype 9 « Changer de calculateur » 150×44 pt\n")
     assert worse.returncode == 1 and "NEW finding" in worse.stdout and "Changer de calculateur" in worse.stdout
 

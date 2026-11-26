@@ -1,352 +1,197 @@
 # Accessibility findings accepted for the app, one per line: screen, kind, element (figures replaced by #).
 # Made by ios/ci/audit-compare.py --write from a full walk of the screen check; see docs/SCREEN_CHECK.md.
-clair-01-intro-1	dynamic-type	type # « BIENVENUE »
-clair-01-intro-1	dynamic-type	type # « Tournez autour d’une assiette avec l’iPhone : sa forme se construit sous vos yeux. »
-clair-01-intro-1	dynamic-type	type # « Vos plats en #D »
-clair-02-intro-2	dynamic-type	type # « Posez la boîte »
-clair-02-intro-2	dynamic-type	type # « Touchez la table au pied du plat, puis ajustez la boîte à sa taille. »
-clair-02-intro-2	dynamic-type	type # « ÉTAPE # »
-clair-03-intro-3	dynamic-type	type # « Faites le tour »
-clair-03-intro-3	dynamic-type	type # « L’anneau se remplit à mesure que chaque côté est vu. Quand il est complet, terminez. »
-clair-03-intro-3	dynamic-type	type # « ÉTAPE # »
-clair-04-accueil-vide	dynamic-type	type # « Calculateur à relier »
-clair-05-plats-vide	dynamic-type	type # « Aucun plat pour l’instant »
-clair-05-plats-vide	dynamic-type	type # « Les plats scannés apparaîtront ici, avec leur modèle #D. »
-clair-05-plats-vide	dynamic-type	type # « Relier le calculateur »
-clair-05-plats-vide	text-clipped	type # « Aucun plat pour l’instant »
+01-intro-1	dynamic-type	type # « BIENVENUE »
+01-intro-1	dynamic-type	type # « Tournez autour d’une assiette avec l’iPhone : sa forme se construit sous vos yeux. »
+01-intro-1	dynamic-type	type # « Vos plats en #D »
+02-intro-2	dynamic-type	type # « Posez la boîte »
+02-intro-2	dynamic-type	type # « Touchez la table au pied du plat, puis ajustez la boîte à sa taille. »
+02-intro-2	dynamic-type	type # « ÉTAPE # »
+03-intro-3	dynamic-type	type # « Faites le tour »
+03-intro-3	dynamic-type	type # « L’anneau se remplit à mesure que chaque côté est vu. Quand il est complet, terminez. »
+03-intro-3	dynamic-type	type # « ÉTAPE # »
+04-accueil-vide	dynamic-type	type # « Calculateur à relier »
+05-plats-vide	dynamic-type	type # « Aucun plat pour l’instant »
+05-plats-vide	dynamic-type	type # « Les plats scannés apparaîtront ici, avec leur modèle #D. »
+05-plats-vide	dynamic-type	type # « Relier le calculateur »
+05-plats-vide	text-clipped	type # « Aucun plat pour l’instant »
+08-accueil	dynamic-type	type # « # vues sur # n’ont pas été envoyées au calculateur. »
+08-accueil	dynamic-type	type # « Abandonner »
+08-accueil	dynamic-type	type # « Calculateur injoignable »
+08-accueil	dynamic-type	type # « En trois dimensions. »
+08-accueil	dynamic-type	type # « Envoyer et terminer »
+08-accueil	dynamic-type	type # « Scan interrompu »
+08-accueil	dynamic-type	type # « Scanner un plat »
+08-accueil	dynamic-type	type # « Vos plats. »
+10-plats	text-clipped	type # « Couscous royal aux sept légumes et merguez »
+11-plat	dynamic-type	type # « # cm pour # cm saisis »
+11-plat	dynamic-type	type # « # novembre # à #:# »
+11-plat	dynamic-type	type # « Bonne »
+11-plat	dynamic-type	type # « Largeur mesurée »
+11-plat	dynamic-type	type # « Qualité du modèle »
+11-plat	dynamic-type	type # « Scanné le »
+11-plat	text-clipped	type # «  »
+11-plat	text-clipped	type # « # cm pour # cm saisis »
+11-plat	text-clipped	type # « # novembre # à #:# »
+11-plat	text-clipped	type # « Qualité du modèle »
+14-plat-en-cours	dynamic-type	type # « # novembre # à #:# »
+14-plat-en-cours	dynamic-type	type # « Scanné le »
+14-plat-en-cours	text-clipped	type # «  »
+14-plat-en-cours	text-clipped	type # « # novembre # à #:# »
+14-plat-en-cours	text-clipped	type # « Couscous royal aux sept légumes et merguez »
+15-plat-interrompu	dynamic-type	type # « # novembre # à #:# »
+15-plat-interrompu	dynamic-type	type # « Scanné le »
+15-plat-interrompu	text-clipped	type # «  »
+15-plat-interrompu	text-clipped	type # « # novembre # à #:# »
+16-reglages	dynamic-type	type # « Changer de calculateur »
+16-reglages	dynamic-type	type # « Tester »
+17-scan-box	dynamic-type	type # « # cm »
+17-scan-box	dynamic-type	type # « Aperçu #D »
+17-scan-box	dynamic-type	type # « Calculateur »
+17-scan-box	dynamic-type	type # « Centrez la boîte sur le plat »
+17-scan-box	dynamic-type	type # « Démarrer le scan »
+17-scan-box	dynamic-type	type # « Glissez pour déplacer, pincez pour ajuster la taille. Les poignées règlent chaque côté. »
+17-scan-box	dynamic-type	type # « Hauteur »
+17-scan-box	dynamic-type	type # « Largeur »
+17-scan-box	dynamic-type	type # « Le plat se construira ici pendant le scan. »
+17-scan-box	dynamic-type	type # « Profondeur »
+17-scan-box	dynamic-type	type # « Suivi »
+17-scan-box	hit-region	type # « Calculateur : joignable »
+17-scan-box	hit-region	type # « Suivi du mouvement : bon »
+18-scan-scanning	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
+18-scan-scanning	dynamic-type	type # « # vues utilisées · mis à jour il y a # s »
+18-scan-scanning	dynamic-type	type # « # »
+18-scan-scanning	dynamic-type	type # « Aperçu en direct »
+18-scan-scanning	dynamic-type	type # « Calculateur »
+18-scan-scanning	dynamic-type	type # « Suivi »
+18-scan-scanning	dynamic-type	type # « Terminer »
+18-scan-scanning	dynamic-type	type # « Tournez autour du plat »
+18-scan-scanning	dynamic-type	type # « ← Allez vers votre gauche »
+18-scan-scanning	hit-region	type # « # vues prises »
+18-scan-scanning	hit-region	type # « Calculateur : joignable »
+18-scan-scanning	hit-region	type # « Suivi du mouvement : bon »
+18-scan-scanning	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
+18-scan-scanning	text-clipped	type # « Calculateur »
+19-scan-waiting	description	type # « circle.hexagongrid.fill »
+19-scan-waiting	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
+19-scan-waiting	dynamic-type	type # « # »
+19-scan-waiting	dynamic-type	type # « Aperçu #D »
+19-scan-waiting	dynamic-type	type # « Calculateur »
+19-scan-waiting	dynamic-type	type # « En direct pendant le scan »
+19-scan-waiting	dynamic-type	type # « Le calculateur finit un autre plat : l’aperçu viendra ensuite. Vos vues sont gardées. »
+19-scan-waiting	dynamic-type	type # « Suivi »
+19-scan-waiting	dynamic-type	type # « Terminer »
+19-scan-waiting	dynamic-type	type # « Tournez autour du plat »
+19-scan-waiting	dynamic-type	type # « ← Allez vers votre gauche »
+19-scan-waiting	hit-region	type # « # vues prises »
+19-scan-waiting	hit-region	type # « Calculateur : joignable »
+19-scan-waiting	hit-region	type # « Suivi du mouvement : bon »
+19-scan-waiting	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
+19-scan-waiting	text-clipped	type # « Calculateur »
+20-scan-paused	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
+20-scan-paused	dynamic-type	type # « # vues utilisées · mis à jour il y a # s »
+20-scan-paused	dynamic-type	type # « # »
+20-scan-paused	dynamic-type	type # « Aperçu en direct »
+20-scan-paused	dynamic-type	type # « Boîte »
+20-scan-paused	dynamic-type	type # « Calculateur »
+20-scan-paused	dynamic-type	type # « En pause »
+20-scan-paused	dynamic-type	type # « Suivi »
+20-scan-paused	dynamic-type	type # « Terminer »
+20-scan-paused	dynamic-type	type # « Votre scan est conservé. »
+20-scan-paused	hit-region	type # « # vues prises »
+20-scan-paused	hit-region	type # « Calculateur : joignable »
+20-scan-paused	hit-region	type # « Suivi du mouvement : bon »
+20-scan-paused	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
+20-scan-paused	text-clipped	type # « Calculateur »
+21-scan-finishing	dynamic-type	type # « # »
+21-scan-finishing	dynamic-type	type # « Aperçu en direct »
+21-scan-finishing	dynamic-type	type # « Calculateur »
+21-scan-finishing	dynamic-type	type # « Dernier aperçu du scan, en attendant le modèle final »
+21-scan-finishing	dynamic-type	type # « Finition du modèle »
+21-scan-finishing	dynamic-type	type # « Le calculateur assemble le modèle final. »
+21-scan-finishing	dynamic-type	type # « Suivi »
+21-scan-finishing	dynamic-type	type # « encore # min environ »
+21-scan-finishing	dynamic-type	type # « Étape # sur # : mesure des reliefs »
+21-scan-finishing	hit-region	type # « # vues prises »
+21-scan-finishing	hit-region	type # « Calculateur : joignable »
+21-scan-finishing	hit-region	type # « Suivi du mouvement : bon »
+21-scan-finishing	text-clipped	type # « Calculateur »
+22-scan-queued	dynamic-type	type # « # »
+22-scan-queued	dynamic-type	type # « Aperçu en direct »
+22-scan-queued	dynamic-type	type # « Calculateur »
+22-scan-queued	dynamic-type	type # « Dernier aperçu du scan, en attendant le modèle final »
+22-scan-queued	dynamic-type	type # « En attente du calculateur »
+22-scan-queued	dynamic-type	type # « En attente, #er dans la file »
+22-scan-queued	dynamic-type	type # « Il termine un autre plat, puis calculera celui-ci tout seul. Vous pouvez quitter cet écran : le plat arrivera dans Mes plats. »
+22-scan-queued	dynamic-type	type # « Suivi »
+22-scan-queued	hit-region	type # « # vues prises »
+22-scan-queued	hit-region	type # « Calculateur : joignable »
+22-scan-queued	hit-region	type # « Suivi du mouvement : bon »
+22-scan-queued	text-clipped	type # « Calculateur »
+23-scan-done	dynamic-type	type # « # »
+23-scan-done	dynamic-type	type # « Calculateur »
+23-scan-done	dynamic-type	type # « Faites-le tourner du doigt, puis retrouvez-le dans Mes plats. »
+23-scan-done	dynamic-type	type # « Modèle final »
+23-scan-done	dynamic-type	type # « Modèle prêt »
+23-scan-done	dynamic-type	type # « Suivi »
+23-scan-done	dynamic-type	type # « Tournez-le du doigt, pincez pour zoomer »
+23-scan-done	dynamic-type	type # « Voir dans Mes plats »
+23-scan-done	hit-region	type # « # vues prises »
+23-scan-done	hit-region	type # « Calculateur : joignable »
+23-scan-done	hit-region	type # « Suivi du mouvement : bon »
+23-scan-done	text-clipped	type # « Calculateur »
+24-scan-done-partial	dynamic-type	type # « # »
+24-scan-done-partial	dynamic-type	type # « Calculateur »
+24-scan-done-partial	dynamic-type	type # « Des zones du plat sont restées vides. Une partie du plat n’a pas reçu les couleurs des photos : elle garde une couleur simple. »
+24-scan-done-partial	dynamic-type	type # « Modèle final »
+24-scan-done-partial	dynamic-type	type # « Modèle prêt, qualité correcte »
+24-scan-done-partial	dynamic-type	type # « Suivi »
+24-scan-done-partial	dynamic-type	type # « Tournez-le du doigt, pincez pour zoomer »
+24-scan-done-partial	dynamic-type	type # « Voir dans Mes plats »
+24-scan-done-partial	hit-region	type # « # vues prises »
+24-scan-done-partial	hit-region	type # « Calculateur : joignable »
+24-scan-done-partial	hit-region	type # « Suivi du mouvement : bon »
+24-scan-done-partial	text-clipped	type # « Calculateur »
+25-scan-denied	dynamic-type	type # « Aperçu #D »
+25-scan-denied	dynamic-type	type # « Calculateur »
+25-scan-denied	dynamic-type	type # « Caméra non autorisée »
+25-scan-denied	dynamic-type	type # « DishPlay Scan n’a pas accès à la caméra. Autorisez-la dans les réglages de l’iPhone. »
+25-scan-denied	dynamic-type	type # « Le plat se construira ici pendant le scan. »
+25-scan-denied	dynamic-type	type # « Ouvrir les réglages »
+25-scan-denied	dynamic-type	type # « Suivi perdu »
+25-scan-denied	hit-region	type # « Calculateur : joignable »
+25-scan-denied	hit-region	type # « Suivi du mouvement : perdu »
 clair-08-accueil	contrast	type # « Derniers plats »
 clair-08-accueil	contrast	type # « Tout voir »
-clair-08-accueil	dynamic-type	type # « Abandonner »
-clair-08-accueil	dynamic-type	type # « Calculateur injoignable »
-clair-08-accueil	dynamic-type	type # « Envoyer et terminer »
-clair-10-plats	text-clipped	type # « Couscous royal aux sept légumes et merguez »
 clair-11-plat	contrast	type # « # cm pour # cm saisis »
 clair-11-plat	contrast	type # « Voir sur votre table »
-clair-11-plat	dynamic-type	type # « # cm pour # cm saisis »
-clair-11-plat	dynamic-type	type # « # novembre # à #:# »
-clair-11-plat	dynamic-type	type # « Bonne »
-clair-11-plat	dynamic-type	type # « Largeur mesurée »
-clair-11-plat	dynamic-type	type # « Qualité du modèle »
-clair-11-plat	dynamic-type	type # « Scanné le »
-clair-11-plat	text-clipped	type # «  »
-clair-11-plat	text-clipped	type # « # cm pour # cm saisis »
-clair-11-plat	text-clipped	type # « # novembre # à #:# »
-clair-11-plat	text-clipped	type # « Qualité du modèle »
 clair-14-plat-en-cours	contrast	type # « # novembre # à #:# »
 clair-14-plat-en-cours	contrast	type # « # »
 clair-14-plat-en-cours	contrast	type # « Exporter le dossier complet »
 clair-14-plat-en-cours	contrast	type # « Scanné le »
 clair-14-plat-en-cours	contrast	type # « Vues prises »
-clair-14-plat-en-cours	dynamic-type	type # « # novembre # à #:# »
-clair-14-plat-en-cours	dynamic-type	type # « Scanné le »
-clair-14-plat-en-cours	text-clipped	type # «  »
-clair-14-plat-en-cours	text-clipped	type # « # novembre # à #:# »
-clair-14-plat-en-cours	text-clipped	type # « Couscous royal aux sept légumes et merguez »
 clair-15-plat-interrompu	contrast	type # « # novembre # à #:# »
 clair-15-plat-interrompu	contrast	type # « # »
 clair-15-plat-interrompu	contrast	type # « Exporter le dossier complet »
 clair-15-plat-interrompu	contrast	type # « Scanné le »
 clair-15-plat-interrompu	contrast	type # « Vues prises »
-clair-15-plat-interrompu	dynamic-type	type # « # novembre # à #:# »
-clair-15-plat-interrompu	dynamic-type	type # « Scanné le »
-clair-15-plat-interrompu	text-clipped	type # «  »
-clair-15-plat-interrompu	text-clipped	type # « # novembre # à #:# »
-clair-16-reglages	dynamic-type	type # « Changer de calculateur »
-clair-16-reglages	dynamic-type	type # « Tester »
 clair-17-scan-box	contrast	type # « Hauteur »
 clair-17-scan-box	contrast	type # « Largeur »
 clair-17-scan-box	contrast	type # « Profondeur »
-clair-17-scan-box	dynamic-type	type # « # cm »
-clair-17-scan-box	dynamic-type	type # « Aperçu #D »
-clair-17-scan-box	dynamic-type	type # « Calculateur »
-clair-17-scan-box	dynamic-type	type # « Centrez la boîte sur le plat »
-clair-17-scan-box	dynamic-type	type # « Démarrer le scan »
-clair-17-scan-box	dynamic-type	type # « Glissez pour déplacer, pincez pour ajuster la taille. Les poignées règlent chaque côté. »
-clair-17-scan-box	dynamic-type	type # « Hauteur »
-clair-17-scan-box	dynamic-type	type # « Largeur »
-clair-17-scan-box	dynamic-type	type # « Le plat se construira ici pendant le scan. »
-clair-17-scan-box	dynamic-type	type # « Profondeur »
-clair-17-scan-box	dynamic-type	type # « Suivi »
-clair-17-scan-box	hit-region	type # « Calculateur : joignable »
-clair-17-scan-box	hit-region	type # « Suivi du mouvement : bon »
-clair-18-scan-scanning	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
-clair-18-scan-scanning	dynamic-type	type # « # vues utilisées · mis à jour il y a # s »
-clair-18-scan-scanning	dynamic-type	type # « # »
-clair-18-scan-scanning	dynamic-type	type # « Aperçu en direct »
-clair-18-scan-scanning	dynamic-type	type # « Calculateur »
-clair-18-scan-scanning	dynamic-type	type # « Suivi »
-clair-18-scan-scanning	dynamic-type	type # « Terminer »
-clair-18-scan-scanning	dynamic-type	type # « Tournez autour du plat »
-clair-18-scan-scanning	dynamic-type	type # « ← Allez vers votre gauche »
-clair-18-scan-scanning	hit-region	type # « # vues prises »
-clair-18-scan-scanning	hit-region	type # « Calculateur : joignable »
-clair-18-scan-scanning	hit-region	type # « Suivi du mouvement : bon »
-clair-18-scan-scanning	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
-clair-18-scan-scanning	text-clipped	type # « Calculateur »
-clair-19-scan-waiting	description	type # « circle.hexagongrid.fill »
-clair-19-scan-waiting	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
-clair-19-scan-waiting	dynamic-type	type # « # »
-clair-19-scan-waiting	dynamic-type	type # « Aperçu #D »
-clair-19-scan-waiting	dynamic-type	type # « Calculateur »
-clair-19-scan-waiting	dynamic-type	type # « En direct pendant le scan »
-clair-19-scan-waiting	dynamic-type	type # « Le calculateur finit un autre plat : l’aperçu viendra ensuite. Vos vues sont gardées. »
-clair-19-scan-waiting	dynamic-type	type # « Suivi »
-clair-19-scan-waiting	dynamic-type	type # « Terminer »
-clair-19-scan-waiting	dynamic-type	type # « Tournez autour du plat »
-clair-19-scan-waiting	dynamic-type	type # « ← Allez vers votre gauche »
-clair-19-scan-waiting	hit-region	type # « # vues prises »
-clair-19-scan-waiting	hit-region	type # « Calculateur : joignable »
-clair-19-scan-waiting	hit-region	type # « Suivi du mouvement : bon »
-clair-19-scan-waiting	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
-clair-19-scan-waiting	text-clipped	type # « Calculateur »
-clair-20-scan-paused	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
-clair-20-scan-paused	dynamic-type	type # « # vues utilisées · mis à jour il y a # s »
-clair-20-scan-paused	dynamic-type	type # « # »
-clair-20-scan-paused	dynamic-type	type # « Aperçu en direct »
-clair-20-scan-paused	dynamic-type	type # « Boîte »
-clair-20-scan-paused	dynamic-type	type # « Calculateur »
-clair-20-scan-paused	dynamic-type	type # « En pause »
-clair-20-scan-paused	dynamic-type	type # « Suivi »
-clair-20-scan-paused	dynamic-type	type # « Terminer »
-clair-20-scan-paused	dynamic-type	type # « Votre scan est conservé. »
-clair-20-scan-paused	hit-region	type # « # vues prises »
-clair-20-scan-paused	hit-region	type # « Calculateur : joignable »
-clair-20-scan-paused	hit-region	type # « Suivi du mouvement : bon »
-clair-20-scan-paused	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
-clair-20-scan-paused	text-clipped	type # « Calculateur »
-clair-21-scan-finishing	dynamic-type	type # « # »
-clair-21-scan-finishing	dynamic-type	type # « Aperçu en direct »
-clair-21-scan-finishing	dynamic-type	type # « Calculateur »
-clair-21-scan-finishing	dynamic-type	type # « Dernier aperçu du scan, en attendant le modèle final »
-clair-21-scan-finishing	dynamic-type	type # « Finition du modèle »
-clair-21-scan-finishing	dynamic-type	type # « Le calculateur assemble le modèle final. »
-clair-21-scan-finishing	dynamic-type	type # « Suivi »
-clair-21-scan-finishing	dynamic-type	type # « encore # min environ »
-clair-21-scan-finishing	dynamic-type	type # « Étape # sur # : mesure des reliefs »
-clair-21-scan-finishing	hit-region	type # « # vues prises »
-clair-21-scan-finishing	hit-region	type # « Calculateur : joignable »
-clair-21-scan-finishing	hit-region	type # « Suivi du mouvement : bon »
-clair-21-scan-finishing	text-clipped	type # « Calculateur »
-clair-22-scan-queued	dynamic-type	type # « # »
-clair-22-scan-queued	dynamic-type	type # « Aperçu en direct »
-clair-22-scan-queued	dynamic-type	type # « Calculateur »
-clair-22-scan-queued	dynamic-type	type # « Dernier aperçu du scan, en attendant le modèle final »
-clair-22-scan-queued	dynamic-type	type # « En attente du calculateur »
-clair-22-scan-queued	dynamic-type	type # « En attente, #er dans la file »
-clair-22-scan-queued	dynamic-type	type # « Il termine un autre plat, puis calculera celui-ci tout seul. Vous pouvez quitter cet écran : le plat arrivera dans Mes plats. »
-clair-22-scan-queued	dynamic-type	type # « Suivi »
-clair-22-scan-queued	hit-region	type # « # vues prises »
-clair-22-scan-queued	hit-region	type # « Calculateur : joignable »
-clair-22-scan-queued	hit-region	type # « Suivi du mouvement : bon »
-clair-22-scan-queued	text-clipped	type # « Calculateur »
-clair-23-scan-done	dynamic-type	type # « # »
-clair-23-scan-done	dynamic-type	type # « Calculateur »
-clair-23-scan-done	dynamic-type	type # « Faites-le tourner du doigt, puis retrouvez-le dans Mes plats. »
-clair-23-scan-done	dynamic-type	type # « Modèle final »
-clair-23-scan-done	dynamic-type	type # « Modèle prêt »
-clair-23-scan-done	dynamic-type	type # « Suivi »
-clair-23-scan-done	dynamic-type	type # « Tournez-le du doigt, pincez pour zoomer »
-clair-23-scan-done	dynamic-type	type # « Voir dans Mes plats »
-clair-23-scan-done	hit-region	type # « # vues prises »
-clair-23-scan-done	hit-region	type # « Calculateur : joignable »
-clair-23-scan-done	hit-region	type # « Suivi du mouvement : bon »
-clair-23-scan-done	text-clipped	type # « Calculateur »
-clair-24-scan-done-partial	dynamic-type	type # « # »
-clair-24-scan-done-partial	dynamic-type	type # « Calculateur »
-clair-24-scan-done-partial	dynamic-type	type # « Des zones du plat sont restées vides. Une partie du plat n’a pas reçu les couleurs des photos : elle garde une couleur simple. »
-clair-24-scan-done-partial	dynamic-type	type # « Modèle final »
-clair-24-scan-done-partial	dynamic-type	type # « Modèle prêt, qualité correcte »
-clair-24-scan-done-partial	dynamic-type	type # « Suivi »
-clair-24-scan-done-partial	dynamic-type	type # « Tournez-le du doigt, pincez pour zoomer »
-clair-24-scan-done-partial	dynamic-type	type # « Voir dans Mes plats »
-clair-24-scan-done-partial	hit-region	type # « # vues prises »
-clair-24-scan-done-partial	hit-region	type # « Calculateur : joignable »
-clair-24-scan-done-partial	hit-region	type # « Suivi du mouvement : bon »
-clair-24-scan-done-partial	text-clipped	type # « Calculateur »
-clair-25-scan-denied	dynamic-type	type # « Aperçu #D »
-clair-25-scan-denied	dynamic-type	type # « Calculateur »
-clair-25-scan-denied	dynamic-type	type # « Caméra non autorisée »
-clair-25-scan-denied	dynamic-type	type # « DishPlay Scan n’a pas accès à la caméra. Autorisez-la dans les réglages de l’iPhone. »
-clair-25-scan-denied	dynamic-type	type # « Le plat se construira ici pendant le scan. »
-clair-25-scan-denied	dynamic-type	type # « Ouvrir les réglages »
-clair-25-scan-denied	dynamic-type	type # « Suivi perdu »
-clair-25-scan-denied	hit-region	type # « Calculateur : joignable »
-clair-25-scan-denied	hit-region	type # « Suivi du mouvement : perdu »
-sombre-01-intro-1	dynamic-type	type # « BIENVENUE »
-sombre-01-intro-1	dynamic-type	type # « Tournez autour d’une assiette avec l’iPhone : sa forme se construit sous vos yeux. »
-sombre-01-intro-1	dynamic-type	type # « Vos plats en #D »
-sombre-02-intro-2	dynamic-type	type # « Posez la boîte »
-sombre-02-intro-2	dynamic-type	type # « Touchez la table au pied du plat, puis ajustez la boîte à sa taille. »
-sombre-02-intro-2	dynamic-type	type # « ÉTAPE # »
-sombre-03-intro-3	dynamic-type	type # « Faites le tour »
-sombre-03-intro-3	dynamic-type	type # « L’anneau se remplit à mesure que chaque côté est vu. Quand il est complet, terminez. »
-sombre-03-intro-3	dynamic-type	type # « ÉTAPE # »
-sombre-04-accueil-vide	dynamic-type	type # « Calculateur à relier »
-sombre-05-plats-vide	dynamic-type	type # « Aucun plat pour l’instant »
-sombre-05-plats-vide	dynamic-type	type # « Les plats scannés apparaîtront ici, avec leur modèle #D. »
-sombre-05-plats-vide	dynamic-type	type # « Relier le calculateur »
-sombre-05-plats-vide	text-clipped	type # « Aucun plat pour l’instant »
 sombre-08-accueil	contrast	type # « Derniers plats »
 sombre-08-accueil	contrast	type # « Tout voir »
-sombre-08-accueil	dynamic-type	type # « # vues sur # n’ont pas été envoyées au calculateur. »
-sombre-08-accueil	dynamic-type	type # « Abandonner »
-sombre-08-accueil	dynamic-type	type # « Calculateur injoignable »
-sombre-08-accueil	dynamic-type	type # « En trois dimensions. »
-sombre-08-accueil	dynamic-type	type # « Envoyer et terminer »
-sombre-08-accueil	dynamic-type	type # « Scan interrompu »
-sombre-08-accueil	dynamic-type	type # « Scanner un plat »
-sombre-08-accueil	dynamic-type	type # « Vos plats. »
-sombre-10-plats	text-clipped	type # « Couscous royal aux sept légumes et merguez »
 sombre-11-plat	contrast	type # « # cm pour # cm saisis »
 sombre-11-plat	contrast	type # « Largeur mesurée »
 sombre-11-plat	contrast	type # « Voir sur votre table »
-sombre-11-plat	dynamic-type	type # « # cm pour # cm saisis »
-sombre-11-plat	dynamic-type	type # « # novembre # à #:# »
-sombre-11-plat	dynamic-type	type # « Bonne »
-sombre-11-plat	dynamic-type	type # « Largeur mesurée »
-sombre-11-plat	dynamic-type	type # « Qualité du modèle »
-sombre-11-plat	dynamic-type	type # « Scanné le »
-sombre-11-plat	text-clipped	type # «  »
-sombre-11-plat	text-clipped	type # « # cm pour # cm saisis »
-sombre-11-plat	text-clipped	type # « # novembre # à #:# »
-sombre-11-plat	text-clipped	type # « Qualité du modèle »
 sombre-14-plat-en-cours	contrast	type # « # novembre # à #:# »
 sombre-14-plat-en-cours	contrast	type # « # »
 sombre-14-plat-en-cours	contrast	type # « Exporter le dossier complet »
 sombre-14-plat-en-cours	contrast	type # « Scanné le »
 sombre-14-plat-en-cours	contrast	type # « Vues prises »
-sombre-14-plat-en-cours	dynamic-type	type # « # novembre # à #:# »
-sombre-14-plat-en-cours	dynamic-type	type # « Scanné le »
-sombre-14-plat-en-cours	text-clipped	type # «  »
-sombre-14-plat-en-cours	text-clipped	type # « # novembre # à #:# »
-sombre-14-plat-en-cours	text-clipped	type # « Couscous royal aux sept légumes et merguez »
 sombre-15-plat-interrompu	contrast	type # « # novembre # à #:# »
 sombre-15-plat-interrompu	contrast	type # « # »
 sombre-15-plat-interrompu	contrast	type # « Exporter le dossier complet »
 sombre-15-plat-interrompu	contrast	type # « Scanné le »
 sombre-15-plat-interrompu	contrast	type # « Vues prises »
-sombre-15-plat-interrompu	dynamic-type	type # « # novembre # à #:# »
-sombre-15-plat-interrompu	dynamic-type	type # « Scanné le »
-sombre-15-plat-interrompu	text-clipped	type # «  »
-sombre-15-plat-interrompu	text-clipped	type # « # novembre # à #:# »
-sombre-16-reglages	dynamic-type	type # « Changer de calculateur »
-sombre-16-reglages	dynamic-type	type # « Tester »
 sombre-17-scan-box	contrast	type # « Hauteur »
 sombre-17-scan-box	contrast	type # « Largeur »
 sombre-17-scan-box	contrast	type # « Profondeur »
-sombre-17-scan-box	dynamic-type	type # « # cm »
-sombre-17-scan-box	dynamic-type	type # « Aperçu #D »
-sombre-17-scan-box	dynamic-type	type # « Calculateur »
-sombre-17-scan-box	dynamic-type	type # « Centrez la boîte sur le plat »
-sombre-17-scan-box	dynamic-type	type # « Démarrer le scan »
-sombre-17-scan-box	dynamic-type	type # « Glissez pour déplacer, pincez pour ajuster la taille. Les poignées règlent chaque côté. »
-sombre-17-scan-box	dynamic-type	type # « Hauteur »
-sombre-17-scan-box	dynamic-type	type # « Largeur »
-sombre-17-scan-box	dynamic-type	type # « Le plat se construira ici pendant le scan. »
-sombre-17-scan-box	dynamic-type	type # « Profondeur »
-sombre-17-scan-box	dynamic-type	type # « Suivi »
-sombre-17-scan-box	hit-region	type # « Calculateur : joignable »
-sombre-17-scan-box	hit-region	type # « Suivi du mouvement : bon »
-sombre-18-scan-scanning	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
-sombre-18-scan-scanning	dynamic-type	type # « # vues utilisées · mis à jour il y a # s »
-sombre-18-scan-scanning	dynamic-type	type # « # »
-sombre-18-scan-scanning	dynamic-type	type # « Aperçu en direct »
-sombre-18-scan-scanning	dynamic-type	type # « Calculateur »
-sombre-18-scan-scanning	dynamic-type	type # « Suivi »
-sombre-18-scan-scanning	dynamic-type	type # « Terminer »
-sombre-18-scan-scanning	dynamic-type	type # « Tournez autour du plat »
-sombre-18-scan-scanning	dynamic-type	type # « ← Allez vers votre gauche »
-sombre-18-scan-scanning	hit-region	type # « # vues prises »
-sombre-18-scan-scanning	hit-region	type # « Calculateur : joignable »
-sombre-18-scan-scanning	hit-region	type # « Suivi du mouvement : bon »
-sombre-18-scan-scanning	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
-sombre-18-scan-scanning	text-clipped	type # « Calculateur »
-sombre-19-scan-waiting	description	type # « circle.hexagongrid.fill »
-sombre-19-scan-waiting	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
-sombre-19-scan-waiting	dynamic-type	type # « # »
-sombre-19-scan-waiting	dynamic-type	type # « Aperçu #D »
-sombre-19-scan-waiting	dynamic-type	type # « Calculateur »
-sombre-19-scan-waiting	dynamic-type	type # « En direct pendant le scan »
-sombre-19-scan-waiting	dynamic-type	type # « Le calculateur finit un autre plat : l’aperçu viendra ensuite. Vos vues sont gardées. »
-sombre-19-scan-waiting	dynamic-type	type # « Suivi »
-sombre-19-scan-waiting	dynamic-type	type # « Terminer »
-sombre-19-scan-waiting	dynamic-type	type # « Tournez autour du plat »
-sombre-19-scan-waiting	dynamic-type	type # « ← Allez vers votre gauche »
-sombre-19-scan-waiting	hit-region	type # « # vues prises »
-sombre-19-scan-waiting	hit-region	type # « Calculateur : joignable »
-sombre-19-scan-waiting	hit-region	type # « Suivi du mouvement : bon »
-sombre-19-scan-waiting	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
-sombre-19-scan-waiting	text-clipped	type # « Calculateur »
-sombre-20-scan-paused	dynamic-type	type # « # côtés vus sur #, # vues de dessus sur # »
-sombre-20-scan-paused	dynamic-type	type # « # vues utilisées · mis à jour il y a # s »
-sombre-20-scan-paused	dynamic-type	type # « # »
-sombre-20-scan-paused	dynamic-type	type # « Aperçu en direct »
-sombre-20-scan-paused	dynamic-type	type # « Boîte »
-sombre-20-scan-paused	dynamic-type	type # « Calculateur »
-sombre-20-scan-paused	dynamic-type	type # « En pause »
-sombre-20-scan-paused	dynamic-type	type # « Suivi »
-sombre-20-scan-paused	dynamic-type	type # « Terminer »
-sombre-20-scan-paused	dynamic-type	type # « Votre scan est conservé. »
-sombre-20-scan-paused	hit-region	type # « # vues prises »
-sombre-20-scan-paused	hit-region	type # « Calculateur : joignable »
-sombre-20-scan-paused	hit-region	type # « Suivi du mouvement : bon »
-sombre-20-scan-paused	text-clipped	type # « # côtés vus sur #, # vues de dessus sur # »
-sombre-20-scan-paused	text-clipped	type # « Calculateur »
-sombre-21-scan-finishing	dynamic-type	type # « # »
-sombre-21-scan-finishing	dynamic-type	type # « Aperçu en direct »
-sombre-21-scan-finishing	dynamic-type	type # « Calculateur »
-sombre-21-scan-finishing	dynamic-type	type # « Dernier aperçu du scan, en attendant le modèle final »
-sombre-21-scan-finishing	dynamic-type	type # « Finition du modèle »
-sombre-21-scan-finishing	dynamic-type	type # « Le calculateur assemble le modèle final. »
-sombre-21-scan-finishing	dynamic-type	type # « Suivi »
-sombre-21-scan-finishing	dynamic-type	type # « encore # min environ »
-sombre-21-scan-finishing	dynamic-type	type # « Étape # sur # : mesure des reliefs »
-sombre-21-scan-finishing	hit-region	type # « # vues prises »
-sombre-21-scan-finishing	hit-region	type # « Calculateur : joignable »
-sombre-21-scan-finishing	hit-region	type # « Suivi du mouvement : bon »
-sombre-21-scan-finishing	text-clipped	type # « Calculateur »
-sombre-22-scan-queued	dynamic-type	type # « # »
-sombre-22-scan-queued	dynamic-type	type # « Aperçu en direct »
-sombre-22-scan-queued	dynamic-type	type # « Calculateur »
-sombre-22-scan-queued	dynamic-type	type # « Dernier aperçu du scan, en attendant le modèle final »
-sombre-22-scan-queued	dynamic-type	type # « En attente du calculateur »
-sombre-22-scan-queued	dynamic-type	type # « En attente, #er dans la file »
-sombre-22-scan-queued	dynamic-type	type # « Il termine un autre plat, puis calculera celui-ci tout seul. Vous pouvez quitter cet écran : le plat arrivera dans Mes plats. »
-sombre-22-scan-queued	dynamic-type	type # « Suivi »
-sombre-22-scan-queued	hit-region	type # « # vues prises »
-sombre-22-scan-queued	hit-region	type # « Calculateur : joignable »
-sombre-22-scan-queued	hit-region	type # « Suivi du mouvement : bon »
-sombre-22-scan-queued	text-clipped	type # « Calculateur »
-sombre-23-scan-done	dynamic-type	type # « # »
-sombre-23-scan-done	dynamic-type	type # « Calculateur »
-sombre-23-scan-done	dynamic-type	type # « Faites-le tourner du doigt, puis retrouvez-le dans Mes plats. »
-sombre-23-scan-done	dynamic-type	type # « Modèle final »
-sombre-23-scan-done	dynamic-type	type # « Modèle prêt »
-sombre-23-scan-done	dynamic-type	type # « Suivi »
-sombre-23-scan-done	dynamic-type	type # « Tournez-le du doigt, pincez pour zoomer »
-sombre-23-scan-done	dynamic-type	type # « Voir dans Mes plats »
-sombre-23-scan-done	hit-region	type # « # vues prises »
-sombre-23-scan-done	hit-region	type # « Calculateur : joignable »
-sombre-23-scan-done	hit-region	type # « Suivi du mouvement : bon »
-sombre-23-scan-done	text-clipped	type # « Calculateur »
-sombre-24-scan-done-partial	dynamic-type	type # « # »
-sombre-24-scan-done-partial	dynamic-type	type # « Calculateur »
-sombre-24-scan-done-partial	dynamic-type	type # « Des zones du plat sont restées vides. Une partie du plat n’a pas reçu les couleurs des photos : elle garde une couleur simple. »
-sombre-24-scan-done-partial	dynamic-type	type # « Modèle final »
-sombre-24-scan-done-partial	dynamic-type	type # « Modèle prêt, qualité correcte »
-sombre-24-scan-done-partial	dynamic-type	type # « Suivi »
-sombre-24-scan-done-partial	dynamic-type	type # « Tournez-le du doigt, pincez pour zoomer »
-sombre-24-scan-done-partial	dynamic-type	type # « Voir dans Mes plats »
-sombre-24-scan-done-partial	hit-region	type # « # vues prises »
-sombre-24-scan-done-partial	hit-region	type # « Calculateur : joignable »
-sombre-24-scan-done-partial	hit-region	type # « Suivi du mouvement : bon »
-sombre-24-scan-done-partial	text-clipped	type # « Calculateur »
-sombre-25-scan-denied	dynamic-type	type # « Aperçu #D »
-sombre-25-scan-denied	dynamic-type	type # « Calculateur »
-sombre-25-scan-denied	dynamic-type	type # « Caméra non autorisée »
-sombre-25-scan-denied	dynamic-type	type # « DishPlay Scan n’a pas accès à la caméra. Autorisez-la dans les réglages de l’iPhone. »
-sombre-25-scan-denied	dynamic-type	type # « Le plat se construira ici pendant le scan. »
-sombre-25-scan-denied	dynamic-type	type # « Ouvrir les réglages »
-sombre-25-scan-denied	dynamic-type	type # « Suivi perdu »
-sombre-25-scan-denied	hit-region	type # « Calculateur : joignable »
-sombre-25-scan-denied	hit-region	type # « Suivi du mouvement : perdu »

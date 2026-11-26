@@ -6,7 +6,9 @@
 
 AUDIT.txt is what the walk writes: one finding per line, `screen <tab> kind <tab> description <tab> element`.
 A finding is its screen, its kind and its element. Sizes and figures are left out, because they change with the
-clock and from one run to the next ("mis à jour il y a 7 s", "354×74 pt"). Only the screens present in AUDIT.txt
+clock and from one run to the next ("mis à jour il y a 7 s", "354×74 pt"). Only a contrast finding depends on the
+appearance: for the other kinds the light and the dark picture of a screen count as one screen, because Apple's
+audit reports the same findings of a screen sometimes on one walk, sometimes on the other (seen on 26 November). Only the screens present in AUDIT.txt
 are compared: a single walk (`only: light`) is judged on its own screens.
 
 A new finding means either that the app got worse, or that the finding is accepted: then the baseline is made
@@ -28,7 +30,12 @@ def finding(line: str):
         return None
     element = re.sub(r"\s*\d+×\d+ pt$", "", parts[3])      # the size of the element
     element = re.sub(r"\d+", "#", element)                  # counters, ages, the type number of the element
-    return parts[0], parts[1], element
+    return screen_key(parts[0], parts[1]), parts[1], element
+
+
+def screen_key(screen: str, kind: str) -> str:
+    """The screen a finding belongs to: with its appearance for a contrast finding, without it otherwise."""
+    return screen if kind == "contrast" else re.sub(r"^(clair|sombre)-", "", screen)
 
 
 def read_walk(text: str):
@@ -36,7 +43,8 @@ def read_walk(text: str):
     for line in text.splitlines():
         if not line.strip():
             continue
-        screens.add(line.split("\t", 1)[0])
+        screen = line.split("\t", 1)[0]
+        screens.update({screen, screen_key(screen, "")})
         f = finding(line)
         if f:
             found.add(f)
